@@ -1,0 +1,65 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Executables
+vizero
+vizero.exe
+
+# Plugin binaries in root plugins folder
+plugins/*.dll
+plugins/*.so
+plugins/*.dylib
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled Object files
+*.o
+*.obj
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects
+*.so
+*.dll
+*.dylib
+
+# Debug files
+*.pdb
+*.ilk
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*~
+*.swp
+*.tmp
+
+# Logs
+*.log
+
+# Dependencies that might be copied
+SDL2.dll
+glew32.dll
