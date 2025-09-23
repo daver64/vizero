@@ -53,6 +53,9 @@ if(MSVC)
     add_definitions(-DNOMINMAX)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
     add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
+    
+    # Use static runtime library to match Boost
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 else()
     add_compile_options(-Wall -Wextra -pedantic)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -66,8 +69,10 @@ endif()
 add_definitions(-DVIZERO_PLATFORM_${PLATFORM_NAME})
 add_definitions(-DVIZERO_PLUGIN_EXT="${PLUGIN_EXT}")
 
-# Find packages
-find_package(PkgConfig)
+# Find packages (only on Unix)
+if(UNIX)
+    find_package(PkgConfig)
+endif()
 
 # SDL2 Configuration
 if(DEFINED ENV{SDL2_ROOT})
@@ -217,6 +222,7 @@ add_library(vizero_core STATIC
     src/core/renderer.cpp
     src/core/input_manager.cpp
     src/core/settings.cpp
+    src/core/search.cpp
     src/text/buffer.cpp
     src/text/cursor.cpp
     src/text/line.cpp
@@ -249,9 +255,16 @@ target_link_libraries(vizero_core PUBLIC
 )
 
 # Main executable
-add_executable(vizero
-    src/main.cpp
-)
+if(WIN32)
+    add_executable(vizero
+        src/main.cpp
+        vizero.rc
+    )
+else()
+    add_executable(vizero
+        src/main.cpp
+    )
+endif()
 
 target_link_libraries(vizero PRIVATE vizero_core)
 
@@ -320,13 +333,6 @@ if(BUILD_TESTS)
     add_executable(vizero_tests
         tests/test_framework.cpp
         tests/test_editor.cpp
-        # Core source files needed for tests
-        src/core/settings.cpp
-        src/text/buffer.cpp
-        src/text/cursor.cpp
-        src/text/line.cpp
-        src/editor/editor_state.cpp
-        src/project/project.cpp
     )
     
     target_include_directories(vizero_tests PRIVATE
@@ -336,7 +342,7 @@ if(BUILD_TESTS)
     )
     
     target_link_libraries(vizero_tests PRIVATE
-        ${SDL2_LIBRARIES}
+        vizero_core
     )
     
     # Set output directory for tests

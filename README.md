@@ -1,110 +1,205 @@
 # Vizero
 
-A fast, lightweight desktop text editor inspired by vi, built with modern graphics technology. Vizero aims to replicate the essential vi editing experience while providing a clean, responsive interface without being a strict vi clone.
+A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, multi-buffer support, and integrated compiler tools.
 
-## Project Goals
+## Features
 
-Vizero is designed to be:
-- **Fast and Lightweight**: Minimal resource usage with hardware-accelerated rendering
-- **Vi-Inspired**: Core vi editing paradigms without strict compatibility constraints  
-- **Modern**: Built with SDL2/OpenGL for smooth, responsive graphics
-- **Extensible**: Plugin system for customization and language support
-- **Cross-Platform**: Native performance on Windows, Linux, and FreeBSD
+### ✅ Complete Vi Editing Experience
+- **Modal Editing**: Normal, Insert, Visual, and Command modes
+- **Vi Navigation**: hjkl movement, word jumping, page navigation
+- **Search & Replace**: Full regex support with visual highlighting
+- **Multi-Buffer Support**: Work with up to 128 files simultaneously
+- **Advanced Cursor Operations**: Word boundaries, line start/end navigation
+- **Complete Undo System**: 1000-operation undo history per buffer
 
-## Current Features
+### ✅ Modern Interface
+- **Hardware Acceleration**: SDL2/OpenGL rendering at 60fps
+- **Visual Search Highlighting**: Current match in orange, others in yellow
+- **Responsive UI**: Smooth scrolling and real-time feedback
+- **Fullscreen Support**: F11 toggle with seamless scaling
+- **Smart Popup System**: Auto-dismissing status and error messages
 
-### ✅ Completed
-- **Core Text Editing**: Multi-line text buffers with efficient line management
-- **Vi-Style Navigation**: hjkl movement, word/line jumping, screen positioning
-- **Modal Editing**: Normal, Insert, and Visual modes with proper state management
-- **File Operations**: Open, save (:w), and quit (:q) commands
-- **Advanced Scrolling**: Smooth scrolling with cursor tracking and viewport management
-- **Plugin Architecture**: Dynamic plugin loading system with C API
-- **Syntax Highlighting**: Word-level tokenization for Assembly and C languages
-- **Hardware Rendering**: SDL2/OpenGL-based text rendering with color support
+### ✅ File & Buffer Management
+- **Multi-Buffer Navigation**: `:bn`, `:bp`, `:b1`, `:b2`, etc.
+- **Cross-Platform File Handling**: Automatic line ending normalization
+- **File Reading**: `:r filename` inserts files at cursor position
+- **Smart Buffer Switching**: Detects already-open files
 
-### 🔄 In Progress
-- Enhanced syntax highlighting for more languages
-- Visual mode text selection and operations
-- Search and replace functionality
-- Multiple buffer management
+### ✅ Developer Tools
+- **Compiler Integration**: Built-in C/C++/Assembly compilation
+- **Plugin System**: Dynamic syntax highlighting and extensions
+- **Settings Persistence**: Configuration saved to `%APPDATA%\Vizero\`
+- **Command Execution**: Direct compiler invocation from editor
 
-### 📋 Planned
-- Undo/redo system
-- Configuration file support
-- Additional vi commands (delete, yank, paste)
-- Command-line integration
-- More language plugins
-- Themes and customization
-
-## Architecture
-
-Vizero uses a modular C/C++ architecture with clear separation of concerns:
-
-- **Core Application**: SDL2 window management and main loop
-- **Text Engine**: Efficient buffer and line management
-- **Renderer**: OpenGL-accelerated text and graphics rendering  
-- **Editor Logic**: Vi-style mode management and command processing
-- **Plugin System**: Dynamic loading with hot-pluggable syntax highlighting
+### ✅ Standard Features
+- **Clipboard Integration**: Full Ctrl+C/X/V system clipboard support
+- **Smart Indentation**: Context-aware tab handling (4 spaces)
+- **Line Numbers**: Toggle with `:linenum on/off`
+- **Selection Support**: Visual mode with Shift+Arrow keys
 
 ## Quick Start
 
-### Build Requirements
-- SDL2 development libraries
-- OpenGL/GLEW
-- CMake 3.10+
-- C/C++ compiler (MSVC, GCC, or Clang)
-
-### Building
+### Installation
 ```bash
+# Build from source
 mkdir build && cd build
 cmake ..
 cmake --build . --config Release
 ```
 
-### Usage
+### Basic Usage
 ```bash
-./vizero filename.asm    # Opens file with assembly syntax highlighting
-./vizero filename.c      # Opens file with C syntax highlighting
+# Open a single file
+./vizero filename.c
+
+# Open multiple files
+./vizero file1.c file2.h data.txt
 ```
 
-### Basic Vi Commands
-- `hjkl` - Navigate left/down/up/right
-- `i` - Enter insert mode
-- `ESC` - Return to normal mode  
-- `:w` - Save file
-- `:q` - Quit editor
-- `:wq` - Save and quit
+### Essential Commands
 
-## Plugin Development
+#### File Operations
+```
+:e filename    # Open file in new buffer
+:w             # Save current buffer  
+:wa            # Save all buffers
+:q             # Quit (warns if unsaved)
+:wq            # Save and quit
+:r filename    # Read file at cursor
+```
 
-Vizero supports C-based plugins for syntax highlighting and editor extensions:
+#### Buffer Management  
+```
+:ls            # List all buffers
+:bn            # Next buffer
+:bp            # Previous buffer  
+:b1, :b2, :b3  # Jump to buffer number
+```
 
+#### Search & Replace
+```
+/pattern       # Search forward (with highlighting)
+?pattern       # Search backward
+n              # Next match
+N              # Previous match
+:s/old/new/    # Replace on current line
+:%s/old/new/g  # Replace all in file
+```
+
+#### Compilation
+```
+:cc main.c -o program.exe    # Compile C
+:cpp main.cpp -o program.exe # Compile C++
+:asm code.asm -o code.o      # Assemble
+```
+
+## Advanced Features
+
+### Buffer Workflow Example
+```bash
+# Start with main file
+vizero main.c
+
+# Open related files
+:e header.h
+:e utils.c
+:e data.txt
+
+# Navigate between buffers
+:ls                    # Shows: 1:main.c 2:header.h 3:utils.c 4:data.txt*
+:b1                    # Jump to main.c
+:bn                    # Next buffer (header.h)
+:bp                    # Previous buffer (main.c)
+```
+
+### Search & Replace Examples
+```bash
+# Find all functions
+/function.*\(
+
+# Replace printf with cout globally
+:%s/printf/cout/g
+
+# Case-sensitive word search
+/\bTODO\b
+```
+
+### Plugin Development
 ```c
 #include "vizero/plugin_interface.h"
 
 VIZERO_PLUGIN_DEFINE_INFO(
-    "My Language Plugin",
-    "1.0.0", 
-    "Author",
-    "Syntax highlighting for MyLang",
+    "Custom Highlighter",
+    "1.0.0",
+    "Your Name", 
+    "Syntax highlighting for custom language",
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER
 );
 
-// Implement syntax highlighting callbacks
-static int highlight_syntax(vizero_buffer_t* buffer, /* ... */) {
-    // Generate syntax tokens
+static int highlight_syntax(/* ... */) {
+    // Implement syntax highlighting
+    return 0;
 }
 ```
 
+## Architecture
+
+- **Core**: SDL2 window management and OpenGL rendering
+- **Text Engine**: Efficient multi-buffer line management  
+- **Editor**: Vi-compatible mode system and command processing
+- **Search**: C++ regex engine with visual feedback
+- **Plugins**: Dynamic loading system with C API
+- **Settings**: INI-based persistent configuration
+
+## Requirements
+
+### Build Dependencies
+- SDL2 development libraries
+- OpenGL/GLEW  
+- CMake 3.10+
+- C/C++ compiler (MSVC, GCC, or Clang)
+- Boost libraries (system, filesystem)
+
+### Runtime
+- Modern GPU with OpenGL 3.3+ support
+- 50MB RAM minimum
+- Any modern Windows/Linux system
+
+## Keyboard Reference
+
+### Normal Mode
+| Key | Action |
+|-----|--------|
+| `hjkl` | Vi-style movement |
+| `Arrow Keys` | Standard movement |  
+| `w/b` | Word forward/backward |
+| `0/$` | Line start/end |
+| `Page Up/Down` | Page navigation |
+| `i` | Enter Insert Mode |
+| `/` | Search forward |
+| `n/N` | Next/previous search result |
+| `:` | Enter Command Mode |
+
+### Command Mode
+| Command | Action |
+|---------|--------|
+| `:e file` | Open file |
+| `:w` | Save |
+| `:q` | Quit |
+| `:bn/:bp` | Next/previous buffer |
+| `:b[N]` | Switch to buffer N |
+| `:ls` | List buffers |
+| `:cc` | Compile C |
+| `:set` | Configure settings |
+
 ## Contributing
 
-Vizero welcomes contributions! Key areas for development:
-- Additional language syntax highlighting plugins
+Areas for contribution:
+- Additional language plugins
 - Vi command implementations  
 - Performance optimizations
-- Cross-platform compatibility
-- Documentation and examples
+- Cross-platform testing
+- Documentation improvements
 
 ## License
 

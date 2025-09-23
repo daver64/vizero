@@ -1,7 +1,9 @@
-/* Stub implementations */
+/* Complete cursor implementation */
 #include "vizero/cursor.h"
 #include "vizero/buffer.h"
 #include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 struct vizero_cursor_t { 
     vizero_buffer_t* buffer;
@@ -67,15 +69,114 @@ void vizero_cursor_move_right(vizero_cursor_t* cursor) {
         }
     }
 }
-void vizero_cursor_move_to_line_start(vizero_cursor_t* cursor) { (void)cursor; }
-void vizero_cursor_move_to_line_end(vizero_cursor_t* cursor) { (void)cursor; }
-void vizero_cursor_move_word_forward(vizero_cursor_t* cursor) { (void)cursor; }
-void vizero_cursor_move_word_backward(vizero_cursor_t* cursor) { (void)cursor; }
-void vizero_cursor_move_to_buffer_start(vizero_cursor_t* cursor) { (void)cursor; }
-void vizero_cursor_move_to_buffer_end(vizero_cursor_t* cursor) { (void)cursor; }
+void vizero_cursor_move_to_line_start(vizero_cursor_t* cursor) { 
+    if (cursor) {
+        cursor->column = 0;
+    }
+}
+
+void vizero_cursor_move_to_line_end(vizero_cursor_t* cursor) { 
+    if (cursor && cursor->buffer) {
+        size_t line_len = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+        cursor->column = line_len;
+    }
+}
+void vizero_cursor_move_word_forward(vizero_cursor_t* cursor) { 
+    if (!cursor || !cursor->buffer) return;
+    
+    const char* line_text = vizero_buffer_get_line_text(cursor->buffer, cursor->line);
+    if (!line_text) return;
+    
+    size_t line_len = strlen(line_text);
+    size_t col = cursor->column;
+    
+    /* Skip current word */
+    while (col < line_len && (isalnum(line_text[col]) || line_text[col] == '_')) {
+        col++;
+    }
+    
+    /* Skip whitespace */
+    while (col < line_len && isspace(line_text[col])) {
+        col++;
+    }
+    
+    /* If at end of line, move to next line */
+    if (col >= line_len) {
+        size_t line_count = vizero_buffer_get_line_count(cursor->buffer);
+        if (cursor->line < line_count - 1) {
+            cursor->line++;
+            cursor->column = 0;
+        } else {
+            cursor->column = line_len;
+        }
+    } else {
+        cursor->column = col;
+    }
+}
+
+void vizero_cursor_move_word_backward(vizero_cursor_t* cursor) { 
+    if (!cursor || !cursor->buffer) return;
+    
+    const char* line_text = vizero_buffer_get_line_text(cursor->buffer, cursor->line);
+    if (!line_text) return;
+    
+    size_t col = cursor->column;
+    
+    /* If at beginning of line, move to previous line end */
+    if (col == 0) {
+        if (cursor->line > 0) {
+            cursor->line--;
+            size_t prev_line_len = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+            cursor->column = prev_line_len;
+        }
+        return;
+    }
+    
+    /* Move back one character */
+    col--;
+    
+    /* Skip whitespace */
+    while (col > 0 && isspace(line_text[col])) {
+        col--;
+    }
+    
+    /* Skip to beginning of current word */
+    while (col > 0 && (isalnum(line_text[col - 1]) || line_text[col - 1] == '_')) {
+        col--;
+    }
+    
+    cursor->column = col;
+}
+void vizero_cursor_move_to_buffer_start(vizero_cursor_t* cursor) { 
+    if (cursor) {
+        cursor->line = 0;
+        cursor->column = 0;
+    }
+}
+
+void vizero_cursor_move_to_buffer_end(vizero_cursor_t* cursor) { 
+    if (cursor && cursor->buffer) {
+        size_t line_count = vizero_buffer_get_line_count(cursor->buffer);
+        if (line_count > 0) {
+            cursor->line = line_count - 1;
+            cursor->column = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+        } else {
+            cursor->line = 0;
+            cursor->column = 0;
+        }
+    }
+}
 vizero_buffer_t* vizero_cursor_get_buffer(vizero_cursor_t* cursor) { return cursor ? cursor->buffer : NULL; }
-int vizero_cursor_is_at_line_start(vizero_cursor_t* cursor) { (void)cursor; return 0; }
-int vizero_cursor_is_at_line_end(vizero_cursor_t* cursor) { (void)cursor; return 0; }
+int vizero_cursor_is_at_line_start(vizero_cursor_t* cursor) { 
+    return cursor ? (cursor->column == 0) : 0;
+}
+
+int vizero_cursor_is_at_line_end(vizero_cursor_t* cursor) { 
+    if (!cursor || !cursor->buffer) return 0;
+    
+    size_t line_len = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+    return cursor->column >= line_len;
+}
 
 void vizero_cursor_move_page_up(vizero_cursor_t* cursor) {
     if (!cursor || !cursor->buffer) return;

@@ -311,3 +311,89 @@ int vizero_settings_load_from_file(vizero_settings_t* settings) {
     fclose(file);
     return 0;
 }
+
+char* vizero_settings_get_all_as_string(vizero_settings_t* settings) {
+    if (!settings) {
+        return NULL;
+    }
+    
+    /* Calculate required buffer size */
+    size_t buffer_size = 1024; /* Start with 1KB */
+    char* result = (char*)malloc(buffer_size);
+    if (!result) {
+        return NULL;
+    }
+    
+    result[0] = '\0';
+    size_t pos = 0;
+    
+    /* Add header */
+    const char* header = "Current Settings:\n\n";
+    size_t header_len = strlen(header);
+    if (pos + header_len >= buffer_size) {
+        buffer_size *= 2;
+        result = (char*)realloc(result, buffer_size);
+        if (!result) return NULL;
+    }
+    strcpy(result + pos, header);
+    pos += header_len;
+    
+    /* Iterate through all settings */
+    for (size_t i = 0; i < settings->count; i++) {
+        const setting_entry_t* entry = &settings->entries[i];
+        char line[512];
+        
+        switch (entry->type) {
+            case SETTING_TYPE_BOOL:
+                snprintf(line, sizeof(line), "%s = %s\n", 
+                        entry->key, entry->value.bool_value ? "true" : "false");
+                break;
+            case SETTING_TYPE_INT:
+                snprintf(line, sizeof(line), "%s = %d\n", 
+                        entry->key, entry->value.int_value);
+                break;
+            case SETTING_TYPE_STRING:
+                snprintf(line, sizeof(line), "%s = %s\n", 
+                        entry->key, entry->value.string_value);
+                break;
+            default:
+                continue;
+        }
+        
+        size_t line_len = strlen(line);
+        
+        /* Ensure buffer is large enough */
+        while (pos + line_len >= buffer_size) {
+            buffer_size *= 2;
+            char* new_result = (char*)realloc(result, buffer_size);
+            if (!new_result) {
+                free(result);
+                return NULL;
+            }
+            result = new_result;
+        }
+        
+        strcpy(result + pos, line);
+        pos += line_len;
+    }
+    
+    /* Add summary */
+    char summary[128];
+    snprintf(summary, sizeof(summary), "\nTotal: %zu setting%s", 
+            settings->count, settings->count == 1 ? "" : "s");
+    size_t summary_len = strlen(summary);
+    
+    while (pos + summary_len >= buffer_size) {
+        buffer_size *= 2;
+        char* new_result = (char*)realloc(result, buffer_size);
+        if (!new_result) {
+            free(result);
+            return NULL;
+        }
+        result = new_result;
+    }
+    
+    strcpy(result + pos, summary);
+    
+    return result;
+}

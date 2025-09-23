@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <SDL_syswm.h>
+#endif
+
 struct vizero_window_t {
     SDL_Window* sdl_window;
     SDL_GLContext gl_context;
@@ -32,6 +37,23 @@ vizero_window_t* vizero_window_create(const char* title, int width, int height, 
         free(window);
         return NULL;
     }
+    
+#ifdef _WIN32
+    /* Set window icon on Windows */
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    if (SDL_GetWindowWMInfo(window->sdl_window, &wmInfo)) {
+        HWND hwnd = wmInfo.info.win.window;
+        
+        /* Load icon from resources */
+        HICON icon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(101)); /* IDI_ICON1 = 101 */
+        if (icon) {
+            /* Set both large and small icons */
+            SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+            SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+        }
+    }
+#endif
     
     window->gl_context = SDL_GL_CreateContext(window->sdl_window);
     if (!window->gl_context) {

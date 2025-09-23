@@ -9,6 +9,7 @@
 #include "vizero/cursor.h"
 #include "vizero/string_utils.h"
 #include "vizero/settings.h"
+#include "vizero/search.h"
 #include <SDL.h>
 #include <GL/glew.h>
 #include <stdio.h>
@@ -306,6 +307,17 @@ int vizero_application_run(vizero_application_t* app) {
                 vizero_editor_get_selection_range(app->editor, &selection_start, &selection_end);
             }
             
+            /* Check if there are search matches to highlight */
+            int has_search_results = vizero_search_has_results(app->editor);
+            const vizero_search_match_t* search_matches = NULL;
+            int search_match_count = 0;
+            int current_match_index = -1;
+            if (has_search_results) {
+                search_matches = vizero_search_get_all_matches(app->editor);
+                search_match_count = vizero_search_get_match_count(app->editor);
+                current_match_index = vizero_search_get_current_match_index(app->editor);
+            }
+            
             if (has_highlighting && tokens && token_count > 0) {
                 /* Render text with syntax highlighting - word by word approach */
                 for (size_t line = start_line; line <= end_line; line++) {
@@ -325,6 +337,27 @@ int vizero_application_run(vizero_application_t* app) {
                             float sel_width = (sel_end_col - sel_start_col) * 8.0f;
                             vizero_color_t selection_bg = {0.3f, 0.3f, 0.6f, 0.5f}; /* Blue selection background */
                             vizero_renderer_fill_rect(app->renderer, sel_x, line_y, sel_width, 16.0f, selection_bg);
+                        }
+                    }
+                    
+                    /* Render search match background for this line if needed */
+                    if (has_search_results && search_matches) {
+                        for (int match_idx = 0; match_idx < search_match_count; match_idx++) {
+                            const vizero_search_match_t* match = &search_matches[match_idx];
+                            if (match->line == (int)line) {
+                                float match_x = line_x + (match->column * 8.0f);
+                                float match_width = match->length * 8.0f;
+                                
+                                /* Use different colors for current match vs other matches */
+                                vizero_color_t match_bg;
+                                if (match_idx == current_match_index) {
+                                    match_bg = {0.8f, 0.6f, 0.2f, 0.7f}; /* Orange for current match */
+                                } else {
+                                    match_bg = {0.8f, 0.8f, 0.2f, 0.5f}; /* Yellow for other matches */
+                                }
+                                
+                                vizero_renderer_fill_rect(app->renderer, match_x, line_y, match_width, 16.0f, match_bg);
+                            }
                         }
                     }
                     
@@ -400,8 +433,65 @@ int vizero_application_run(vizero_application_t* app) {
                 /* Clean up tokens */
                 free(tokens);
             } else {
-                /* No syntax highlighting - render normally */
-                vizero_renderer_draw_text(app->renderer, buffer_text, &text_info);
+                /* No syntax highlighting - render line by line for search highlighting */
+                vizero_buffer_t* fallback_buffer = vizero_editor_get_current_buffer(app->editor);
+                if (fallback_buffer) {
+                    size_t fallback_line_count = vizero_buffer_get_line_count(fallback_buffer);
+                    size_t fallback_start_line = (app->scroll_y > 0) ? app->scroll_y : 0;
+                    size_t fallback_visible_lines = ((window_height - 60) / 16) + 2; /* Add buffer */
+                    size_t fallback_end_line = fallback_start_line + fallback_visible_lines;
+                    if (fallback_end_line >= fallback_line_count) fallback_end_line = fallback_line_count;
+                    
+                    for (size_t line = fallback_start_line; line < fallback_end_line; line++) {
+                        const char* line_text = vizero_buffer_get_line_text(fallback_buffer, line);
+                        if (!line_text) continue;
+                        
+                        float line_x = (show_line_numbers ? line_number_width + 10.0f : 10.0f) - (app->scroll_x * 8.0f);
+                        float line_y = 30.0f + ((line - app->scroll_y) * 16.0f);
+                        
+                        /* Render selection background for this line if needed */
+                        if (has_selection && line >= selection_start.line && line <= selection_end.line) {
+                            size_t sel_start_col = (line == selection_start.line) ? selection_start.column : 0;
+                            size_t sel_end_col = (line == selection_end.line) ? selection_end.column : strlen(line_text);
+                            
+                            if (sel_end_col > sel_start_col) {
+                                float sel_x = line_x + (sel_start_col * 8.0f);
+                                float sel_width = (sel_end_col - sel_start_col) * 8.0f;
+                                vizero_color_t selection_bg = {0.3f, 0.3f, 0.6f, 0.5f}; /* Blue selection background */
+                                vizero_renderer_fill_rect(app->renderer, sel_x, line_y, sel_width, 16.0f, selection_bg);
+                            }
+                        }
+                        
+                        /* Render search match background for this line if needed */
+                        if (has_search_results && search_matches) {
+                            for (int match_idx = 0; match_idx < search_match_count; match_idx++) {
+                                const vizero_search_match_t* match = &search_matches[match_idx];
+                                if (match->line == (int)line) {
+                                    float match_x = line_x + (match->column * 8.0f);
+                                    float match_width = match->length * 8.0f;
+                                    
+                                    /* Use different colors for current match vs other matches */
+                                    vizero_color_t match_bg;
+                                    if (match_idx == current_match_index) {
+                                        match_bg = {0.8f, 0.6f, 0.2f, 0.7f}; /* Orange for current match */
+                                    } else {
+                                        match_bg = {0.8f, 0.8f, 0.2f, 0.5f}; /* Yellow for other matches */
+                                    }
+                                    
+                                    vizero_renderer_fill_rect(app->renderer, match_x, line_y, match_width, 16.0f, match_bg);
+                                }
+                            }
+                        }
+                        
+                        /* Render the line text */
+                        vizero_color_t white_color = {1.0f, 1.0f, 1.0f, 1.0f};
+                        vizero_text_info_t line_info = {line_x, line_y, white_color, NULL};
+                        vizero_renderer_draw_text(app->renderer, line_text, &line_info);
+                    }
+                } else {
+                    /* No buffer - render normally */
+                    vizero_renderer_draw_text(app->renderer, buffer_text, &text_info);
+                }
             }
         } else {
             /* Show welcome message */

@@ -124,6 +124,7 @@ void vizero_status_bar_resize(vizero_status_bar_t* status_bar, int width, int he
 /* Generate text for a specific panel */
 static void generate_panel_text(vizero_status_panel_t* panel, vizero_editor_state_t* editor, 
                                char* buffer, size_t buffer_size) {
+    (void)buffer_size; /* Parameter used for bounds checking in snprintf calls */
     buffer[0] = '\0';
     
     if (!panel->enabled) return;

@@ -5,6 +5,7 @@
 #include "vizero/cursor.h"
 #include "vizero/buffer.h"
 #include "vizero/window.h"
+#include "vizero/search.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -203,6 +204,28 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                 vizero_editor_set_status_message(editor, "All text selected");
                                             }
                                         }
+                                    }
+                                    break;
+                                case SDLK_n:
+                                    /* Search next (forward) or previous (backward with Shift) */
+                                    if (!(event.key.keysym.mod & (KMOD_CTRL | KMOD_ALT))) {
+                                        if (event.key.keysym.mod & KMOD_SHIFT) {
+                                            /* Shift+N: Search previous */
+                                            vizero_search_next_direction(editor, 0); /* 0 for backward */
+                                        } else {
+                                            /* N: Search next */
+                                            vizero_search_next_direction(editor, 1); /* 1 for forward */
+                                        }
+                                    }
+                                    break;
+                                case SDLK_SLASH:
+                                    /* Forward search */
+                                    if (!(event.key.keysym.mod & (KMOD_CTRL | KMOD_ALT))) {
+                                        /* Enter command mode for search */
+                                        vizero_editor_set_mode(editor, VIZERO_MODE_COMMAND);
+                                        vizero_editor_clear_command_buffer(editor);
+                                        vizero_editor_append_to_command(editor, '/');
+                                        input->mode_changed_this_frame = 1;
                                     }
                                     break;
                                 case SDLK_i:
