@@ -1,6 +1,14 @@
 # Vizero Editor Manual
 
-**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, and integrated compiler support.
+**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, robust multi-buffer and multi-window support, and integrated compiler support.
+
+---
+
+## Recent Improvements (2025)
+
+- **Robust buffer/cursor management**: Prevents double-free/use-after-free bugs when splitting and loading files. Windows and buffer arrays are always in sync, and no window or array references freed memory.
+- **Window focus and input routing**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `:wincmd`, `Ctrl+w`, or any window focus command, keypresses and text input go to the correct window.
+- **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
 
 ## Table of Contents
 
@@ -61,10 +69,10 @@
 ### Cursor Movement
 | Key | Action |
 |-----|--------|
-| `h` / `←` | Move left |
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `l` / `→` | Move right |
+| `h` / `Left` | Move left |
+| `j` / `Down` | Move down |
+| `k` / `Up` | Move up |
+| `l` / `Right` | Move right |
 
 ### Page Navigation
 | Key | Action |
@@ -203,7 +211,7 @@ Vizero supports full C++ std::regex (ECMAScript syntax):
 
 ## Buffer Management
 
-Vizero supports multiple file buffers, allowing you to work with several files simultaneously. Each buffer maintains its own cursor position, undo history, and modification state.
+Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
 
 ### Opening Files in New Buffers
 | Command | Action |
@@ -420,6 +428,9 @@ vizero main.c          # Start with main.c as buffer 1
 - **Search not working**: Verify regex syntax
 - **Compilation fails**: Check compiler installation and PATH
 - **Settings not saved**: Verify %APPDATA% directory access
+
+- **Input not following window focus?** This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.
+- **Crashes after split or file load?** These have been resolved with robust buffer/cursor management.
 
 ### Getting Help
 - Check this manual for command reference

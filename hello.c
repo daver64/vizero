@@ -2,6 +2,8 @@
 #include <math.h>
 #include <string.h>
 
+int answer = 42;
+
 
 int main(int argc, char **argv[])
 {

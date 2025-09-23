@@ -187,6 +187,9 @@ vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
             if (buffer->line_count == 0) {
                 vizero_buffer_insert_line(buffer, 0, "");
             }
+            
+            /* Mark buffer as unmodified since we just loaded it from disk */
+            buffer->modified = 0;
         } else {
             /* File doesn't exist or can't be opened - start with empty buffer */
             printf("Note: File '%s' not found, creating new buffer\n", filename);

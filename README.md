@@ -1,10 +1,18 @@
 # Vizero
 
-A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, multi-buffer support, and integrated compiler tools.
+
+A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, multi-buffer and multi-window support, and integrated compiler tools.
+
+## Recent Improvements (2025)
+
+- **Robust buffer/cursor management**: Prevents double-free/use-after-free bugs when splitting and loading files. Windows and buffer arrays are always in sync, and no window or array references freed memory.
+- **Window focus and input routing**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `:wincmd`, `Ctrl+w`, or any window focus command, keypresses and text input go to the correct window.
+- **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
+- **Helper functions for window manager**: All access to window manager internals is now via safe helper functions, improving code safety and maintainability.
 
 ## Features
 
-### ✅ Complete Vi Editing Experience
+### [*] Complete Vi Editing Experience
 - **Modal Editing**: Normal, Insert, Visual, and Command modes
 - **Vi Navigation**: hjkl movement, word jumping, page navigation
 - **Search & Replace**: Full regex support with visual highlighting
@@ -12,26 +20,27 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Advanced Cursor Operations**: Word boundaries, line start/end navigation
 - **Complete Undo System**: 1000-operation undo history per buffer
 
-### ✅ Modern Interface
+### [*] Modern Interface
 - **Hardware Acceleration**: SDL2/OpenGL rendering at 60fps
 - **Visual Search Highlighting**: Current match in orange, others in yellow
 - **Responsive UI**: Smooth scrolling and real-time feedback
 - **Fullscreen Support**: F11 toggle with seamless scaling
 - **Smart Popup System**: Auto-dismissing status and error messages
 
-### ✅ File & Buffer Management
+### [*] File & Buffer Management
 - **Multi-Buffer Navigation**: `:bn`, `:bp`, `:b1`, `:b2`, etc.
 - **Cross-Platform File Handling**: Automatic line ending normalization
 - **File Reading**: `:r filename` inserts files at cursor position
-- **Smart Buffer Switching**: Detects already-open files
+ - **Smart Buffer Switching**: Detects already-open files
+ - **Multi-Window Support**: Split windows, focus any window, and input always follows the focused window (vi-style `:wincmd`, `Ctrl+w` navigation)
 
-### ✅ Developer Tools
+### [*] Developer Tools
 - **Compiler Integration**: Built-in C/C++/Assembly compilation
 - **Plugin System**: Dynamic syntax highlighting and extensions
 - **Settings Persistence**: Configuration saved to `%APPDATA%\Vizero\`
 - **Command Execution**: Direct compiler invocation from editor
 
-### ✅ Standard Features
+### [*] Standard Features
 - **Clipboard Integration**: Full Ctrl+C/X/V system clipboard support
 - **Smart Indentation**: Context-aware tab handling (4 spaces)
 - **Line Numbers**: Toggle with `:linenum on/off`
@@ -200,6 +209,11 @@ Areas for contribution:
 - Performance optimizations
 - Cross-platform testing
 - Documentation improvements
+
+## Troubleshooting
+
+- **Input not following window focus?** This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.
+- **Crashes after split or file load?** These have been resolved with robust buffer/cursor management.
 
 ## License
 

@@ -6,6 +6,7 @@
 #include "vizero/settings.h"
 #include "vizero/search.h"
 #include "vizero/file_utils.h"
+#include "vizero/editor_window.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,10 @@
 struct vizero_editor_state_t {
     vizero_editor_mode_t mode;
     
-    /* Buffer management */
+    /* Window management */
+    vizero_window_manager_t* window_manager;
+    
+    /* Buffer management (legacy - will be moved to windows) */
     vizero_buffer_t* buffers[MAX_BUFFERS];
     vizero_cursor_t* cursors[MAX_BUFFERS];
     size_t buffer_count;
@@ -77,6 +81,15 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
     vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
     if (state) {
         state->mode = VIZERO_MODE_NORMAL;
+        
+        /* Initialize window manager */
+        state->window_manager = vizero_window_manager_create();
+        if (!state->window_manager) {
+            free(state);
+            return NULL;
+        }
+        
+        /* Initialize legacy buffer management */
         state->buffer_count = 0;
         state->current_buffer_index = 0;
         state->current_project = NULL;
@@ -135,6 +148,14 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
     vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
     if (state) {
         state->mode = VIZERO_MODE_NORMAL;
+        
+        /* Initialize window manager */
+        state->window_manager = vizero_window_manager_create();
+        if (!state->window_manager) {
+            free(state);
+            return NULL;
+        }
+        
         state->buffer_count = 0;
         state->current_buffer_index = 0;
         state->current_project = NULL;
@@ -180,10 +201,25 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         
         if (state->buffers[0] && state->cursors[0]) {
             state->buffer_count = 1;
+            
+            /* Create initial window for the buffer - use minimal size, layout manager will resize */
+            if (vizero_editor_create_window_for_buffer(state, state->buffers[0], 100, 100) != 0) {
+                /* Cleanup on failure */
+                if (state->buffers[0]) vizero_buffer_destroy(state->buffers[0]);
+                if (state->cursors[0]) vizero_cursor_destroy(state->cursors[0]);
+                if (state->window_manager) vizero_window_manager_destroy(state->window_manager);
+                if (state->undo_stack) {
+                    if (state->undo_stack->operations) free(state->undo_stack->operations);
+                    free(state->undo_stack);
+                }
+                free(state);
+                return NULL;
+            }
         } else {
             /* Cleanup on failure */
             if (state->buffers[0]) vizero_buffer_destroy(state->buffers[0]);
             if (state->cursors[0]) vizero_cursor_destroy(state->cursors[0]);
+            if (state->window_manager) vizero_window_manager_destroy(state->window_manager);
             if (state->undo_stack) {
                 if (state->undo_stack->operations) free(state->undo_stack->operations);
                 free(state->undo_stack);
@@ -197,6 +233,11 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
 
 void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     if (!state) return;
+    
+    /* Clean up window manager */
+    if (state->window_manager) {
+        vizero_window_manager_destroy(state->window_manager);
+    }
     
     /* Clean up all buffers and cursors */
     for (size_t i = 0; i < state->buffer_count; i++) {
@@ -247,12 +288,32 @@ void vizero_editor_set_mode(vizero_editor_state_t* state, vizero_editor_mode_t m
 }
 
 vizero_buffer_t* vizero_editor_get_current_buffer(vizero_editor_state_t* state) {
-    if (!state || state->current_buffer_index >= state->buffer_count) return NULL;
+    if (!state) return NULL;
+    /* If we have a window manager, get buffer from the focused window */
+    if (state->window_manager) {
+        vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+        if (focused_window) {
+            return vizero_editor_window_get_buffer(focused_window);
+        }
+    }
+    /* Fallback to old system */
+    if (state->current_buffer_index >= state->buffer_count) return NULL;
     return state->buffers[state->current_buffer_index];
 }
 
 vizero_cursor_t* vizero_editor_get_current_cursor(vizero_editor_state_t* state) {
-    if (!state || state->current_buffer_index >= state->buffer_count) return NULL;
+    if (!state) return NULL;
+    
+    /* If we have a window manager, get cursor from the focused window */
+    if (state->window_manager) {
+        vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+        if (focused_window) {
+            return vizero_editor_window_get_cursor(focused_window);
+        }
+    }
+    
+    /* Fallback to old system */
+    if (state->current_buffer_index >= state->buffer_count) return NULL;
     return state->cursors[state->current_buffer_index];
 }
 
@@ -292,12 +353,116 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
         return -1;
     }
     
-    /* Add to buffer list */
-    state->buffers[state->buffer_count] = buffer;
-    state->cursors[state->buffer_count] = cursor;
-    state->current_buffer_index = state->buffer_count;
-    state->buffer_count++;
-    
+    // Add to buffer list and handle window creation/reuse robustly
+    int window_handled = 0;
+    if (state->window_manager) {
+        // Special case: replacing initial empty buffer
+        if (state->buffer_count == 1 && state->buffers[0]) {
+            const char* first_filename = vizero_buffer_get_filename(state->buffers[0]);
+            const char* first_text = vizero_buffer_get_text(state->buffers[0]);
+            if (!first_filename && (!first_text || strlen(first_text) == 0)) {
+                vizero_editor_window_t* existing_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (existing_window) {
+                    // Replace window's buffer/cursor
+                    existing_window->buffer = buffer;
+                    existing_window->cursor = cursor;
+                    if (existing_window->title) free(existing_window->title);
+                    existing_window->title = strdup(filename);
+                }
+                // Remove/destroy old buffer/cursor only if not referenced by any window
+                int still_referenced = 0;
+                size_t win_count = vizero_window_manager_get_window_count_raw(state->window_manager);
+                for (size_t w = 0; w < win_count; ++w) {
+                    vizero_editor_window_t* win = vizero_window_manager_get_window_raw(state->window_manager, w);
+                    if (win && (win->buffer == state->buffers[0] || win->cursor == state->cursors[0])) {
+                        still_referenced = 1;
+                        break;
+                    }
+                }
+                if (!still_referenced) {
+                    vizero_buffer_destroy(state->buffers[0]);
+                    vizero_cursor_destroy(state->cursors[0]);
+                }
+                state->buffers[0] = buffer;
+                state->cursors[0] = cursor;
+                state->current_buffer_index = 0;
+                window_handled = 1;
+                // buffer_count remains 1
+            }
+        }
+        if (!window_handled) {
+            vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+            if (focused_window) {
+                // If the focused window's buffer/cursor are in the buffer/cursor arrays, update those arrays to point to the new buffer/cursor
+                for (size_t i = 0; i < state->buffer_count; ++i) {
+                    if (state->buffers[i] == focused_window->buffer) {
+                        int refcount = 0;
+                        size_t win_count = vizero_window_manager_get_window_count_raw(state->window_manager);
+                        for (size_t w = 0; w < win_count; ++w) {
+                            vizero_editor_window_t* win = vizero_window_manager_get_window_raw(state->window_manager, w);
+                            if (win && win != focused_window && win->buffer == state->buffers[i]) refcount++;
+                        }
+                        if (refcount == 0 && state->buffers[i] != buffer) {
+                            vizero_buffer_destroy(state->buffers[i]);
+                        }
+                        state->buffers[i] = buffer;
+                    }
+                    if (state->cursors[i] == focused_window->cursor) {
+                        int refcount = 0;
+                        size_t win_count = vizero_window_manager_get_window_count_raw(state->window_manager);
+                        for (size_t w = 0; w < win_count; ++w) {
+                            vizero_editor_window_t* win = vizero_window_manager_get_window_raw(state->window_manager, w);
+                            if (win && win != focused_window && win->cursor == state->cursors[i]) refcount++;
+                        }
+                        if (refcount == 0 && state->cursors[i] != cursor) {
+                            vizero_cursor_destroy(state->cursors[i]);
+                        }
+                        state->cursors[i] = cursor;
+                    }
+                }
+                focused_window->buffer = buffer;
+                focused_window->cursor = cursor;
+                if (focused_window->title) free(focused_window->title);
+                focused_window->title = strdup(filename);
+                // Set current_buffer_index to the first matching buffer
+                for (size_t i = 0; i < state->buffer_count; ++i) {
+                    if (state->buffers[i] == buffer) {
+                        state->current_buffer_index = i;
+                        break;
+                    }
+                }
+                window_handled = 1;
+            }
+        }
+        if (!window_handled) {
+            // No focused window, fallback: create a new window and add buffer/cursor to arrays
+            if (state->buffer_count < MAX_BUFFERS) {
+                state->buffers[state->buffer_count] = buffer;
+                state->cursors[state->buffer_count] = cursor;
+                state->current_buffer_index = state->buffer_count;
+                state->buffer_count++;
+                if (vizero_editor_create_window_for_buffer(state, buffer, 100, 100) != 0) {
+                    printf("Warning: Could not create window for buffer\n");
+                }
+            } else {
+                vizero_buffer_destroy(buffer);
+                vizero_cursor_destroy(cursor);
+                return -1;
+            }
+        }
+    } else {
+        // No window manager: legacy mode, just add to arrays
+        if (state->buffer_count < MAX_BUFFERS) {
+            state->buffers[state->buffer_count] = buffer;
+            state->cursors[state->buffer_count] = cursor;
+            state->current_buffer_index = state->buffer_count;
+            state->buffer_count++;
+        } else {
+            vizero_buffer_destroy(buffer);
+            vizero_cursor_destroy(cursor);
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -533,6 +698,29 @@ void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines) {
 int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state) {
     if (!state || !vizero_editor_is_popup_visible(state)) return 0;
     return state->popup_scroll_offset;
+}
+
+/* Window management functions */
+vizero_window_manager_t* vizero_editor_get_window_manager(vizero_editor_state_t* state) {
+    return state ? state->window_manager : NULL;
+}
+
+vizero_editor_window_t* vizero_editor_get_active_window(vizero_editor_state_t* state) {
+    if (!state || !state->window_manager) return NULL;
+    return vizero_window_manager_get_focused_window(state->window_manager);
+}
+
+int vizero_editor_create_window_for_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer,
+                                          int window_width, int window_height) {
+    if (!state || !state->window_manager || !buffer) return -1;
+    
+    /* Create window with full dimensions minus status bar */
+    int height_minus_status = window_height - 24; /* 24px for status bar */
+    
+    vizero_editor_window_t* window = vizero_window_manager_create_window(
+        state->window_manager, buffer, 0, 0, window_width, height_minus_status);
+    
+    return window ? 0 : -1;
 }
 
 /* Helper function to execute command and capture output */
@@ -926,6 +1114,41 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 return -1;
             }
         }
+
+    } else if (strncmp(command, "wincmd", 6) == 0) {
+        // :wincmd [h/j/k/l/number] - switch window focus
+        const char* arg = command + 6;
+        while (*arg == ' ') ++arg;
+        if (*arg == '\0') {
+            vizero_editor_set_status_message(state, "Usage: :wincmd [h/j/k/l/number]");
+            return -1;
+        }
+        if (state->window_manager) {
+            if (*arg == 'h' || *arg == 'j' || *arg == 'k' || *arg == 'l') {
+                if (vizero_window_manager_focus_direction(state->window_manager, *arg) == 0) {
+                    vizero_editor_set_status_message(state, "Window focus changed");
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "No other window to focus");
+                    return -1;
+                }
+            } else if (isdigit((unsigned char)*arg)) {
+                int num = atoi(arg);
+                if (vizero_window_manager_focus_number(state->window_manager, num) == 0) {
+                    vizero_editor_set_status_message(state, "Window focus changed");
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "Invalid window number");
+                    return -1;
+                }
+            } else {
+                vizero_editor_set_status_message(state, "Unknown wincmd argument");
+                return -1;
+            }
+        } else {
+            vizero_editor_set_status_message(state, "No window manager");
+            return -1;
+        }
         
     } else if (strcmp(command, "bn") == 0 || strcmp(command, "bnext") == 0) {
         /* Next buffer */
@@ -1010,6 +1233,63 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return -1;
         }
         
+    } else if (strcmp(command, "split") == 0 || strcmp(command, "sp") == 0) {
+        /* Split window horizontally */
+        if (state->window_manager) {
+            vizero_editor_window_t* current_window = vizero_window_manager_get_focused_window(state->window_manager);
+            if (current_window) {
+                if (vizero_window_manager_split_horizontal(state->window_manager, current_window->window_id) == 0) {
+                    vizero_editor_set_status_message(state, "Window split horizontally");
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "Failed to split window");
+                    return -1;
+                }
+            }
+        }
+        vizero_editor_set_status_message(state, "No active window to split");
+        return -1;
+        
+    } else if (strcmp(command, "vsplit") == 0 || strcmp(command, "vsp") == 0) {
+        /* Split window vertically */
+        if (state->window_manager) {
+            vizero_editor_window_t* current_window = vizero_window_manager_get_focused_window(state->window_manager);
+            if (current_window) {
+                if (vizero_window_manager_split_vertical(state->window_manager, current_window->window_id) == 0) {
+                    vizero_editor_set_status_message(state, "Window split vertically");
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "Failed to split window");
+                    return -1;
+                }
+            }
+        }
+        vizero_editor_set_status_message(state, "No active window to split");
+        return -1;
+        
+    } else if (strcmp(command, "close") == 0 || strcmp(command, "clo") == 0) {
+        /* Close current window (only works in split mode) */
+        if (state->window_manager) {
+            vizero_layout_type_t layout = vizero_window_manager_get_layout_type(state->window_manager);
+            if (layout != VIZERO_LAYOUT_SINGLE) {
+                vizero_editor_window_t* current_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (current_window) {
+                    if (vizero_window_manager_close_split(state->window_manager, current_window->window_id) == 0) {
+                        vizero_editor_set_status_message(state, "Window closed");
+                        return 0;
+                    } else {
+                        vizero_editor_set_status_message(state, "Failed to close window");
+                        return -1;
+                    }
+                }
+            } else {
+                vizero_editor_set_status_message(state, "Cannot close window in single layout");
+                return -1;
+            }
+        }
+        vizero_editor_set_status_message(state, "No window manager available");
+        return -1;
+        
     } else if (strcmp(command, "new") == 0) {
         /* Create new empty buffer */
         if (vizero_editor_create_new_buffer(state, NULL) == 0) {
@@ -1050,6 +1330,10 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             "  :ls               - List all buffers\n"
             "  :bd               - Delete current buffer\n"
             "  :new              - Create new empty buffer\n\n"
+            "WINDOW COMMANDS:\n"
+            "  :split (:sp)      - Split window horizontally\n"
+            "  :vsplit (:vsp)    - Split window vertically\n"
+            "  :close (:clo)     - Close current window\n\n"
             "OTHER COMMANDS:\n"
             "  :10               - Go to line 10\n"
             "  :syntax           - Toggle syntax highlighting\n"

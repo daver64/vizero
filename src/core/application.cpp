@@ -1,8 +1,12 @@
+#include "vizero/renderer.h"
+
+
 #include "vizero/application.h"
 #include "vizero/window.h"
 #include "vizero/renderer.h"
 #include "vizero/input_manager.h"
 #include "vizero/editor_state.h"
+#include "vizero/editor_window.h"
 #include "vizero/plugin_manager.h"
 #include "vizero/status_bar.h"
 #include "vizero/buffer.h"
@@ -36,7 +40,10 @@ struct vizero_application_t {
     /* Temporary settings during initialization */
     vizero_settings_t* settings;
 };
-
+/* Forward declaration for syntax line rendering */
+static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
+                                   float base_x, float y, int scroll_x,
+                                   vizero_syntax_token_t* tokens, size_t token_count);
 vizero_application_t* vizero_application_create(const vizero_app_config_t* config) {
     vizero_application_t* app = (vizero_application_t*)calloc(1, sizeof(vizero_application_t));
     if (!app) {
@@ -247,6 +254,218 @@ void vizero_application_shutdown(vizero_application_t* app) {
     SDL_Quit();
 }
 
+/* Helper function to render a single editor window */
+static void render_editor_window(vizero_application_t* app, vizero_editor_window_t* window, 
+                                vizero_buffer_t* buffer, vizero_cursor_t* cursor) {
+    if (!app || !window || !buffer || !cursor) return;
+    
+    /* Get window content area */
+    int content_x, content_y, content_width, content_height;
+    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, 
+                                            &content_width, &content_height) != 0) {
+        return;
+    }
+    
+    /* Calculate scrolling for this window */
+    vizero_position_t cursor_pos = vizero_cursor_get_position(cursor);
+    int visible_lines = (content_height - 30) / 16; /* 16 pixels per line, 30 for margins */
+    int visible_cols = (content_width - 20) / 8; /* 8 pixels per char, 20 for margins */
+    
+    /* Use window's scroll values */
+    int scroll_x = window->scroll_x;
+    int scroll_y = window->scroll_y;
+    
+    /* Update scrolling based on cursor position */
+    if ((int)cursor_pos.line < scroll_y) {
+        scroll_y = (int)cursor_pos.line;
+    } else if ((int)cursor_pos.line >= scroll_y + visible_lines) {
+        scroll_y = (int)cursor_pos.line - visible_lines + 1;
+    }
+    
+    if ((int)cursor_pos.column < scroll_x) {
+        scroll_x = (int)cursor_pos.column;
+    } else if ((int)cursor_pos.column >= scroll_x + visible_cols) {
+        scroll_x = (int)cursor_pos.column - visible_cols + 1;
+    }
+    
+    /* Update window scroll values */
+    window->scroll_x = scroll_x;
+    window->scroll_y = scroll_y;
+    
+    /* Render window content with syntax highlighting */
+    size_t line_count = vizero_buffer_get_line_count(buffer);
+    size_t start_line = (size_t)scroll_y;
+    size_t end_line = start_line + (content_height / 16) + 1; /* +1 for partial lines */
+    if (end_line > line_count) end_line = line_count;
+    
+    /* Get syntax highlighting tokens from plugin manager */
+    vizero_syntax_token_t* tokens = NULL;
+    size_t token_count = 0;
+    int has_syntax_highlighting = 0;
+    
+    if (app->plugin_manager) {
+        has_syntax_highlighting = vizero_plugin_manager_highlight_syntax(
+            app->plugin_manager, buffer, start_line, end_line, &tokens, &token_count);
+    }
+    
+    /* Render each visible line */
+    for (size_t line_idx = start_line; line_idx < end_line; line_idx++) {
+        const char* line_text = vizero_buffer_get_line_text(buffer, line_idx);
+        if (!line_text) continue;
+
+        float line_y = (float)(content_y + 10 + ((line_idx - scroll_y) * 16));
+
+        if (has_syntax_highlighting > 0 && tokens) {
+            /* Render with syntax highlighting */
+            render_line_with_syntax(app, line_text, line_idx,
+                                  (float)(content_x + 10), line_y,
+                                  scroll_x, tokens, token_count);
+        } else {
+            /* Fallback to plain white text */
+            vizero_color_t text_color = {1.0f, 1.0f, 1.0f, 1.0f};
+            vizero_text_info_t text_info = {
+                (float)(content_x + 10 - (scroll_x * 8)),
+                line_y,
+                text_color,
+                NULL
+            };
+            vizero_renderer_draw_text(app->renderer, line_text, &text_info);
+        }
+    }
+    
+    /* Free syntax tokens if allocated */
+    if (tokens) {
+        free(tokens);
+    }
+    
+    /* Draw cursor if this is the focused window */
+    if (window->is_focused) {
+        int visual_col = (int)cursor_pos.column; /* Simplified, should handle tabs */
+        float cursor_x = (float)(content_x + 10 + ((visual_col - scroll_x) * 8));
+        float cursor_y = (float)(content_y + 10 + ((cursor_pos.line - scroll_y) * 16));
+        
+        /* Only draw cursor if it's visible within the window */
+        if (cursor_x >= content_x && cursor_x < content_x + content_width && 
+            cursor_y >= content_y && cursor_y < content_y + content_height) {
+            vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 1.0f};
+            vizero_renderer_fill_rect(app->renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
+        }
+    }
+}
+
+/* Helper function to render a line with syntax highlighting */
+static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
+                                   float base_x, float y, int scroll_x,
+                                   vizero_syntax_token_t* tokens, size_t token_count) {
+    if (!app || !line_text) return;
+    
+    size_t line_len = strlen(line_text);
+    if (line_len == 0) return;
+    
+    /* Create array to store color for each character */
+    vizero_color_t* char_colors = (vizero_color_t*)malloc(line_len * sizeof(vizero_color_t));
+    if (!char_colors) return;
+    
+    /* Initialize all characters to default white color */
+    vizero_color_t default_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    for (size_t i = 0; i < line_len; i++) {
+        char_colors[i] = default_color;
+    }
+    
+    /* Apply syntax highlighting colors */
+    for (size_t t = 0; t < token_count; t++) {
+        vizero_syntax_token_t* token = &tokens[t];
+        
+        /* Check if token is on this line */
+        if (token->range.start.line == line_num) {
+            size_t start_col = token->range.start.column;
+            size_t end_col = token->range.end.column;
+            
+            /* Clamp to line bounds */
+            if (start_col >= line_len) continue;
+            if (end_col > line_len) end_col = line_len;
+            
+            /* Convert plugin color to renderer color */
+            vizero_color_t render_color = {
+                token->color.r / 255.0f,
+                token->color.g / 255.0f,
+                token->color.b / 255.0f,
+                token->color.a / 255.0f
+            };
+            
+            /* Apply color to character range */
+            for (size_t col = start_col; col < end_col; col++) {
+                char_colors[col] = render_color;
+            }
+        }
+    }
+    
+    /* Render characters with their assigned colors */
+    for (size_t col = 0; col < line_len; col++) {
+        if ((int)col < scroll_x) continue; /* Skip characters scrolled out of view */
+        
+        char char_str[2] = {line_text[col], '\0'};
+        float char_x = base_x + ((col - scroll_x) * 8);
+        
+        vizero_text_info_t text_info = {
+            char_x,
+            y,
+            char_colors[col],
+            NULL
+        };
+        
+        vizero_renderer_draw_text(app->renderer, char_str, &text_info);
+    }
+    
+    free(char_colors);
+}
+
+/* Helper function to draw window borders */
+static void draw_window_borders(vizero_application_t* app, vizero_editor_window_t** windows, size_t count) {
+    if (!app || !windows || count < 2) return;
+    
+    vizero_color_t border_color = {0.5f, 0.5f, 0.5f, 1.0f};
+    
+    for (size_t i = 0; i < count; i++) {
+        vizero_editor_window_t* window = windows[i];
+        if (!window) continue;
+        
+        /* Draw window border */
+        vizero_renderer_draw_rect(app->renderer, 
+                                (float)window->x, (float)window->y, 
+                                (float)window->width, (float)window->height, 
+                                border_color);
+    }
+}
+
+/* Helper function for fallback single window rendering */
+static void render_single_window_fallback(vizero_application_t* app, int window_width, int window_height) {
+    /* Get current buffer and cursor for fallback */
+    vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(app->editor);
+    vizero_cursor_t* current_cursor = vizero_editor_get_current_cursor(app->editor);
+    
+    if (!current_buffer || !current_cursor) {
+        return; /* Nothing to render */
+    }
+    
+    /* Create a temporary window structure for rendering */
+    vizero_editor_window_t temp_window = {0};
+    temp_window.x = 0;
+    temp_window.y = 0;
+    temp_window.width = window_width;
+    temp_window.height = window_height - 24; /* Leave space for status bar */
+    temp_window.is_focused = 1;
+    temp_window.scroll_x = app->scroll_x;
+    temp_window.scroll_y = app->scroll_y;
+    
+    /* Render using the temporary window */
+    render_editor_window(app, &temp_window, current_buffer, current_cursor);
+    
+    /* Update app scroll values from temporary window */
+    app->scroll_x = temp_window.scroll_x;
+    app->scroll_y = temp_window.scroll_y;
+}
+
 int vizero_application_run(vizero_application_t* app) {
     if (!app) {
         return -1;
@@ -262,321 +481,52 @@ int vizero_application_run(vizero_application_t* app) {
         vizero_color_t clear_color = {0.1f, 0.1f, 0.2f, 1.0f};
         vizero_renderer_clear(app->renderer, clear_color);
         
-        /* Get current buffer for this frame */
-        vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(app->editor);
-        
-        /* Calculate scroll offsets based on cursor position */
-        vizero_position_t cursor_pos = vizero_cursor_get_position(vizero_editor_get_current_cursor(app->editor));
+        /* Get window dimensions */
         int window_width, window_height;
         vizero_window_get_size(app->window, &window_width, &window_height);
         
-        /* Text area dimensions (leaving space for status bar) */
-        int text_area_height = window_height - 24 - 30; /* 24 for status bar, 30 for top margin */
-        int visible_lines = text_area_height / 16; /* 16 pixels per line */
-        int visible_cols = (window_width - 20) / 8; /* 8 pixels per char, 20 for margins */
-        
-        /* Vertical scrolling */
-        if ((int)cursor_pos.line < app->scroll_y) {
-            app->scroll_y = (int)cursor_pos.line;
-        } else if ((int)cursor_pos.line >= app->scroll_y + visible_lines) {
-            app->scroll_y = (int)cursor_pos.line - visible_lines + 1;
-        }
-        
-        /* Horizontal scrolling */
-        if ((int)cursor_pos.column < app->scroll_x) {
-            app->scroll_x = (int)cursor_pos.column;
-        } else if ((int)cursor_pos.column >= app->scroll_x + visible_cols) {
-            app->scroll_x = (int)cursor_pos.column - visible_cols + 1;
-        }
-        
-        /* Check if line numbers should be displayed */
-        bool show_line_numbers = false;
-        int line_number_width = 0;
-        if (app->editor && current_buffer) {
-            vizero_settings_t* settings = vizero_editor_get_settings(app->editor);
-            if (settings) {
-                show_line_numbers = vizero_settings_get_bool(settings, VIZERO_SETTING_SHOW_LINE_NUMBERS);
-                if (show_line_numbers) {
-                    size_t buffer_line_count = vizero_buffer_get_line_count(current_buffer);
-                    /* Calculate width needed for line numbers (digits + space) */
-                    line_number_width = snprintf(NULL, 0, "%zu", buffer_line_count) + 1;
-                    line_number_width = (line_number_width < 4) ? 4 : line_number_width; /* Minimum 4 chars */
-                    line_number_width *= 8; /* 8 pixels per character */
-                }
-            }
-        }
-        
-        /* Render line numbers if enabled */
-        if (show_line_numbers && current_buffer) {
-            vizero_color_t line_num_color = {0.6f, 0.6f, 0.7f, 1.0f}; /* Light gray */
-            size_t buffer_line_count = vizero_buffer_get_line_count(current_buffer);
+        /* Update window manager layout */
+        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(app->editor);
+        if (window_manager) {
+            vizero_window_manager_update_layout(window_manager, window_width, window_height);
             
-            for (size_t line = app->scroll_y; line < buffer_line_count && line < app->scroll_y + (size_t)visible_lines; line++) {
-                char line_num_str[16];
-                snprintf(line_num_str, sizeof(line_num_str), "%4zu", line + 1); /* 1-based line numbers */
-                
-                float line_num_y = 30.0f + ((line - app->scroll_y) * 16.0f);
-                vizero_text_info_t line_num_info = {2.0f, line_num_y, line_num_color, NULL};
-                vizero_renderer_draw_text(app->renderer, line_num_str, &line_num_info);
-            }
-        }
-        
-        /* Render editor content */
-        vizero_color_t text_color = {1.0f, 1.0f, 1.0f, 1.0f}; /* White text */
-        vizero_text_info_t text_info = {
-            (show_line_numbers ? line_number_width + 10.0f : 10.0f) - (app->scroll_x * 8.0f),  /* x - adjust for horizontal scroll and line numbers */
-            30.0f - (app->scroll_y * 16.0f), /* y - adjust for vertical scroll */
-            text_color,
-            NULL    /* font - not implemented yet */
-        };
-        
-        /* Get buffer content and apply syntax highlighting */
-        const char* buffer_text = vizero_buffer_get_text(current_buffer);
-        
-        if (buffer_text && strlen(buffer_text) > 0) {
-            /* Try to get syntax highlighting from plugins */
-            vizero_syntax_token_t* tokens = NULL;
-            size_t token_count = 0;
+            /* Get all visible windows for rendering */
+            vizero_editor_window_t** visible_windows = NULL;
+            size_t visible_count = 0;
             
-            /* Calculate visible lines for syntax highlighting */
-            size_t buffer_line_count = vizero_buffer_get_line_count(current_buffer);
-            size_t start_line = (app->scroll_y > 0) ? app->scroll_y : 0;
-            size_t syntax_visible_lines = ((window_height - 60) / 16) + 2; /* Add buffer */
-            size_t end_line = start_line + syntax_visible_lines;
-            if (end_line >= buffer_line_count) end_line = buffer_line_count - 1;
-            
-            int has_highlighting = vizero_plugin_manager_highlight_syntax(
-                app->plugin_manager, current_buffer, start_line, end_line, &tokens, &token_count);
-            
-            /* Check if there's a text selection to highlight */
-            int has_selection = vizero_editor_has_selection(app->editor);
-            vizero_position_t selection_start = {0, 0}, selection_end = {0, 0};
-            if (has_selection) {
-                vizero_editor_get_selection_range(app->editor, &selection_start, &selection_end);
-            }
-            
-            /* Check if there are search matches to highlight */
-            int has_search_results = vizero_search_has_results(app->editor);
-            const vizero_search_match_t* search_matches = NULL;
-            int search_match_count = 0;
-            int current_match_index = -1;
-            if (has_search_results) {
-                search_matches = vizero_search_get_all_matches(app->editor);
-                search_match_count = vizero_search_get_match_count(app->editor);
-                current_match_index = vizero_search_get_current_match_index(app->editor);
-            }
-            
-            if (has_highlighting && tokens && token_count > 0) {
-                /* Render text with syntax highlighting - word by word approach */
-                for (size_t line = start_line; line <= end_line; line++) {
-                    const char* line_text = vizero_buffer_get_line_text(current_buffer, line);
-                    if (!line_text) continue;
+            if (vizero_window_manager_get_visible_windows(window_manager, &visible_windows, &visible_count) == 0) {
+                /* Render each visible window */
+                for (size_t i = 0; i < visible_count; i++) {
+                    vizero_editor_window_t* window = visible_windows[i];
+                    if (!window) continue;
                     
-                    float line_x = (show_line_numbers ? line_number_width + 10.0f : 10.0f) - (app->scroll_x * 8.0f);
-                    float line_y = 30.0f + ((line - app->scroll_y) * 16.0f);
+                    /* Get window's buffer and cursor */
+                    vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window);
+                    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window);
                     
-                    /* Render selection background for this line if needed */
-                    if (has_selection && line >= selection_start.line && line <= selection_end.line) {
-                        size_t sel_start_col = (line == selection_start.line) ? selection_start.column : 0;
-                        size_t sel_end_col = (line == selection_end.line) ? selection_end.column : strlen(line_text);
-                        
-                        if (sel_end_col > sel_start_col) {
-                            float sel_x = line_x + (sel_start_col * 8.0f);
-                            float sel_width = (sel_end_col - sel_start_col) * 8.0f;
-                            vizero_color_t selection_bg = {0.3f, 0.3f, 0.6f, 0.5f}; /* Blue selection background */
-                            vizero_renderer_fill_rect(app->renderer, sel_x, line_y, sel_width, 16.0f, selection_bg);
-                        }
-                    }
+                    if (!buffer || !cursor) continue;
                     
-                    /* Render search match background for this line if needed */
-                    if (has_search_results && search_matches) {
-                        for (int match_idx = 0; match_idx < search_match_count; match_idx++) {
-                            const vizero_search_match_t* match = &search_matches[match_idx];
-                            if (match->line == (int)line) {
-                                float match_x = line_x + (match->column * 8.0f);
-                                float match_width = match->length * 8.0f;
-                                
-                                /* Use different colors for current match vs other matches */
-                                vizero_color_t match_bg;
-                                if (match_idx == current_match_index) {
-                                    match_bg = {0.8f, 0.6f, 0.2f, 0.7f}; /* Orange for current match */
-                                } else {
-                                    match_bg = {0.8f, 0.8f, 0.2f, 0.5f}; /* Yellow for other matches */
-                                }
-                                
-                                vizero_renderer_fill_rect(app->renderer, match_x, line_y, match_width, 16.0f, match_bg);
-                            }
-                        }
-                    }
-                    
-                    /* Find all tokens for this line */
-                    size_t line_len = strlen(line_text);
-                    size_t last_column = 0;
-                    
-                    for (size_t i = 0; i < token_count; i++) {
-                        if (tokens[i].range.start.line != line) continue;
-                        
-                        /* Render any uncolored text before this token */
-                        if (tokens[i].range.start.column > last_column) {
-                            size_t uncolored_len = tokens[i].range.start.column - last_column;
-                            char* uncolored_text = (char*)malloc(uncolored_len + 1);
-                            if (uncolored_text) {
-                                strncpy(uncolored_text, line_text + last_column, uncolored_len);
-                                uncolored_text[uncolored_len] = '\0';
-                                
-                                float text_x = line_x + (last_column * 8.0f);
-                                vizero_color_t white_color = {1.0f, 1.0f, 1.0f, 1.0f};
-                                vizero_text_info_t white_info = {text_x, line_y, white_color, NULL};
-                                vizero_renderer_draw_text(app->renderer, uncolored_text, &white_info);
-                                free(uncolored_text);
-                            }
-                        }
-                        
-                        /* Render the colored token */
-                        size_t token_len = tokens[i].range.end.column - tokens[i].range.start.column;
-                        if (token_len > 0 && tokens[i].range.start.column < line_len) {
-                            char* token_text = (char*)malloc(token_len + 1);
-                            if (token_text) {
-                                strncpy(token_text, line_text + tokens[i].range.start.column, token_len);
-                                token_text[token_len] = '\0';
-                                
-                                float text_x = line_x + (tokens[i].range.start.column * 8.0f);
-                                vizero_color_t token_color;
-                                token_color.r = tokens[i].color.r / 255.0f;
-                                token_color.g = tokens[i].color.g / 255.0f;
-                                token_color.b = tokens[i].color.b / 255.0f;
-                                token_color.a = tokens[i].color.a / 255.0f;
-                                
-                                vizero_text_info_t token_info = {text_x, line_y, token_color, NULL};
-                                vizero_renderer_draw_text(app->renderer, token_text, &token_info);
-                                free(token_text);
-                            }
-                        }
-                        
-                        last_column = tokens[i].range.end.column;
-                    }
-                    
-                    /* Render any remaining uncolored text at the end of the line */
-                    if (last_column < line_len) {
-                        char* remaining_text = (char*)malloc(line_len - last_column + 1);
-                        if (remaining_text) {
-                            strcpy(remaining_text, line_text + last_column);
-                            
-                            float text_x = line_x + (last_column * 8.0f);
-                            vizero_color_t white_color = {1.0f, 1.0f, 1.0f, 1.0f};
-                            vizero_text_info_t white_info = {text_x, line_y, white_color, NULL};
-                            vizero_renderer_draw_text(app->renderer, remaining_text, &white_info);
-                            free(remaining_text);
-                        }
-                    }
-                    
-                    /* If no tokens for this line, render normally */
-                    if (last_column == 0) {
-                        vizero_color_t white_color = {1.0f, 1.0f, 1.0f, 1.0f};
-                        vizero_text_info_t white_info = {line_x, line_y, white_color, NULL};
-                        vizero_renderer_draw_text(app->renderer, line_text, &white_info);
-                    }
+                    /* Render this window */
+                    render_editor_window(app, window, buffer, cursor);
                 }
                 
-                /* Clean up tokens */
-                free(tokens);
+                /* Draw window borders if multiple windows */
+                if (visible_count > 1) {
+                    draw_window_borders(app, visible_windows, visible_count);
+                }
+                
+                /* Free the visible windows array */
+                if (visible_windows) free(visible_windows);
             } else {
-                /* No syntax highlighting - render line by line for search highlighting */
-                vizero_buffer_t* fallback_buffer = vizero_editor_get_current_buffer(app->editor);
-                if (fallback_buffer) {
-                    size_t fallback_line_count = vizero_buffer_get_line_count(fallback_buffer);
-                    size_t fallback_start_line = (app->scroll_y > 0) ? app->scroll_y : 0;
-                    size_t fallback_visible_lines = ((window_height - 60) / 16) + 2; /* Add buffer */
-                    size_t fallback_end_line = fallback_start_line + fallback_visible_lines;
-                    if (fallback_end_line >= fallback_line_count) fallback_end_line = fallback_line_count;
-                    
-                    for (size_t line = fallback_start_line; line < fallback_end_line; line++) {
-                        const char* line_text = vizero_buffer_get_line_text(fallback_buffer, line);
-                        if (!line_text) continue;
-                        
-                        float line_x = (show_line_numbers ? line_number_width + 10.0f : 10.0f) - (app->scroll_x * 8.0f);
-                        float line_y = 30.0f + ((line - app->scroll_y) * 16.0f);
-                        
-                        /* Render selection background for this line if needed */
-                        if (has_selection && line >= selection_start.line && line <= selection_end.line) {
-                            size_t sel_start_col = (line == selection_start.line) ? selection_start.column : 0;
-                            size_t sel_end_col = (line == selection_end.line) ? selection_end.column : strlen(line_text);
-                            
-                            if (sel_end_col > sel_start_col) {
-                                float sel_x = line_x + (sel_start_col * 8.0f);
-                                float sel_width = (sel_end_col - sel_start_col) * 8.0f;
-                                vizero_color_t selection_bg = {0.3f, 0.3f, 0.6f, 0.5f}; /* Blue selection background */
-                                vizero_renderer_fill_rect(app->renderer, sel_x, line_y, sel_width, 16.0f, selection_bg);
-                            }
-                        }
-                        
-                        /* Render search match background for this line if needed */
-                        if (has_search_results && search_matches) {
-                            for (int match_idx = 0; match_idx < search_match_count; match_idx++) {
-                                const vizero_search_match_t* match = &search_matches[match_idx];
-                                if (match->line == (int)line) {
-                                    float match_x = line_x + (match->column * 8.0f);
-                                    float match_width = match->length * 8.0f;
-                                    
-                                    /* Use different colors for current match vs other matches */
-                                    vizero_color_t match_bg;
-                                    if (match_idx == current_match_index) {
-                                        match_bg = {0.8f, 0.6f, 0.2f, 0.7f}; /* Orange for current match */
-                                    } else {
-                                        match_bg = {0.8f, 0.8f, 0.2f, 0.5f}; /* Yellow for other matches */
-                                    }
-                                    
-                                    vizero_renderer_fill_rect(app->renderer, match_x, line_y, match_width, 16.0f, match_bg);
-                                }
-                            }
-                        }
-                        
-                        /* Render the line text */
-                        vizero_color_t white_color = {1.0f, 1.0f, 1.0f, 1.0f};
-                        vizero_text_info_t line_info = {line_x, line_y, white_color, NULL};
-                        vizero_renderer_draw_text(app->renderer, line_text, &line_info);
-                    }
-                } else {
-                    /* No buffer - render normally */
-                    vizero_renderer_draw_text(app->renderer, buffer_text, &text_info);
-                }
+                /* Fallback to single window rendering */
+                render_single_window_fallback(app, window_width, window_height);
             }
-        } else if (app->show_welcome) {
-            /* Show welcome message only initially */
-            vizero_renderer_draw_text(app->renderer, "Vizero - Vi Clone\nPress 'i' to enter insert mode\nPress ESC to return to normal mode\nPress ':' for commands, ':help' for help", &text_info);
+        } else {
+            /* Fallback to legacy rendering */
+            render_single_window_fallback(app, window_width, window_height);
         }
         
-        /* Draw cursor - cursor_pos already declared earlier */
-        
-        /* Get current line text to calculate visual column */
-        int line_start = 0;
-        int current_line = 0;
-        
-        /* Find the start of the current line */
-        for (int i = 0; buffer_text && buffer_text[i] != '\0'; i++) {
-            if ((size_t)current_line == cursor_pos.line) {
-                break;
-            }
-            if (buffer_text[i] == '\n') {
-                current_line++;
-                line_start = i + 1;
-            }
-        }
-        
-        /* Calculate visual column considering tabs */
-        int visual_col = vizero_string_visual_column(buffer_text + line_start, (int)cursor_pos.column, 4);
-        float cursor_x = (show_line_numbers ? line_number_width + 10.0f : 10.0f) + ((visual_col - app->scroll_x) * 8.0f);  /* Adjust for horizontal scroll and line numbers */
-        float cursor_y = 30.0f + ((cursor_pos.line - app->scroll_y) * 16.0f);   /* Adjust for vertical scroll */
-        
-        /* Only draw cursor if it's visible on screen */
-        float min_x = show_line_numbers ? line_number_width + 10.0f : 10.0f;
-        if (cursor_x >= min_x && cursor_x < (float)(window_width - 10) && 
-            cursor_y >= 30.0f && cursor_y < (float)(window_height - 24 - 16)) {
-            vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 1.0f}; /* Yellow cursor */
-            vizero_renderer_fill_rect(app->renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
-        }
-        
-        /* Update and render status bar - using window dimensions from earlier */
+        /* Update and render status bar */
         vizero_status_bar_update(app->status_bar, app->editor);
         vizero_status_bar_resize(app->status_bar, window_width, 24);
         vizero_color_t status_bg = {0.2f, 0.2f, 0.3f, 1.0f};

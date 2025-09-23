@@ -1,5 +1,12 @@
 # Vizero Development Guide
 
+## Recent Architecture & Bugfixes (2025)
+
+- **Robust buffer/cursor replacement**: Buffer and cursor management now prevents double-free/use-after-free bugs when splitting and loading files. All windows and buffer arrays are always in sync, and no window or array references freed memory.
+- **Window manager helpers**: All access to window manager internals is now via safe helper functions, improving code safety and maintainability. Direct struct access is avoided in favor of API helpers in `editor_window.h/cpp`.
+- **Input routing and window focus**: All input and editing operations now follow the currently focused window. After any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), keypresses and text input go to the correct window and buffer, matching vi-like behavior.
+- **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
+
 ## Quick Start
 
 ### Prerequisites
@@ -240,3 +247,9 @@ perf report
 - Check SDL2 DLLs are in PATH or executable directory
 - Verify graphics drivers support OpenGL 3.3
 - Run with debugger to identify crash location
+
+**Input not following window focus?**
+- This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window. If you encounter issues, check that you are using the latest code and that all buffer/cursor access goes through the window manager helpers.
+
+**Crashes after split or file load?**
+- These have been resolved with robust buffer/cursor management. If you see new issues, check for direct struct access or missing helper usage in new code.

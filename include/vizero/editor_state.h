@@ -14,6 +14,8 @@ typedef struct vizero_editor_state_t vizero_editor_state_t;
 typedef struct vizero_buffer_t vizero_buffer_t;
 typedef struct vizero_cursor_t vizero_cursor_t;
 typedef struct vizero_plugin_manager_t vizero_plugin_manager_t;
+typedef struct vizero_window_manager_t vizero_window_manager_t;
+typedef struct vizero_editor_window_t vizero_editor_window_t;
 typedef struct vizero_project_t vizero_project_t;
 
 /* Editor modes */
@@ -167,6 +169,12 @@ int vizero_editor_has_search_results(vizero_editor_state_t* state);
 const char* vizero_editor_get_search_pattern(vizero_editor_state_t* state);
 int vizero_editor_get_search_match_count(vizero_editor_state_t* state);
 int vizero_editor_get_current_match_index(vizero_editor_state_t* state);
+
+/* Window management */
+vizero_window_manager_t* vizero_editor_get_window_manager(vizero_editor_state_t* state);
+vizero_editor_window_t* vizero_editor_get_active_window(vizero_editor_state_t* state);
+int vizero_editor_create_window_for_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer, 
+                                         int window_width, int window_height);
 
 #ifdef __cplusplus
 }

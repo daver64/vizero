@@ -330,13 +330,23 @@ void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vi
             y += CHAR_HEIGHT;
             continue;
         }
-        
+
         if (*c == '\t') {
             x += CHAR_WIDTH * 4; /* Tab = 4 spaces */
             continue;
         }
-        
-        /* Create quad for character */
+
+        /* Handle Unicode/non-ASCII characters by replacing with '?' */
+        unsigned char char_code = (unsigned char)*c;
+        if (char_code > 127) {
+            /* Multi-byte UTF-8 sequence - skip additional bytes and use '?' */
+            char_code = '?';
+            
+            /* Skip UTF-8 continuation bytes (0x80-0xBF) */
+            while (*(c + 1) && ((unsigned char)*(c + 1) & 0xC0) == 0x80) {
+                c++;
+            }
+        }        /* Create quad for character */
         float vertices[] = {
             x,              y,              0.0f, 0.0f,  /* Top-left */
             x + CHAR_WIDTH, y,              1.0f, 0.0f,  /* Top-right */
@@ -346,10 +356,10 @@ void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vi
         
         glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-        
-        /* Set character code for shader */
-        glUniform1i(renderer->char_uniform, (int)*c);
-        
+
+        /* Set character code for shader - use processed char_code */
+        glUniform1i(renderer->char_uniform, (int)char_code);
+
         /* Draw character */
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         

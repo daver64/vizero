@@ -1,5 +1,10 @@
 # Suggested Additional Commands for Vizero
 
+## Recent Improvements (2025)
+
+- **Robust window/input focus**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `:wincmd`, `Ctrl+w`, or any window focus command, keypresses and text input go to the correct window.
+- **Buffer/cursor management**: Prevents double-free/use-after-free bugs when splitting and loading files. Windows and buffer arrays are always in sync, and no window or array references freed memory.
+
 ## Essential Vi/Vim Commands to Implement
 
 ### File Operations
@@ -79,6 +84,7 @@
 4. `:help` - Help system
 5. `:syntax on/off` - Syntax highlighting toggle
 6. Line number operations (`:10`, `:$`)
+7. **[DONE] Vi-like window focus/input routing** - Input always follows the focused window after any focus change (e.g., `:wincmd`, `Ctrl+w`).
 
 ### Medium Priority
 1. `:split` / `:vsplit` - Window splitting
@@ -100,3 +106,7 @@
 - The `:!` command integration would need careful security consideration
 - Line range parsing would need to be added to the command system
 - Help system would need documentation integration
+
+## Troubleshooting
+
+- **Input not following window focus?** This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.
