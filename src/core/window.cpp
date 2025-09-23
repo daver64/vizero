@@ -7,6 +7,9 @@ struct vizero_window_t {
     SDL_Window* sdl_window;
     SDL_GLContext gl_context;
     int should_close;
+    int is_fullscreen;
+    int windowed_width;
+    int windowed_height;
 };
 
 vizero_window_t* vizero_window_create(const char* title, int width, int height, int fullscreen) {
@@ -42,6 +45,10 @@ vizero_window_t* vizero_window_create(const char* title, int width, int height, 
     SDL_GL_SetSwapInterval(1); /* Enable VSync */
     
     window->should_close = 0;
+    window->is_fullscreen = fullscreen;
+    window->windowed_width = fullscreen ? 1024 : width;   /* Default windowed size */
+    window->windowed_height = fullscreen ? 768 : height;
+    
     return window;
 }
 
@@ -116,4 +123,27 @@ SDL_Window* vizero_window_get_sdl_window(vizero_window_t* window) {
 
 SDL_GLContext vizero_window_get_gl_context(vizero_window_t* window) {
     return window ? window->gl_context : NULL;
+}
+
+int vizero_window_is_fullscreen(vizero_window_t* window) {
+    return window ? window->is_fullscreen : 0;
+}
+
+void vizero_window_toggle_fullscreen(vizero_window_t* window) {
+    if (!window || !window->sdl_window) return;
+    
+    if (window->is_fullscreen) {
+        /* Switch to windowed mode */
+        SDL_SetWindowFullscreen(window->sdl_window, 0);
+        SDL_SetWindowSize(window->sdl_window, window->windowed_width, window->windowed_height);
+        SDL_SetWindowPosition(window->sdl_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        window->is_fullscreen = 0;
+    } else {
+        /* Store current windowed size before going fullscreen */
+        SDL_GetWindowSize(window->sdl_window, &window->windowed_width, &window->windowed_height);
+        
+        /* Switch to fullscreen mode */
+        SDL_SetWindowFullscreen(window->sdl_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        window->is_fullscreen = 1;
+    }
 }

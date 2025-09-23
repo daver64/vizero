@@ -289,6 +289,20 @@ void vizero_renderer_present(vizero_renderer_t* renderer) {
     /* SwapBuffers is called by the window */
 }
 
+void vizero_renderer_update_viewport(vizero_renderer_t* renderer, int width, int height) {
+    if (!renderer) return;
+    
+    /* Update OpenGL viewport */
+    glViewport(0, 0, width, height);
+    
+    /* Update projection matrix for 2D rendering */
+    renderer->projection[0] = 2.0f / width;
+    renderer->projection[5] = -2.0f / height;
+    renderer->projection[12] = -1.0f;
+    renderer->projection[13] = 1.0f;
+    renderer->projection[15] = 1.0f;
+}
+
 void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vizero_text_info_t* info) {
     if (!renderer || !text || !info) return;
     

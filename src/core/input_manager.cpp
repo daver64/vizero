@@ -4,6 +4,7 @@
 #include "vizero/editor_state.h"
 #include "vizero/cursor.h"
 #include "vizero/buffer.h"
+#include "vizero/window.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,30 +43,167 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     vizero_application_quit(input->app);
                 }
                 break;
+            case SDL_WINDOWEVENT:
+                /* Handle window events */
+                if (input->app && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    vizero_application_on_window_resize(input->app, event.window.data1, event.window.data2);
+                }
+                break;
             case SDL_KEYDOWN:
                 /* Handle key press */
                 if (input->app) {
                     /* Get editor state for key handling */
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
-                    if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_NORMAL) {
+                    if (editor) {
+                        /* Check for ESC key to dismiss popup */
+                        if (event.key.keysym.sym == SDLK_ESCAPE && vizero_editor_is_popup_visible(editor)) {
+                            vizero_editor_hide_popup(editor);
+                            break; /* Consume the ESC key */
+                        }
+                        
+                        /* Check for F11 key to toggle fullscreen */
+                        if (event.key.keysym.sym == SDLK_F11) {
+                            vizero_window_t* window = vizero_application_get_window(input->app);
+                            if (window) {
+                                vizero_window_toggle_fullscreen(window);
+                            }
+                            break; /* Consume the F11 key */
+                        }
+                        
+                        if (vizero_editor_get_mode(editor) == VIZERO_MODE_NORMAL) {
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
                         if (cursor) {
                             switch (event.key.keysym.sym) {
                                 case SDLK_h:
                                 case SDLK_LEFT:
-                                    vizero_cursor_move_left(cursor);
+                                    if (event.key.keysym.mod & KMOD_SHIFT) {
+                                        /* Shift+Left: Start or extend selection */
+                                        if (!vizero_editor_has_selection(editor)) {
+                                            vizero_editor_start_selection(editor);
+                                        }
+                                        vizero_cursor_move_left(cursor);
+                                        vizero_editor_update_selection(editor);
+                                    } else {
+                                        /* Clear selection if moving without shift */
+                                        vizero_editor_clear_selection(editor);
+                                        vizero_cursor_move_left(cursor);
+                                    }
                                     break;
                                 case SDLK_j:
                                 case SDLK_DOWN:
-                                    vizero_cursor_move_down(cursor);
+                                    if (event.key.keysym.mod & KMOD_SHIFT) {
+                                        /* Shift+Down: Start or extend selection */
+                                        if (!vizero_editor_has_selection(editor)) {
+                                            vizero_editor_start_selection(editor);
+                                        }
+                                        vizero_cursor_move_down(cursor);
+                                        vizero_editor_update_selection(editor);
+                                    } else {
+                                        /* Clear selection if moving without shift */
+                                        vizero_editor_clear_selection(editor);
+                                        vizero_cursor_move_down(cursor);
+                                    }
                                     break;
                                 case SDLK_k:
                                 case SDLK_UP:
-                                    vizero_cursor_move_up(cursor);
+                                    if (event.key.keysym.mod & KMOD_SHIFT) {
+                                        /* Shift+Up: Start or extend selection */
+                                        if (!vizero_editor_has_selection(editor)) {
+                                            vizero_editor_start_selection(editor);
+                                        }
+                                        vizero_cursor_move_up(cursor);
+                                        vizero_editor_update_selection(editor);
+                                    } else {
+                                        /* Clear selection if moving without shift */
+                                        vizero_editor_clear_selection(editor);
+                                        vizero_cursor_move_up(cursor);
+                                    }
                                     break;
                                 case SDLK_l:
                                 case SDLK_RIGHT:
-                                    vizero_cursor_move_right(cursor);
+                                    if (event.key.keysym.mod & KMOD_SHIFT) {
+                                        /* Shift+Right: Start or extend selection */
+                                        if (!vizero_editor_has_selection(editor)) {
+                                            vizero_editor_start_selection(editor);
+                                        }
+                                        vizero_cursor_move_right(cursor);
+                                        vizero_editor_update_selection(editor);
+                                    } else {
+                                        /* Clear selection if moving without shift */
+                                        vizero_editor_clear_selection(editor);
+                                        vizero_cursor_move_right(cursor);
+                                    }
+                                    break;
+                                case SDLK_f:
+                                    /* Ctrl+F for page down (vi style) */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_cursor_move_page_down(cursor);
+                                    }
+                                    break;
+                                case SDLK_b:
+                                    /* Ctrl+B for page up (vi style) */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_cursor_move_page_up(cursor);
+                                    }
+                                    break;
+                                case SDLK_PAGEUP:
+                                    /* PC Page Up key */
+                                    vizero_cursor_move_page_up(cursor);
+                                    break;
+                                case SDLK_PAGEDOWN:
+                                    /* PC Page Down key */
+                                    vizero_cursor_move_page_down(cursor);
+                                    break;
+                                case SDLK_KP_9:
+                                    /* Keypad Page Up (if Num Lock is off) */
+                                    vizero_cursor_move_page_up(cursor);
+                                    break;
+                                case SDLK_KP_3:
+                                    /* Keypad Page Down (if Num Lock is off) */
+                                    vizero_cursor_move_page_down(cursor);
+                                    break;
+                                case SDLK_c:
+                                    /* Ctrl+C for copy */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_editor_copy_selection(editor);
+                                    }
+                                    break;
+                                case SDLK_x:
+                                    /* Ctrl+X for cut */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_editor_cut_selection(editor);
+                                    }
+                                    break;
+                                case SDLK_v:
+                                    /* Ctrl+V for paste */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_editor_paste_at_cursor(editor);
+                                    }
+                                    break;
+                                case SDLK_z:
+                                    /* Ctrl+Z for undo */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_editor_undo(editor);
+                                    }
+                                    break;
+                                case SDLK_a:
+                                    /* Ctrl+A for select all */
+                                    if (event.key.keysym.mod & KMOD_CTRL) {
+                                        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                                        if (buffer) {
+                                            size_t line_count = vizero_buffer_get_line_count(buffer);
+                                            if (line_count > 0) {
+                                                /* Start selection at beginning of buffer */
+                                                vizero_editor_start_selection_at(editor, 0, 0);
+                                                /* Move cursor to end of buffer and update selection */
+                                                const char* last_line = vizero_buffer_get_line_text(buffer, line_count - 1);
+                                                size_t end_col = last_line ? strlen(last_line) : 0;
+                                                vizero_cursor_set_position(cursor, line_count - 1, end_col);
+                                                vizero_editor_update_selection(editor);
+                                                vizero_editor_set_status_message(editor, "All text selected");
+                                            }
+                                        }
+                                    }
                                     break;
                                 case SDLK_i:
                                     /* Enter insert mode */
@@ -85,10 +223,44 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 case SDLK_ESCAPE:
                                     /* ESC in normal mode does nothing (vi behavior) */
                                     break;
+                                case SDLK_TAB: {
+                                    /* Smart tab behavior in normal mode */
+                                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                                    if (buffer) {
+                                        vizero_position_t cursor_pos = vizero_cursor_get_position(cursor);
+                                        const char* line_text = vizero_buffer_get_line_text(buffer, cursor_pos.line);
+                                        
+                                        if (line_text) {
+                                            /* Find first non-space character */
+                                            size_t first_non_space = 0;
+                                            while (line_text[first_non_space] == ' ' || line_text[first_non_space] == '\t') {
+                                                first_non_space++;
+                                            }
+                                            
+                                            /* If we're within the leading whitespace and there's a non-space character ahead */
+                                            if (cursor_pos.column <= first_non_space && first_non_space > 0 && line_text[first_non_space] != '\0') {
+                                                vizero_cursor_set_position(cursor, cursor_pos.line, first_non_space);
+                                            } else {
+                                                /* Regular tab behavior - insert 4 spaces */
+                                                const char* spaces = "    "; /* 4 spaces */
+                                                vizero_position_t start_pos = {cursor_pos.line, cursor_pos.column};
+                                                vizero_position_t end_pos = {cursor_pos.line, cursor_pos.column + 4};
+                                                vizero_editor_push_undo_operation(editor, VIZERO_UNDO_INSERT_TEXT, start_pos, end_pos, spaces);
+                                                
+                                                if (vizero_buffer_insert_text(buffer, cursor_pos.line, cursor_pos.column, spaces) == 0) {
+                                                    /* Move cursor forward by 4 positions */
+                                                    vizero_cursor_set_position(cursor, cursor_pos.line, cursor_pos.column + 4);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
                                 default:
                                     break;
                             }
                         }
+                        } /* End of normal mode handling */
                     } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
                         /* In insert mode, handle special keys */
                         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
@@ -110,9 +282,17 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         vizero_cursor_set_position(cursor, line + 1, 0);
                                     }
                                     break;
-                                case SDLK_BACKSPACE:
+                                case SDLK_BACKSPACE: {
                                     /* Backspace - delete character before cursor */
                                     if (col > 0) {
+                                        /* Get character to be deleted for undo */
+                                        const char* line_text = vizero_buffer_get_line_text(buffer, line);
+                                        if (line_text && col - 1 < strlen(line_text)) {
+                                            char deleted_char[2] = {line_text[col - 1], '\0'};
+                                            vizero_position_t pos = {line, col - 1};
+                                            vizero_editor_push_undo_operation(editor, VIZERO_UNDO_DELETE_CHAR, pos, pos, deleted_char);
+                                        }
+                                        
                                         if (vizero_buffer_delete_char(buffer, line, col - 1) == 0) {
                                             vizero_cursor_move_left(cursor);
                                         }
@@ -124,16 +304,49 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         }
                                     }
                                     break;
-                                case SDLK_DELETE:
+                                }
+                                case SDLK_DELETE: {
                                     /* Delete key - delete character at cursor */
+                                    /* Get character to be deleted for undo */
+                                    const char* line_text = vizero_buffer_get_line_text(buffer, line);
+                                    if (line_text && col < strlen(line_text)) {
+                                        char deleted_char[2] = {line_text[col], '\0'};
+                                        vizero_position_t pos = {line, col};
+                                        vizero_editor_push_undo_operation(editor, VIZERO_UNDO_DELETE_CHAR, pos, pos, deleted_char);
+                                    }
                                     vizero_buffer_delete_char(buffer, line, col);
                                     break;
-                                case SDLK_TAB:
-                                    /* Tab - insert spaces or tab character */
-                                    if (vizero_buffer_insert_char(buffer, line, col, '\t') == 0) {
-                                        vizero_cursor_move_right(cursor);
+                                }
+                                case SDLK_TAB: {
+                                    /* Smart tab behavior */
+                                    const char* line_text = vizero_buffer_get_line_text(buffer, line);
+                                    
+                                    if (line_text) {
+                                        /* Find first non-space character */
+                                        size_t first_non_space = 0;
+                                        while (line_text[first_non_space] == ' ' || line_text[first_non_space] == '\t') {
+                                            first_non_space++;
+                                        }
+                                        
+                                        /* If we're within the leading whitespace and there's a non-space character ahead */
+                                        if (col <= first_non_space && first_non_space > 0 && line_text[first_non_space] != '\0') {
+                                            vizero_cursor_set_position(cursor, line, first_non_space);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    /* Regular tab behavior - insert 4 spaces */
+                                    const char* spaces = "    "; /* 4 spaces */
+                                    vizero_position_t start_pos = {line, col};
+                                    vizero_position_t end_pos = {line, col + 4};
+                                    vizero_editor_push_undo_operation(editor, VIZERO_UNDO_INSERT_TEXT, start_pos, end_pos, spaces);
+                                    
+                                    if (vizero_buffer_insert_text(buffer, line, col, spaces) == 0) {
+                                        /* Move cursor forward by 4 positions */
+                                        vizero_cursor_set_position(cursor, line, col + 4);
                                     }
                                     break;
+                                }
                                 default:
                                     /* Arrow keys work in insert mode too */
                                     switch (event.key.keysym.sym) {
@@ -149,13 +362,38 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         case SDLK_DOWN:
                                             vizero_cursor_move_down(cursor);
                                             break;
+                                        case SDLK_c:
+                                            /* Ctrl+C for copy in insert mode */
+                                            if (event.key.keysym.mod & KMOD_CTRL) {
+                                                vizero_editor_copy_selection(editor);
+                                            }
+                                            break;
+                                        case SDLK_x:
+                                            /* Ctrl+X for cut in insert mode */
+                                            if (event.key.keysym.mod & KMOD_CTRL) {
+                                                vizero_editor_cut_selection(editor);
+                                            }
+                                            break;
+                                        case SDLK_v:
+                                            /* Ctrl+V for paste in insert mode */
+                                            if (event.key.keysym.mod & KMOD_CTRL) {
+                                                vizero_editor_paste_at_cursor(editor);
+                                            }
+                                            break;
+                                        case SDLK_z:
+                                            /* Ctrl+Z for undo in insert mode */
+                                            if (event.key.keysym.mod & KMOD_CTRL) {
+                                                vizero_editor_undo(editor);
+                                            }
+                                            break;
                                         default:
                                             break;
                                     }
                                     break;
                             }
                         }
-                    } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_COMMAND) {
+                    }
+                    if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_COMMAND) {
                         /* In command mode, handle command input */
                         if (event.key.keysym.sym == SDLK_ESCAPE) {
                             /* ESC cancels command mode */
@@ -204,6 +442,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             for (const char* c = text; *c; c++) {
                                 size_t line = vizero_cursor_get_line(cursor);
                                 size_t col = vizero_cursor_get_column(cursor);
+                                
+                                /* Track undo for character insertion */
+                                vizero_position_t pos = {line, col};
+                                char char_str[2] = {*c, '\0'};
+                                vizero_editor_push_undo_operation(editor, VIZERO_UNDO_INSERT_CHAR, pos, pos, char_str);
                                 
                                 if (vizero_buffer_insert_char(buffer, line, col, *c) == 0) {
                                     /* Move cursor forward after successful insertion */

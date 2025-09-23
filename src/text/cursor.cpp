@@ -76,3 +76,42 @@ void vizero_cursor_move_to_buffer_end(vizero_cursor_t* cursor) { (void)cursor; }
 vizero_buffer_t* vizero_cursor_get_buffer(vizero_cursor_t* cursor) { return cursor ? cursor->buffer : NULL; }
 int vizero_cursor_is_at_line_start(vizero_cursor_t* cursor) { (void)cursor; return 0; }
 int vizero_cursor_is_at_line_end(vizero_cursor_t* cursor) { (void)cursor; return 0; }
+
+void vizero_cursor_move_page_up(vizero_cursor_t* cursor) {
+    if (!cursor || !cursor->buffer) return;
+    
+    /* Move up by approximately one screen height (20 lines) */
+    const size_t page_size = 20;
+    
+    if (cursor->line >= page_size) {
+        cursor->line -= page_size;
+    } else {
+        cursor->line = 0;
+    }
+    
+    /* Clamp column to new line length */
+    size_t line_len = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+    if (cursor->column > line_len) {
+        cursor->column = line_len;
+    }
+}
+
+void vizero_cursor_move_page_down(vizero_cursor_t* cursor) {
+    if (!cursor || !cursor->buffer) return;
+    
+    /* Move down by approximately one screen height (20 lines) */
+    const size_t page_size = 20;
+    size_t line_count = vizero_buffer_get_line_count(cursor->buffer);
+    
+    if (cursor->line + page_size < line_count) {
+        cursor->line += page_size;
+    } else {
+        cursor->line = line_count > 0 ? line_count - 1 : 0;
+    }
+    
+    /* Clamp column to new line length */
+    size_t line_len = vizero_buffer_get_line_length(cursor->buffer, cursor->line);
+    if (cursor->column > line_len) {
+        cursor->column = line_len;
+    }
+}

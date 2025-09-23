@@ -233,7 +233,70 @@ int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) 
 }
 
 int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_t start_col, size_t end_line, size_t end_col) {
-    (void)buffer; (void)start_line; (void)start_col; (void)end_line; (void)end_col; return 0;
+    if (!buffer || start_line >= buffer->line_count || end_line >= buffer->line_count) return -1;
+    
+    /* Handle single line deletion */
+    if (start_line == end_line) {
+        const char* line_text = vizero_buffer_get_line_text(buffer, start_line);
+        if (!line_text) return -1;
+        
+        size_t line_len = strlen(line_text);
+        if (start_col > line_len || end_col > line_len || start_col > end_col) return -1;
+        
+        /* Create new line without the deleted range */
+        size_t new_len = line_len - (end_col - start_col);
+        char* new_line = (char*)malloc(new_len + 1);
+        if (!new_line) return -1;
+        
+        /* Copy part before deletion */
+        strncpy(new_line, line_text, start_col);
+        /* Copy part after deletion */
+        strcpy(new_line + start_col, line_text + end_col);
+        
+        /* Replace the line */
+        free(buffer->lines[start_line]);
+        buffer->lines[start_line] = new_line;
+        buffer->modified = 1;
+        return 0;
+    }
+    
+    /* Handle multi-line deletion */
+    const char* start_line_text = vizero_buffer_get_line_text(buffer, start_line);
+    const char* end_line_text = vizero_buffer_get_line_text(buffer, end_line);
+    if (!start_line_text || !end_line_text) return -1;
+    
+    /* Create new line combining start of first line with end of last line */
+    size_t start_line_len = strlen(start_line_text);
+    size_t end_line_len = strlen(end_line_text);
+    
+    if (start_col > start_line_len || end_col > end_line_len) return -1;
+    
+    char* new_line = (char*)malloc(start_col + (end_line_len - end_col) + 1);
+    if (!new_line) return -1;
+    
+    /* Copy start of first line */
+    strncpy(new_line, start_line_text, start_col);
+    /* Copy end of last line */
+    strcpy(new_line + start_col, end_line_text + end_col);
+    
+    /* Replace first line with combined line */
+    free(buffer->lines[start_line]);
+    buffer->lines[start_line] = new_line;
+    
+    /* Delete intermediate lines */
+    for (size_t i = start_line + 1; i <= end_line; i++) {
+        free(buffer->lines[i]);
+    }
+    
+    /* Shift remaining lines up */
+    size_t lines_deleted = end_line - start_line;
+    for (size_t i = start_line + 1; i < buffer->line_count - lines_deleted; i++) {
+        buffer->lines[i] = buffer->lines[i + lines_deleted];
+    }
+    
+    buffer->line_count -= lines_deleted;
+    buffer->modified = 1;
+    return 0;
 }
 
 int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text) {
@@ -351,7 +414,99 @@ int vizero_buffer_join_lines(vizero_buffer_t* buffer, size_t line_num) {
 }
 
 int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) {
-    (void)buffer; (void)filename; return 0;
+    if (!buffer || !filename) return -1;
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        return -1;
+    }
+    
+    /* Clear existing lines */
+    for (size_t i = 0; i < buffer->line_count; i++) {
+        free(buffer->lines[i]);
+    }
+    free(buffer->lines);
+    
+    /* Read file into memory first */
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    char* file_content = (char*)malloc(file_size + 1);
+    if (!file_content) {
+        fclose(file);
+        return -1;
+    }
+    
+    size_t bytes_read = fread(file_content, 1, file_size, file);
+    file_content[bytes_read] = '\0';
+    fclose(file);
+    
+    /* Count lines first */
+    size_t line_count = 1;
+    for (size_t i = 0; i < bytes_read; i++) {
+        if (file_content[i] == '\n') {
+            line_count++;
+        }
+    }
+    
+    /* Allocate line array */
+    buffer->lines = (char**)calloc(line_count, sizeof(char*));
+    if (!buffer->lines) {
+        free(file_content);
+        return -1;
+    }
+    
+    /* Split content into lines */
+    buffer->line_count = 0;
+    char* line_start = file_content;
+    char* pos = file_content;
+    
+    while (*pos) {
+        if (*pos == '\n') {
+            /* Create line (without the newline) */
+            size_t line_len = pos - line_start;
+            buffer->lines[buffer->line_count] = (char*)malloc(line_len + 1);
+            if (buffer->lines[buffer->line_count]) {
+                strncpy(buffer->lines[buffer->line_count], line_start, line_len);
+                buffer->lines[buffer->line_count][line_len] = '\0';
+                buffer->line_count++;
+            }
+            line_start = pos + 1;
+        } else if (*pos == '\r') {
+            /* Skip carriage returns */
+            *pos = ' '; /* Replace with space to avoid issues */
+        }
+        pos++;
+    }
+    
+    /* Handle last line if file doesn't end with newline */
+    if (line_start < file_content + bytes_read) {
+        size_t line_len = (file_content + bytes_read) - line_start;
+        buffer->lines[buffer->line_count] = (char*)malloc(line_len + 1);
+        if (buffer->lines[buffer->line_count]) {
+            strncpy(buffer->lines[buffer->line_count], line_start, line_len);
+            buffer->lines[buffer->line_count][line_len] = '\0';
+            buffer->line_count++;
+        }
+    }
+    
+    /* Ensure we have at least one line */
+    if (buffer->line_count == 0) {
+        buffer->lines[0] = strdup("");
+        buffer->line_count = 1;
+    }
+    
+    free(file_content);
+    buffer->modified = 0;
+    
+    /* Set filename */
+    if (buffer->filename) {
+        free(buffer->filename);
+    }
+    buffer->filename = strdup(filename);
+    
+    return 0;
 }
 
 int vizero_buffer_save_to_file(vizero_buffer_t* buffer, const char* filename) {

@@ -216,6 +216,7 @@ add_library(vizero_core STATIC
     src/core/window.cpp
     src/core/renderer.cpp
     src/core/input_manager.cpp
+    src/core/settings.cpp
     src/text/buffer.cpp
     src/text/cursor.cpp
     src/text/line.cpp
@@ -320,6 +321,7 @@ if(BUILD_TESTS)
         tests/test_framework.cpp
         tests/test_editor.cpp
         # Core source files needed for tests
+        src/core/settings.cpp
         src/text/buffer.cpp
         src/text/cursor.cpp
         src/text/line.cpp
@@ -330,6 +332,11 @@ if(BUILD_TESTS)
     target_include_directories(vizero_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        ${SDL2_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(vizero_tests PRIVATE
+        ${SDL2_LIBRARIES}
     )
     
     # Set output directory for tests

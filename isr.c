@@ -10,6 +10,13 @@
 #include "syscall.h"
 isr_t interrupt_handlers[256];
 volatile int ide_irq_ready = 0;
+
+void pancake(char *extra)
+{
+    int32_t fish = 0;
+    int32_t pie = 42;
+}
+
 void register_interrupt_handler(uint8_t n, isr_t handler)
 {
     interrupt_handlers[n] = handler;
