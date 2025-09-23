@@ -239,6 +239,24 @@ void vizero_status_bar_update(vizero_status_bar_t* status_bar, vizero_editor_sta
         return;
     }
     
+    /* Check for custom status message first */
+    const char* status_message = vizero_editor_get_status_message(editor);
+    if (status_message && status_message[0] != '\0') {
+        /* Display custom status message */
+        size_t msg_len = strlen(status_message);
+        size_t required_len = msg_len + 10; /* message + padding */
+        
+        if (required_len > status_bar->rendered_capacity) {
+            free(status_bar->rendered_text);
+            status_bar->rendered_capacity = required_len * 2;
+            status_bar->rendered_text = (char*)malloc(status_bar->rendered_capacity);
+            if (!status_bar->rendered_text) return;
+        }
+        
+        sprintf(status_bar->rendered_text, "%s", status_message);
+        return;
+    }
+    
     /* Normal status bar display */
     
     /* Calculate required buffer size */

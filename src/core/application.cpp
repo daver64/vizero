@@ -30,6 +30,9 @@ struct vizero_application_t {
     int scroll_x;
     int scroll_y;
     
+    /* Welcome message state */
+    int show_welcome;
+    
     /* Temporary settings during initialization */
     vizero_settings_t* settings;
 };
@@ -45,6 +48,7 @@ vizero_application_t* vizero_application_create(const vizero_app_config_t* confi
     app->should_quit = 0;
     app->scroll_x = 0;
     app->scroll_y = 0;
+    app->show_welcome = 1; /* Show welcome message initially */
     
     return app;
 }
@@ -537,9 +541,9 @@ int vizero_application_run(vizero_application_t* app) {
                     vizero_renderer_draw_text(app->renderer, buffer_text, &text_info);
                 }
             }
-        } else {
-            /* Show welcome message */
-            vizero_renderer_draw_text(app->renderer, "Vizero - Vi Clone\nPress 'i' to enter insert mode\nPress ESC to return to normal mode\nPress Ctrl+C to quit", &text_info);
+        } else if (app->show_welcome) {
+            /* Show welcome message only initially */
+            vizero_renderer_draw_text(app->renderer, "Vizero - Vi Clone\nPress 'i' to enter insert mode\nPress ESC to return to normal mode\nPress ':' for commands, ':help' for help", &text_info);
         }
         
         /* Draw cursor - cursor_pos already declared earlier */
@@ -599,7 +603,36 @@ int vizero_application_run(vizero_application_t* app) {
                 vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10), 
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
                 
-                /* Draw popup text */
+                /* Draw popup text with scrolling support */
+                int scroll_offset = vizero_editor_get_popup_scroll_offset(app->editor);
+                int visible_lines = (popup_height - 80) / 16; /* Approximate lines that fit (16px per line) */
+                
+                /* Create a buffer for the visible portion of text */
+                const char* line_start = popup_content;
+                char visible_text[8192] = "";  /* Buffer for visible text */
+                int current_line = 0;
+                int lines_added = 0;
+                
+                /* Skip lines before scroll offset */
+                while (*line_start && current_line < scroll_offset) {
+                    if (*line_start == '\n') {
+                        current_line++;
+                    }
+                    line_start++;
+                }
+                
+                /* Copy visible lines */
+                const char* p = line_start;
+                char* out = visible_text;
+                while (*p && lines_added < visible_lines && (out - visible_text) < sizeof(visible_text) - 1) {
+                    *out++ = *p;
+                    if (*p == '\n') {
+                        lines_added++;
+                    }
+                    p++;
+                }
+                *out = '\0';
+                
                 vizero_text_info_t popup_text_info;
                 popup_text_info.x = (float)popup_x;
                 popup_text_info.y = (float)popup_y;
@@ -609,10 +642,16 @@ int vizero_application_run(vizero_application_t* app) {
                 popup_text_info.color.a = 1.0f;
                 popup_text_info.font = NULL; /* Use default font */
                 
-                vizero_renderer_draw_text(app->renderer, popup_content, &popup_text_info);
+                vizero_renderer_draw_text(app->renderer, visible_text, &popup_text_info);
                 
                 /* Draw dismiss instruction */
-                const char* instruction = "\n\nPress ESC to close or wait 5 seconds...";
+                uint32_t popup_duration = vizero_editor_get_popup_duration(app->editor);
+                const char* instruction;
+                if (popup_duration > 0) {
+                    instruction = "\n\nPress ESC to close or wait for timeout...";
+                } else {
+                    instruction = "\n\nPress ESC to close, or use UP/DOWN arrows to scroll";
+                }
                 popup_text_info.y = (float)(popup_y + popup_height - 40);
                 popup_text_info.color.r = 0.7f;
                 popup_text_info.color.g = 0.7f;
@@ -674,4 +713,10 @@ void vizero_application_on_file_drop(vizero_application_t* app, const char* file
     
     /* Open dropped file */
     vizero_editor_open_buffer(app->editor, filename);
+}
+
+void vizero_application_on_user_input(vizero_application_t* app) {
+    if (app) {
+        app->show_welcome = 0; /* Hide welcome message on any user input */
+    }
 }

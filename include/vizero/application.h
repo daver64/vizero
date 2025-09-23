@@ -41,6 +41,7 @@ vizero_plugin_manager_t* vizero_application_get_plugin_manager(vizero_applicatio
 /* Application events */
 void vizero_application_on_window_resize(vizero_application_t* app, int width, int height);
 void vizero_application_on_file_drop(vizero_application_t* app, const char* filename);
+void vizero_application_on_user_input(vizero_application_t* app);
 void vizero_application_quit(vizero_application_t* app);
 
 #ifdef __cplusplus

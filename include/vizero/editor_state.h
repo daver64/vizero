@@ -76,6 +76,8 @@ int vizero_editor_switch_buffer(vizero_editor_state_t* state, size_t buffer_inde
 int vizero_editor_next_buffer(vizero_editor_state_t* state);
 int vizero_editor_previous_buffer(vizero_editor_state_t* state);
 int vizero_editor_create_new_buffer(vizero_editor_state_t* state, const char* name);
+int vizero_editor_close_current_buffer(vizero_editor_state_t* state);
+int vizero_editor_close_buffer_by_index(vizero_editor_state_t* state, size_t buffer_index);
 
 /* Project management */
 vizero_project_t* vizero_editor_get_current_project(vizero_editor_state_t* state);
@@ -132,6 +134,9 @@ void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content,
 void vizero_editor_hide_popup(vizero_editor_state_t* state);
 int vizero_editor_is_popup_visible(vizero_editor_state_t* state);
 const char* vizero_editor_get_popup_content(vizero_editor_state_t* state);
+uint32_t vizero_editor_get_popup_duration(vizero_editor_state_t* state);
+void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines);
+int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state);
 
 /* Application control */
 int vizero_editor_should_quit(vizero_editor_state_t* state);

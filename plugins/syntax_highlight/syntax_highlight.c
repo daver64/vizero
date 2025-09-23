@@ -4,6 +4,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+/* Cross-platform unused attribute */
+#ifdef _MSC_VER
+    #define UNUSED_PARAM
+#else
+    #define UNUSED_PARAM __attribute__((unused))
+#endif
+
 /* Syntax highlight flags */
 #define SYNTAX_BOLD       0x01
 #define SYNTAX_ITALIC     0x02
@@ -133,7 +140,7 @@ static int get_file_type(const char* filename) {
 }
 
 /* C syntax highlighting */
-static int __attribute__((unused)) highlight_c_line(const char* line, size_t line_num, 
+static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num, 
                            vizero_syntax_token_t** tokens, size_t* token_count) {
     if (!line || !tokens || !token_count) return -1;
     
@@ -296,7 +303,7 @@ static int __attribute__((unused)) highlight_c_line(const char* line, size_t lin
 }
 
 /* Assembly syntax highlighting */
-static int __attribute__((unused)) highlight_asm_line(const char* line, size_t line_num,
+static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
                              vizero_syntax_token_t** tokens, size_t* token_count) {
     if (!line || !tokens || !token_count) return -1;
     

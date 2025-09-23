@@ -3,6 +3,25 @@
 
 set -e  # Exit on any error
 
+# Handle clean option
+if [[ "$1" == "clean" ]]; then
+    echo "Cleaning build directory..."
+    if [[ -d "build" ]]; then
+        # Kill any running vizero processes
+        pkill -f vizero 2>/dev/null || true
+        
+        # Wait a moment for processes to terminate
+        sleep 1
+        
+        # Remove build directory
+        rm -rf build
+        echo "Build directory cleaned successfully."
+    else
+        echo "Build directory doesn't exist."
+    fi
+    [[ "$2" == "" ]] && exit 0
+fi
+
 echo "Building Vizero for Unix..."
 
 # Check for required tools

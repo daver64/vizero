@@ -52,6 +52,7 @@ struct vizero_editor_state_t {
     char* popup_content;
     uint32_t popup_start_time;
     uint32_t popup_duration_ms;
+    int popup_scroll_offset;  /* Lines scrolled from top */
     
     /* Settings */
     vizero_settings_t* settings;
@@ -386,6 +387,70 @@ int vizero_editor_create_new_buffer(vizero_editor_state_t* state, const char* na
     return 0;
 }
 
+int vizero_editor_close_current_buffer(vizero_editor_state_t* state) {
+    if (!state || state->buffer_count == 0) return -1;
+    
+    /* Don't close the last buffer */
+    if (state->buffer_count == 1) {
+        vizero_editor_set_status_message(state, "Cannot close last buffer");
+        return -1;
+    }
+    
+    vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(state);
+    if (!current_buffer) return -1;
+    
+    /* Check if buffer has unsaved changes */
+    if (vizero_buffer_is_modified(current_buffer)) {
+        const char* filename = vizero_buffer_get_filename(current_buffer);
+        char msg[512];
+        snprintf(msg, sizeof(msg), "No write since last change for \"%s\" (add ! to override)", 
+                 filename ? filename : "[No Name]");
+        vizero_editor_set_status_message(state, msg);
+        return -1;
+    }
+    
+    int result = vizero_editor_close_buffer(state, current_buffer);
+    if (result == 0) {
+        const char* filename = vizero_buffer_get_filename(current_buffer);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Buffer \"%s\" closed", filename ? filename : "[No Name]");
+        vizero_editor_set_status_message(state, msg);
+    }
+    return result;
+}
+
+int vizero_editor_close_buffer_by_index(vizero_editor_state_t* state, size_t buffer_index) {
+    if (!state || buffer_index >= state->buffer_count) return -1;
+    
+    /* Don't close the last buffer */
+    if (state->buffer_count == 1) {
+        vizero_editor_set_status_message(state, "Cannot close last buffer");
+        return -1;
+    }
+    
+    vizero_buffer_t* buffer = vizero_editor_get_buffer(state, buffer_index);
+    if (!buffer) return -1;
+    
+    /* Check if buffer has unsaved changes */
+    if (vizero_buffer_is_modified(buffer)) {
+        const char* filename = vizero_buffer_get_filename(buffer);
+        char msg[512];
+        snprintf(msg, sizeof(msg), "No write since last change for \"%s\" (add ! to override)", 
+                 filename ? filename : "[No Name]");
+        vizero_editor_set_status_message(state, msg);
+        return -1;
+    }
+    
+    int result = vizero_editor_close_buffer(state, buffer);
+    if (result == 0) {
+        const char* filename = vizero_buffer_get_filename(buffer);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Buffer \"%s\" closed", filename ? filename : "[No Name]");
+        vizero_editor_set_status_message(state, msg);
+    }
+    return result;
+}
+
 /* Popup system functions */
 void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content, uint32_t duration_ms) {
     if (!state || !content) return;
@@ -400,6 +465,7 @@ void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content,
     state->popup_visible = 1;
     state->popup_start_time = SDL_GetTicks();
     state->popup_duration_ms = duration_ms;
+    state->popup_scroll_offset = 0;  /* Reset scroll to top */
 }
 
 void vizero_editor_hide_popup(vizero_editor_state_t* state) {
@@ -416,10 +482,12 @@ int vizero_editor_is_popup_visible(vizero_editor_state_t* state) {
     if (!state || !state->popup_visible) return 0;
     
     /* Check if popup has timed out */
-    uint32_t current_time = SDL_GetTicks();
-    if (current_time - state->popup_start_time >= state->popup_duration_ms) {
-        vizero_editor_hide_popup(state);
-        return 0;
+    if (state->popup_duration_ms > 0) {  /* Only check timeout if duration is set */
+        uint32_t current_time = SDL_GetTicks();
+        if (current_time - state->popup_start_time >= state->popup_duration_ms) {
+            vizero_editor_hide_popup(state);
+            return 0;
+        }
     }
     
     return 1;
@@ -428,6 +496,43 @@ int vizero_editor_is_popup_visible(vizero_editor_state_t* state) {
 const char* vizero_editor_get_popup_content(vizero_editor_state_t* state) {
     if (!state || !vizero_editor_is_popup_visible(state)) return NULL;
     return state->popup_content;
+}
+
+uint32_t vizero_editor_get_popup_duration(vizero_editor_state_t* state) {
+    if (!state || !vizero_editor_is_popup_visible(state)) return 0;
+    return state->popup_duration_ms;
+}
+
+void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines) {
+    if (!state || !vizero_editor_is_popup_visible(state) || !state->popup_content) return;
+    
+    /* Count total lines in popup content */
+    int total_lines = 1;  /* At least one line */
+    const char* p = state->popup_content;
+    while (*p) {
+        if (*p == '\n') total_lines++;
+        p++;
+    }
+    
+    /* Update scroll offset */
+    state->popup_scroll_offset += lines;
+    
+    /* Clamp scroll offset */
+    if (state->popup_scroll_offset < 0) {
+        state->popup_scroll_offset = 0;
+    }
+    
+    /* Don't scroll past the end (leave some lines visible) */
+    int max_scroll = total_lines - 10;  /* Keep at least 10 lines visible */
+    if (max_scroll < 0) max_scroll = 0;
+    if (state->popup_scroll_offset > max_scroll) {
+        state->popup_scroll_offset = max_scroll;
+    }
+}
+
+int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state) {
+    if (!state || !vizero_editor_is_popup_visible(state)) return 0;
+    return state->popup_scroll_offset;
 }
 
 /* Helper function to execute command and capture output */
@@ -715,10 +820,28 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     /* Parse and execute commands */
     if (strcmp(command, "q") == 0 || strcmp(command, "quit") == 0) {
         /* Quit command - check for unsaved changes */
+        int has_unsaved = 0;
+        
+        /* Check project level changes */
         if (state->current_project && vizero_project_has_unsaved_changes(state->current_project)) {
+            has_unsaved = 1;
+        }
+        
+        /* Check buffer level changes */
+        if (!has_unsaved) {
+            for (size_t i = 0; i < state->buffer_count; i++) {
+                if (vizero_buffer_is_modified(state->buffers[i])) {
+                    has_unsaved = 1;
+                    break;
+                }
+            }
+        }
+        
+        if (has_unsaved) {
             vizero_editor_set_status_message(state, "No write since last change (add ! to override)");
             return -1;
         }
+        
         /* Signal application to quit */
         vizero_editor_set_quit_flag(state);
         return 0;
@@ -785,9 +908,17 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         const char* filename = strchr(command, ' ');
         if (filename) {
             filename++; /* Skip space */
+            
+            /* Check if file exists */
+            int file_exists = vizero_file_exists(filename);
+            
             if (vizero_editor_open_buffer(state, filename) == 0) {
                 char msg[512];
-                sprintf(msg, "Opened: %s", filename);
+                if (file_exists) {
+                    sprintf(msg, "\"%s\" opened", filename);
+                } else {
+                    sprintf(msg, "\"%s\" [New File]", filename);
+                }
                 vizero_editor_set_status_message(state, msg);
                 return 0;
             } else {
@@ -833,6 +964,29 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         vizero_editor_set_status_message(state, msg);
         return 0;
         
+    } else if (strcmp(command, "bd") == 0 || strcmp(command, "bdelete") == 0) {
+        /* Delete/close current buffer */
+        return vizero_editor_close_current_buffer(state);
+        
+    } else if (strncmp(command, "bd ", 3) == 0 || strncmp(command, "bdelete ", 8) == 0) {
+        /* Delete specific buffer by number */
+        const char* number_str = strchr(command, ' ');
+        if (number_str) {
+            number_str++; /* Skip space */
+            char* endptr;
+            long buffer_num = strtol(number_str, &endptr, 10);
+            
+            if (*endptr == '\0' && buffer_num > 0 && buffer_num <= (long)state->buffer_count) {
+                size_t buffer_index = buffer_num - 1;
+                return vizero_editor_close_buffer_by_index(state, buffer_index);
+            } else {
+                char msg[256];
+                sprintf(msg, "Invalid buffer number: %s (valid range: 1-%zu)", number_str, state->buffer_count);
+                vizero_editor_set_status_message(state, msg);
+                return -1;
+            }
+        }
+        
     } else if (strncmp(command, "b", 1) == 0 && strlen(command) > 1) {
         /* Switch to buffer by number (:b1, :b2, etc.) */
         const char* number_str = command + 1;
@@ -856,6 +1010,72 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return -1;
         }
         
+    } else if (strcmp(command, "new") == 0) {
+        /* Create new empty buffer */
+        if (vizero_editor_create_new_buffer(state, NULL) == 0) {
+            vizero_editor_set_status_message(state, "DEBUG: New buffer created successfully!");
+            return 0;
+        } else {
+            vizero_editor_set_status_message(state, "DEBUG: Failed to create new buffer!");
+            return -1;
+        }
+        
+    } else if (strcmp(command, "help") == 0 || strcmp(command, "h") == 0) {
+        /* Show comprehensive help in popup */
+        const char* help_content = 
+            "VIZERO EDITOR - HELP\n"
+            "====================\n\n"
+            "MOVEMENT COMMANDS:\n"
+            "  h, j, k, l        - Left, Down, Up, Right\n"
+            "  w, b              - Next/Previous word\n"
+            "  0, $              - Start/End of line\n"
+            "  gg, G             - First/Last line\n"
+            "  Ctrl+U, Ctrl+D    - Page Up/Down\n\n"
+            "EDITING COMMANDS:\n"
+            "  i, a              - Insert before/after cursor\n"
+            "  I, A              - Insert at start/end of line\n"
+            "  o, O              - Open line below/above\n"
+            "  x, X              - Delete char after/before cursor\n"
+            "  dd                - Delete current line\n"
+            "  yy                - Copy current line\n"
+            "  p, P              - Paste after/before cursor\n"
+            "  u, Ctrl+R         - Undo/Redo\n\n"
+            "BUFFER COMMANDS:\n"
+            "  :e filename       - Open file in new buffer\n"
+            "  :w                - Write (save) current buffer\n"
+            "  :q                - Quit (if no unsaved changes)\n"
+            "  :wq               - Write and quit\n"
+            "  :bn, :bp          - Next/Previous buffer\n"
+            "  :b1, :b2, :b3     - Switch to buffer number\n"
+            "  :ls               - List all buffers\n"
+            "  :bd               - Delete current buffer\n"
+            "  :new              - Create new empty buffer\n\n"
+            "OTHER COMMANDS:\n"
+            "  :10               - Go to line 10\n"
+            "  :syntax           - Toggle syntax highlighting\n"
+            "  :compile          - Compile current file\n"
+            "  :help             - Show this help\n\n"
+            "Press ESC to close this help window.";
+        
+        vizero_editor_show_popup(state, help_content, 0); /* No timeout - stays until ESC */
+        return 0;
+        
+    } else if (strcmp(command, "$") == 0) {
+        /* Go to last line */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        if (buffer && cursor) {
+            size_t line_count = vizero_buffer_get_line_count(buffer);
+            if (line_count > 0) {
+                vizero_cursor_set_position(cursor, line_count - 1, 0);
+                char msg[64];
+                sprintf(msg, "Line %zu", line_count);
+                vizero_editor_set_status_message(state, msg);
+                return 0;
+            }
+        }
+        return -1;
+        
     } else if (strncmp(command, "linenum ", 8) == 0) {
         /* Line number display setting */
         const char* value = command + 8;
@@ -868,6 +1088,23 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         } else {
             char msg[256];
             sprintf(msg, "Invalid linenum value: %s (use 'on' or 'off')", value);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+        return 0;
+        
+    } else if (strncmp(command, "syntax ", 7) == 0) {
+        /* Syntax highlighting setting */
+        const char* value = command + 7;
+        if (strcmp(value, "on") == 0) {
+            vizero_settings_set_bool(state->settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING, true);
+            vizero_editor_set_status_message(state, "Syntax highlighting enabled");
+        } else if (strcmp(value, "off") == 0) {
+            vizero_settings_set_bool(state->settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING, false);
+            vizero_editor_set_status_message(state, "Syntax highlighting disabled");
+        } else {
+            char msg[256];
+            sprintf(msg, "Invalid syntax value: %s (use 'on' or 'off')", value);
             vizero_editor_set_status_message(state, msg);
             return -1;
         }
@@ -1328,7 +1565,78 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         
         return 0;
         
+    } else if (strcmp(command, "file") == 0 || strcmp(command, "f") == 0) {
+        /* Show current filename and status */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        if (buffer) {
+            const char* filename = vizero_buffer_get_filename(buffer);
+            size_t line_count = vizero_buffer_get_line_count(buffer);
+            int is_modified = vizero_buffer_is_modified(buffer);
+            
+            char msg[512];
+            snprintf(msg, sizeof(msg), "\"%s\" %zu lines %s", 
+                    filename ? filename : "[No Name]", 
+                    line_count,
+                    is_modified ? "[Modified]" : "");
+            vizero_editor_set_status_message(state, msg);
+        } else {
+            vizero_editor_set_status_message(state, "No current buffer");
+        }
+        return 0;
+        
+    } else if (strncmp(command, "file ", 5) == 0 || strncmp(command, "f ", 2) == 0) {
+        /* Set filename for current buffer */
+        const char* filename = strchr(command, ' ');
+        if (filename) {
+            filename++; /* Skip space */
+            while (*filename && (*filename == ' ' || *filename == '\t')) filename++; /* Skip whitespace */
+            
+            if (strlen(filename) > 0) {
+                vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+                if (buffer) {
+                    vizero_buffer_set_filename(buffer, filename);
+                    char msg[512];
+                    snprintf(msg, sizeof(msg), "Set filename to: %s", filename);
+                    vizero_editor_set_status_message(state, msg);
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "No current buffer");
+                    return -1;
+                }
+            }
+        }
+        vizero_editor_set_status_message(state, "Usage: :file filename");
+        return -1;
+        
     } else {
+        /* Check if command is a line number */
+        char* endptr;
+        long line_num = strtol(command, &endptr, 10);
+        
+        if (*endptr == '\0' && line_num > 0) {
+            /* Pure numeric command - go to line */
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+            if (buffer && cursor) {
+                size_t line_count = vizero_buffer_get_line_count(buffer);
+                size_t target_line = (size_t)(line_num - 1); /* Convert to 0-based */
+                
+                if (target_line < line_count) {
+                    vizero_cursor_set_position(cursor, target_line, 0);
+                    char msg[64];
+                    sprintf(msg, "Line %ld", line_num);
+                    vizero_editor_set_status_message(state, msg);
+                    return 0;
+                } else {
+                    char msg[128];
+                    sprintf(msg, "Line %ld out of range (1-%zu)", line_num, line_count);
+                    vizero_editor_set_status_message(state, msg);
+                    return -1;
+                }
+            }
+            return -1;
+        }
+        
         /* Unknown command */
         char msg[256];
         sprintf(msg, "Not an editor command: %s", command);

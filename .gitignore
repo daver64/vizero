@@ -63,3 +63,5 @@ Thumbs.db
 # Dependencies that might be copied
 SDL2.dll
 glew32.dll
+main.exe
+main.c

@@ -56,10 +56,24 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     /* Get editor state for key handling */
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
                     if (editor) {
+                        /* Hide welcome message on any key press */
+                        vizero_application_on_user_input(input->app);
+                        
                         /* Check for ESC key to dismiss popup */
                         if (event.key.keysym.sym == SDLK_ESCAPE && vizero_editor_is_popup_visible(editor)) {
                             vizero_editor_hide_popup(editor);
                             break; /* Consume the ESC key */
+                        }
+                        
+                        /* Check for UP/DOWN keys to scroll popup */
+                        if (vizero_editor_is_popup_visible(editor)) {
+                            if (event.key.keysym.sym == SDLK_UP) {
+                                vizero_editor_scroll_popup(editor, -1);
+                                break; /* Consume the key */
+                            } else if (event.key.keysym.sym == SDLK_DOWN) {
+                                vizero_editor_scroll_popup(editor, 1);
+                                break; /* Consume the key */
+                            }
                         }
                         
                         /* Check for F11 key to toggle fullscreen */
@@ -284,7 +298,8 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             }
                         }
                         } /* End of normal mode handling */
-                    } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
+                    }
+                    if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
                         /* In insert mode, handle special keys */
                         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
