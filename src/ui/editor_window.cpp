@@ -1,4 +1,8 @@
-           
+// ...existing code...
+// Safely set the window title, freeing the old one
+#include "vizero/editor_window_constants.h"
+// C stdio for sprintf/snprintf
+#include <cstdio>
 #include <ctype.h>
 /* Multi-window editor system implementation */
 #include "vizero/editor_window.h"
@@ -6,17 +10,16 @@
 #include "vizero/cursor.h"
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-
-#ifdef _WIN32
-#define strdup _strdup
-#endif
-
-#define MAX_WINDOWS 32
-#define DEFAULT_TITLE_BAR_HEIGHT 24
-#define DEFAULT_MIN_WIDTH 200
-#define DEFAULT_MIN_HEIGHT 100
-#include "vizero/settings.h"
+#include <string.h>
+// Safely set the window title, freeing the old one
+void vizero_editor_window_set_title(vizero_editor_window_t* window, const char* title) {
+    if (!window) return;
+    if (window->title) {
+        free(window->title);
+        window->title = NULL;
+    }
+    window->title = title ? strdup(title) : NULL;
+}
 #include "vizero/editor_state.h"
 #include "../editor/editor_state_internal.h"
 #include "vizero/renderer.h"
@@ -93,19 +96,10 @@ int vizero_window_manager_focus_number(vizero_window_manager_t* manager, int num
 void vizero_window_manager_destroy(vizero_window_manager_t* manager) {
     if (!manager) return;
     
-    /* Destroy all windows */
-    for (size_t i = 0; i < manager->window_count; i++) {
-        if (manager->windows[i]) {
-            if (manager->windows[i]->title) {
-                free(manager->windows[i]->title);
-            }
-            if (manager->windows[i]->cursor) {
-                vizero_cursor_destroy(manager->windows[i]->cursor);
-            }
-            free(manager->windows[i]);
-        }
+    /* Destroy all windows using the proper destructor */
+    while (manager->window_count > 0) {
+        vizero_window_manager_destroy_window(manager, manager->windows[0]->window_id);
     }
-    
     free(manager);
 }
 
@@ -149,14 +143,14 @@ vizero_editor_window_t* vizero_window_manager_create_window(vizero_window_manage
     if (buffer) {
         const char* filename = vizero_buffer_get_filename(buffer);
         if (filename) {
-            window->title = strdup(filename);
+            vizero_editor_window_set_title(window, filename);
         } else {
             char default_title[64];
             sprintf(default_title, "[No Name %u]", window->window_id);
-            window->title = strdup(default_title);
+            vizero_editor_window_set_title(window, default_title);
         }
     } else {
-        window->title = strdup("[Empty]");
+        vizero_editor_window_set_title(window, "[Empty]");
     }
     
     /* Add to manager */
@@ -193,7 +187,9 @@ int vizero_window_manager_destroy_window(vizero_window_manager_t* manager, uint3
         free(window->title);
     }
     if (window->cursor) {
+        printf("[DEBUG] vizero_window_manager_destroy_window: destroying cursor %p (window_id %u)\n", (void*)window->cursor, window_id);
         vizero_cursor_destroy(window->cursor);
+        printf("[DEBUG] vizero_window_manager_destroy_window: destroyed cursor %p (window_id %u)\n", (void*)window->cursor, window_id);
     }
     free(window);
     
@@ -282,16 +278,6 @@ vizero_editor_window_t* vizero_window_manager_get_window_by_id(vizero_window_man
 }
 
 /* Window properties */
-int vizero_editor_window_set_title(vizero_editor_window_t* window, const char* title) {
-    if (!window) return -1;
-    
-    if (window->title) {
-        free(window->title);
-    }
-    
-    window->title = title ? strdup(title) : strdup("[Untitled]");
-    return 0;
-}
 
 int vizero_editor_window_set_size(vizero_editor_window_t* window, int width, int height) {
     if (!window) return -1;

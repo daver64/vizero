@@ -518,39 +518,40 @@ int vizero_application_run(vizero_application_t* app) {
             }
         }
         
+        /* File change polling temporarily disabled for debugging corruption. */
         // --- File change polling logic ---
-        uint32_t now = SDL_GetTicks();
-        if (now - last_poll_time > poll_interval_ms) {
-            last_poll_time = now;
-            vizero_editor_state_t* editor = app->editor;
-            if (editor) {
-                size_t buffer_count = vizero_editor_get_buffer_count(editor);
-                for (size_t i = 0; i < buffer_count; ++i) {
-                    vizero_buffer_t* buf = vizero_editor_get_buffer(editor, i);
-                    if (!buf) continue;
-                    const char* fname = vizero_buffer_get_filename(buf);
-                    if (!fname || !*fname) continue;
-                    uint64_t disk_mtime = vizero_get_file_mtime(fname);
-                    uint64_t last_mtime = vizero_buffer_get_last_disk_mtime(buf);
-                    if (disk_mtime && disk_mtime != last_mtime) {
-                        if (!vizero_buffer_is_modified(buf)) {
-                            if (vizero_buffer_load_from_file(buf, fname) == 0) {
-                                vizero_buffer_set_last_disk_mtime(buf, disk_mtime);
-                                // Optionally: set a status message
-                                char msg[256];
-                                snprintf(msg, sizeof(msg), "File reloaded: %s", fname);
-                                vizero_editor_set_status_message(editor, msg);
-                            }
-                        } else {
-                            // Buffer is modified, warn user
-                            char msg[256];
-                            snprintf(msg, sizeof(msg), "File changed on disk: %s (unsaved changes)", fname);
-                            vizero_editor_set_status_message(editor, msg);
-                        }
-                    }
-                }
-            }
-        }
+        // uint32_t now = SDL_GetTicks();
+        // if (now - last_poll_time > poll_interval_ms) {
+        //     last_poll_time = now;
+        //     vizero_editor_state_t* editor = app->editor;
+        //     if (editor) {
+        //         size_t buffer_count = vizero_editor_get_buffer_count(editor);
+        //         for (size_t i = 0; i < buffer_count; ++i) {
+        //             vizero_buffer_t* buf = vizero_editor_get_buffer(editor, i);
+        //             if (!buf) continue;
+        //             const char* fname = vizero_buffer_get_filename(buf);
+        //             if (!fname || !*fname) continue;
+        //             uint64_t disk_mtime = vizero_get_file_mtime(fname);
+        //             uint64_t last_mtime = vizero_buffer_get_last_disk_mtime(buf);
+        //             if (disk_mtime && disk_mtime != last_mtime) {
+        //                 if (!vizero_buffer_is_modified(buf)) {
+        //                     if (vizero_buffer_load_from_file(buf, fname) == 0) {
+        //                         vizero_buffer_set_last_disk_mtime(buf, disk_mtime);
+        //                         // Optionally: set a status message
+        //                         char msg[256];
+        //                         snprintf(msg, sizeof(msg), "File reloaded: %s", fname);
+        //                         vizero_editor_set_status_message(editor, msg);
+        //                     }
+        //                 } else {
+        //                     // Buffer is modified, warn user
+        //                     char msg[256];
+        //                     snprintf(msg, sizeof(msg), "File changed on disk: %s (unsaved changes)", fname);
+        //                     vizero_editor_set_status_message(editor, msg);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
         
         /* Present frame */
         vizero_renderer_present(app->renderer);

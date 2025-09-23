@@ -3,6 +3,7 @@
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
 #include <string.h>
+#include <stdlib.h>
 
 typedef struct {
     int line;
@@ -12,7 +13,7 @@ typedef struct {
     int visual_col_end;
 } visual_map_entry_t;
 
-int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, int direction) {
+int vizero_editor_window_move_visual_row(struct vizero_editor_window_t* window, int direction) {
     if (!window || !window->buffer || !window->cursor) return 0;
     vizero_buffer_t* buffer = window->buffer;
     int max_cols = window->width / 8;

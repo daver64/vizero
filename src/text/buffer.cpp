@@ -2,6 +2,7 @@
 #include "vizero/buffer.h"
 #include <stdlib.h>
 #include <string.h>
+#include "vizero/filewatch_poll.h"
 #include <stdio.h>
 
 /* Windows compatibility for strdup */
@@ -191,6 +192,8 @@ vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
             
             /* Mark buffer as unmodified since we just loaded it from disk */
             buffer->modified = 0;
+            /* Set last_disk_mtime to current file mtime */
+            buffer->last_disk_mtime = vizero_get_file_mtime(filename);
         } else {
             /* File doesn't exist or can't be opened - start with empty buffer */
             printf("Note: File '%s' not found, creating new buffer\n", filename);

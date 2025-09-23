@@ -182,19 +182,44 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
 void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     if (!state) return;
     
-    /* Clean up window manager */
+    /* Before destroying window manager, null out any cursors in the array that are owned by windows */
     if (state->window_manager) {
+        size_t win_count = vizero_window_manager_get_window_count_raw(state->window_manager);
+        for (size_t w = 0; w < win_count; ++w) {
+            vizero_editor_window_t* win = vizero_window_manager_get_window_raw(state->window_manager, w);
+            if (win && win->cursor) {
+                for (size_t i = 0; i < state->buffer_count; ++i) {
+                    if (state->cursors[i] == win->cursor) {
+                        printf("[DEBUG] vizero_editor_state_destroy: nulling cursor %p (index %zu) because owned by window\n", (void*)win->cursor, i);
+                        state->cursors[i] = NULL;
+                    }
+                }
+            }
+        }
         vizero_window_manager_destroy(state->window_manager);
     }
     
     /* Clean up all buffers and cursors */
     for (size_t i = 0; i < state->buffer_count; i++) {
-        if (state->cursors[i]) vizero_cursor_destroy(state->cursors[i]);
-        if (state->buffers[i]) vizero_buffer_destroy(state->buffers[i]);
+        if (state->cursors[i]) {
+            printf("[DEBUG] vizero_editor_state_destroy: destroying cursor %p (index %zu)\n", (void*)state->cursors[i], i);
+            vizero_cursor_destroy(state->cursors[i]);
+            printf("[DEBUG] vizero_editor_state_destroy: destroyed cursor %p (index %zu)\n", (void*)state->cursors[i], i);
+        }
+        if (state->buffers[i]) {
+            printf("[DEBUG] vizero_editor_state_destroy: destroying buffer %p (index %zu)\n", (void*)state->buffers[i], i);
+            vizero_buffer_destroy(state->buffers[i]);
+            printf("[DEBUG] vizero_editor_state_destroy: destroyed buffer %p (index %zu)\n", (void*)state->buffers[i], i);
+        }
     }
     
     if (state->current_project) vizero_project_destroy(state->current_project);
-    if (state->status_message) free(state->status_message);
+    if (state->status_message) {
+        size_t len = strlen(state->status_message);
+        memset(state->status_message, 0, len);
+        free(state->status_message);
+        state->status_message = NULL;
+    }
     
     /* Save and destroy settings */
     if (state->settings) {
@@ -294,11 +319,16 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
     /* Create new buffer from file */
     vizero_buffer_t* buffer = vizero_buffer_create_from_file(filename);
     if (!buffer) return -1;
-    
+
     vizero_cursor_t* cursor = vizero_cursor_create(buffer);
     if (!cursor) {
         vizero_buffer_destroy(buffer);
         return -1;
+    }
+
+    /* Notify plugins of buffer open */
+    if (state->plugin_manager) {
+        vizero_plugin_manager_on_buffer_open(state->plugin_manager, buffer, filename);
     }
     
     // Add to buffer list and handle window creation/reuse robustly
@@ -314,8 +344,7 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     // Replace window's buffer/cursor
                     existing_window->buffer = buffer;
                     existing_window->cursor = cursor;
-                    if (existing_window->title) free(existing_window->title);
-                    existing_window->title = strdup(filename);
+                    vizero_editor_window_set_title(existing_window, filename);
                 }
                 // Remove/destroy old buffer/cursor only if not referenced by any window
                 int still_referenced = 0;
@@ -328,8 +357,20 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     }
                 }
                 if (!still_referenced) {
+                    /* Notify plugins of buffer close */
+                    if (state->plugin_manager) {
+                        vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[0]);
+                    }
+                    printf("[DEBUG] vizero_editor_open_buffer: destroying buffer %p (index 0)\n", (void*)state->buffers[0]);
                     vizero_buffer_destroy(state->buffers[0]);
-                    vizero_cursor_destroy(state->cursors[0]);
+                    printf("[DEBUG] vizero_editor_open_buffer: destroyed buffer %p (index 0)\n", (void*)state->buffers[0]);
+                    if (state->cursors[0]) {
+                        printf("[DEBUG] vizero_editor_open_buffer: destroying cursor %p (index 0)\n", (void*)state->cursors[0]);
+                        vizero_cursor_destroy(state->cursors[0]);
+                        printf("[DEBUG] vizero_editor_open_buffer: destroyed cursor %p (index 0)\n", (void*)state->cursors[0]);
+                    }
+                    state->buffers[0] = NULL;
+                    state->cursors[0] = NULL;
                 }
                 state->buffers[0] = buffer;
                 state->cursors[0] = cursor;
@@ -351,7 +392,14 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                             if (win && win != focused_window && win->buffer == state->buffers[i]) refcount++;
                         }
                         if (refcount == 0 && state->buffers[i] != buffer) {
+                            /* Notify plugins of buffer close */
+                            if (state->plugin_manager) {
+                                vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[i]);
+                            }
+                            printf("[DEBUG] vizero_editor_open_buffer: destroying buffer %p (index %zu)\n", (void*)state->buffers[i], i);
                             vizero_buffer_destroy(state->buffers[i]);
+                            printf("[DEBUG] vizero_editor_open_buffer: destroyed buffer %p (index %zu)\n", (void*)state->buffers[i], i);
+                            state->buffers[i] = NULL;
                         }
                         state->buffers[i] = buffer;
                     }
@@ -363,15 +411,19 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                             if (win && win != focused_window && win->cursor == state->cursors[i]) refcount++;
                         }
                         if (refcount == 0 && state->cursors[i] != cursor) {
-                            vizero_cursor_destroy(state->cursors[i]);
+                            if (state->cursors[i]) {
+                                printf("[DEBUG] vizero_editor_open_buffer: destroying cursor %p (index %zu)\n", (void*)state->cursors[i], i);
+                                vizero_cursor_destroy(state->cursors[i]);
+                                printf("[DEBUG] vizero_editor_open_buffer: destroyed cursor %p (index %zu)\n", (void*)state->cursors[i], i);
+                            }
+                            state->cursors[i] = NULL;
                         }
                         state->cursors[i] = cursor;
                     }
                 }
                 focused_window->buffer = buffer;
                 focused_window->cursor = cursor;
-                if (focused_window->title) free(focused_window->title);
-                focused_window->title = strdup(filename);
+                vizero_editor_window_set_title(focused_window, filename);
                 // Set current_buffer_index to the first matching buffer
                 for (size_t i = 0; i < state->buffer_count; ++i) {
                     if (state->buffers[i] == buffer) {
@@ -432,8 +484,20 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
     if (state->buffer_count == 1) return -1;
     
     /* Clean up buffer and cursor */
-    vizero_cursor_destroy(state->cursors[buffer_index]);
+    /* Notify plugins of buffer close */
+    if (state->plugin_manager) {
+        vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[buffer_index]);
+    }
+    if (state->cursors[buffer_index]) {
+        printf("[DEBUG] vizero_editor_close_buffer: destroying cursor %p (index %zu)\n", (void*)state->cursors[buffer_index], buffer_index);
+        vizero_cursor_destroy(state->cursors[buffer_index]);
+        printf("[DEBUG] vizero_editor_close_buffer: destroyed cursor %p (index %zu)\n", (void*)state->cursors[buffer_index], buffer_index);
+    }
+    state->cursors[buffer_index] = NULL;
+    printf("[DEBUG] vizero_editor_close_buffer: destroying buffer %p (index %zu)\n", (void*)state->buffers[buffer_index], buffer_index);
     vizero_buffer_destroy(state->buffers[buffer_index]);
+    printf("[DEBUG] vizero_editor_close_buffer: destroyed buffer %p (index %zu)\n", (void*)state->buffers[buffer_index], buffer_index);
+    state->buffers[buffer_index] = NULL;
     
     /* Shift remaining buffers down */
     for (size_t i = buffer_index; i < state->buffer_count - 1; i++) {
@@ -455,7 +519,14 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
 
 int vizero_editor_switch_buffer(vizero_editor_state_t* state, size_t buffer_index) {
     if (!state || buffer_index >= state->buffer_count) return -1;
+    size_t old_index = state->current_buffer_index;
     state->current_buffer_index = buffer_index;
+    /* Notify plugins of cursor moved if buffer/cursor changed */
+    if (state->plugin_manager && state->cursors[old_index] && state->cursors[buffer_index] && old_index != buffer_index) {
+        vizero_position_t old_pos = vizero_cursor_get_position(state->cursors[old_index]);
+        vizero_position_t new_pos = vizero_cursor_get_position(state->cursors[buffer_index]);
+        vizero_plugin_manager_on_cursor_moved(state->plugin_manager, state->cursors[buffer_index], old_pos, new_pos);
+    }
     return 0;
 }
 
@@ -1883,6 +1954,8 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
 void vizero_editor_set_status_message_with_timeout(vizero_editor_state_t* state, const char* message, unsigned int timeout_ms) {
     if (!state) return;
     if (state->status_message) {
+        size_t len = strlen(state->status_message);
+        memset(state->status_message, 0, len); /* Defensive: clear memory before free */
         free(state->status_message);
         state->status_message = NULL;
     }

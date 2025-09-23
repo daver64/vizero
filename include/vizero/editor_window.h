@@ -1,4 +1,6 @@
 // ...existing code...
+// ...existing code...
+// ...existing code...
 
 
 
@@ -9,8 +11,18 @@
 extern "C" {
 #endif
 
+
+#include <stddef.h>
+#include <stdint.h>
+
+/* Forward declarations */
+typedef struct vizero_buffer_t vizero_buffer_t;
+typedef struct vizero_cursor_t vizero_cursor_t;
+typedef struct vizero_editor_window_t vizero_editor_window_t;
+typedef struct vizero_window_manager_t vizero_window_manager_t;
+
 // Move the cursor up/down one visual row, using preferred_column
-int vizero_editor_window_move_visual_row(struct vizero_editor_window_t* window, int direction);
+int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, int direction);
 
 #include <stddef.h>
 #include <stdint.h>
@@ -64,6 +76,8 @@ struct vizero_editor_window_t {
     /* Preferred column for vertical movement (visual up/down) */
     int preferred_column;
 };
+// Safely set the window title, freeing the old one
+void vizero_editor_window_set_title(vizero_editor_window_t* window, const char* title);
 /* Helper functions for internal window manager access (for editor_state.cpp) */
 size_t vizero_window_manager_get_window_count_raw(vizero_window_manager_t* manager);
 vizero_editor_window_t* vizero_window_manager_get_window_raw(vizero_window_manager_t* manager, size_t idx);
@@ -87,7 +101,6 @@ vizero_editor_window_t* vizero_window_manager_get_window(vizero_window_manager_t
 vizero_editor_window_t* vizero_window_manager_get_window_by_id(vizero_window_manager_t* manager, uint32_t window_id);
 
 /* Window properties */
-int vizero_editor_window_set_title(vizero_editor_window_t* window, const char* title);
 int vizero_editor_window_set_size(vizero_editor_window_t* window, int width, int height);
 int vizero_editor_window_set_position(vizero_editor_window_t* window, int x, int y);
 int vizero_editor_window_maximize(vizero_editor_window_t* window);

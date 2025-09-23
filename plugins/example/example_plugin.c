@@ -27,10 +27,13 @@ static void cleanup_wrapper(void) {
 /* Plugin callback implementations */
 static int on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
     (void)buffer; /* Unused parameter */
-    
-    if (plugin_state.api && plugin_state.editor) {
-        char message[256];
-        snprintf(message, sizeof(message), "Example plugin: Opened file %s", filename);
+    if (!plugin_state.api || !plugin_state.editor) {
+        /* Defensive: plugin not initialized, do nothing */
+        return 0;
+    }
+    char message[256];
+    snprintf(message, sizeof(message), "Example plugin: Opened file %s", filename ? filename : "(null)");
+    if (plugin_state.api->set_status_message) {
         plugin_state.api->set_status_message(plugin_state.editor, message);
     }
     return 0;

@@ -242,6 +242,7 @@ add_library(vizero_core STATIC
     src/plugin/plugin_manager.cpp
     src/plugin/plugin_interface.cpp
     src/ui/status_bar.cpp
+    src/ui/status_bar_render.cpp
     src/ui/editor_window.cpp
     src/ui/editor_window_move_visual_row.c
     src/utils/file_utils.cpp

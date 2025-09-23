@@ -58,7 +58,9 @@ void vizero_project_destroy(vizero_project_t* project) {
     /* Close all buffers */
     for (size_t i = 0; i < project->buffer_count; i++) {
         if (project->buffers[i]) {
+            printf("[DEBUG] vizero_project_destroy: destroying buffer %p (index %zu)\n", (void*)project->buffers[i], i);
             vizero_buffer_destroy(project->buffers[i]);
+            printf("[DEBUG] vizero_project_destroy: destroyed buffer %p (index %zu)\n", (void*)project->buffers[i], i);
         }
     }
     
@@ -154,7 +156,9 @@ int vizero_project_close_buffer(vizero_project_t* project, size_t buffer_index) 
     if (!project || buffer_index >= project->buffer_count) return -1;
     
     vizero_buffer_t* buffer = project->buffers[buffer_index];
+    printf("[DEBUG] vizero_project_close_buffer: destroying buffer %p (index %zu)\n", (void*)buffer, buffer_index);
     vizero_buffer_destroy(buffer);
+    printf("[DEBUG] vizero_project_close_buffer: destroyed buffer %p (index %zu)\n", (void*)buffer, buffer_index);
     
     /* Shift buffers down */
     for (size_t i = buffer_index; i < project->buffer_count - 1; i++) {
@@ -177,7 +181,9 @@ vizero_buffer_t* vizero_project_open_file(vizero_project_t* project, const char*
     if (!buffer) return NULL;
     
     if (vizero_project_add_buffer(project, buffer) != 0) {
+        printf("[DEBUG] vizero_project_open_file: destroying buffer %p (failed to add)\n", (void*)buffer);
         vizero_buffer_destroy(buffer);
+        printf("[DEBUG] vizero_project_open_file: destroyed buffer %p (failed to add)\n", (void*)buffer);
         return NULL;
     }
     
@@ -195,7 +201,9 @@ int vizero_project_create_new_buffer(vizero_project_t* project, const char* name
     }
     
     if (vizero_project_add_buffer(project, buffer) != 0) {
+        printf("[DEBUG] vizero_project_create_new_buffer: destroying buffer %p (failed to add)\n", (void*)buffer);
         vizero_buffer_destroy(buffer);
+        printf("[DEBUG] vizero_project_create_new_buffer: destroyed buffer %p (failed to add)\n", (void*)buffer);
         return -1;
     }
     
