@@ -601,10 +601,21 @@ int vizero_window_manager_split_horizontal(vizero_window_manager_t* manager, uin
     vizero_editor_window_t* original_window = vizero_window_manager_get_window_by_id(manager, window_id);
     if (!original_window) return -1;
     
-    /* Create a new window with the same buffer */
+    /* Create a new buffer for the new window */
+    vizero_buffer_t* new_buffer = vizero_buffer_create();
+    /* Set filename to match the original buffer, if any */
+    if (original_window && original_window->buffer) {
+        const char* orig_filename = vizero_buffer_get_filename(original_window->buffer);
+        if (orig_filename) {
+            vizero_buffer_set_filename(new_buffer, orig_filename);
+        }
+    }
     vizero_editor_window_t* new_window = vizero_window_manager_create_window(
-        manager, original_window->buffer, 0, 0, 400, 300);
-    if (!new_window) return -1;
+        manager, new_buffer, 0, 0, 400, 300);
+    if (!new_window) {
+        if (new_buffer) vizero_buffer_destroy(new_buffer);
+        return -1;
+    }
     
     /* Configure split layout */
     manager->layout_type = VIZERO_LAYOUT_HORIZONTAL;
@@ -625,10 +636,21 @@ int vizero_window_manager_split_vertical(vizero_window_manager_t* manager, uint3
     vizero_editor_window_t* original_window = vizero_window_manager_get_window_by_id(manager, window_id);
     if (!original_window) return -1;
     
-    /* Create a new window with the same buffer */
+    /* Create a new buffer for the new window */
+    vizero_buffer_t* new_buffer = vizero_buffer_create();
+    /* Set filename to match the original buffer, if any */
+    if (original_window && original_window->buffer) {
+        const char* orig_filename = vizero_buffer_get_filename(original_window->buffer);
+        if (orig_filename) {
+            vizero_buffer_set_filename(new_buffer, orig_filename);
+        }
+    }
     vizero_editor_window_t* new_window = vizero_window_manager_create_window(
-        manager, original_window->buffer, 0, 0, 400, 300);
-    if (!new_window) return -1;
+        manager, new_buffer, 0, 0, 400, 300);
+    if (!new_window) {
+        if (new_buffer) vizero_buffer_destroy(new_buffer);
+        return -1;
+    }
     
     /* Configure split layout */
     manager->layout_type = VIZERO_LAYOUT_VERTICAL;

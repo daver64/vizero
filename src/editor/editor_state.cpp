@@ -320,13 +320,29 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
     vizero_buffer_t* buffer = vizero_buffer_create_from_file(filename);
     if (!buffer) return -1;
 
+    vizero_buffer_set_filename(buffer, filename);
     vizero_cursor_t* cursor = vizero_cursor_create(buffer);
     if (!cursor) {
         vizero_buffer_destroy(buffer);
         return -1;
     }
 
-    /* Notify plugins of buffer open */
+    // Always add the buffer/cursor to the global list if not present
+    int found = 0;
+    for (size_t i = 0; i < state->buffer_count; ++i) {
+        if (state->buffers[i] == buffer) {
+            found = 1;
+            break;
+        }
+    }
+    if (!found && state->buffer_count < MAX_BUFFERS) {
+        state->buffers[state->buffer_count] = buffer;
+        state->cursors[state->buffer_count] = cursor;
+        state->current_buffer_index = state->buffer_count;
+        state->buffer_count++;
+    }
+
+    /* Notify plugins of buffer open (for syntax highlighting, etc.) */
     if (state->plugin_manager) {
         vizero_plugin_manager_on_buffer_open(state->plugin_manager, buffer, filename);
     }
@@ -345,6 +361,24 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     existing_window->buffer = buffer;
                     existing_window->cursor = cursor;
                     vizero_editor_window_set_title(existing_window, filename);
+                    // Make sure buffer/cursor are in the global list
+                    int found = 0;
+                    for (size_t i = 0; i < state->buffer_count; ++i) {
+                        if (state->buffers[i] == buffer) {
+                            found = 1;
+                            break;
+                        }
+                    }
+                    if (!found && state->buffer_count < MAX_BUFFERS) {
+                        state->buffers[state->buffer_count] = buffer;
+                        state->cursors[state->buffer_count] = cursor;
+                        state->current_buffer_index = state->buffer_count;
+                        state->buffer_count++;
+                    }
+                    // Notify plugins again for this window (in case of split)
+                    if (state->plugin_manager) {
+                        vizero_plugin_manager_on_buffer_open(state->plugin_manager, buffer, filename);
+                    }
                 }
                 // Remove/destroy old buffer/cursor only if not referenced by any window
                 int still_referenced = 0;

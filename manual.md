@@ -18,10 +18,11 @@
 7. [Undo System](#undo-system)
 8. [Buffer Management](#buffer-management)
 9. [File Operations](#file-operations)
-10. [Compiler Integration](#compiler-integration)
-11. [Settings and Configuration](#settings-and-configuration)
-12. [Advanced Features](#advanced-features)
-13. [Keyboard Reference](#keyboard-reference)
+10. [Window Management](#window-management)
+11. [Compiler Integration](#compiler-integration)
+12. [Settings and Configuration](#settings-and-configuration)
+13. [Advanced Features](#advanced-features)
+14. [Keyboard Reference](#keyboard-reference)
 
 ---
 
@@ -210,6 +211,8 @@ Vizero supports full C++ std::regex (ECMAScript syntax):
 
 Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
 
+Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
+
 ### Opening Files in New Buffers
 | Command | Action |
 |---------|--------|
@@ -219,13 +222,35 @@ Vizero supports multiple file buffers and windows, allowing you to work with sev
 ### Buffer Navigation
 | Command | Action |
 |---------|--------|
-| `:bn` | Switch to next buffer |
-| `:bnext` | Same as `:bn` |
-| `:bp` | Switch to previous buffer |
-| `:bprev` | Same as `:bp` |
-| `:b1`, `:b2`, `:b3` | Switch directly to buffer number N |
-| `:ls` | List all open buffers with numbers |
-| `:buffers` | Same as `:ls` |
+| `:bn`, `:bnext` | Switch to next buffer |
+| `:bp`, `:bprev` | Switch to previous buffer |
+| `:bN` | Switch directly to buffer number N (e.g., `:b1`) |
+| `:ls`, `:buffers` | List all open buffers with numbers |
+| `:bd`, `:bdelete` | Delete/close current buffer |
+| `:bd N`, `:bdelete N` | Delete buffer number N |
+### Buffer Deletion
+| Command | Action |
+|---------|--------|
+| `:bd` | Delete/close current buffer |
+| `:bd N` | Delete buffer number N |
+## Window Management
+
+Vizero supports horizontal and vertical window splits, as well as closing splits and creating new empty buffers in windows. All window commands operate on the currently focused window.
+
+### Window Commands
+| Command/Key | Action |
+|-------------|--------|
+| `:split`, `:sp` | Split window horizontally |
+| `:vsplit`, `:vsp` | Split window vertically |
+| `:close`, `:clo` | Close current window (only in split mode) |
+| `:new` | Create new empty buffer in current window |
+| `:help`, `:h` | Show help popup |
+| `Ctrl+W` then `h/j/k/l` or arrow key | Switch focus to left/down/up/right window |
+| `Ctrl+W` then `1`-`9` | Switch focus to window number |
+
+**Notes:**
+- After splitting, each window has its own independent buffer and cursor.
+- All editing, navigation, and commands apply to the focused window/buffer.
 
 ### Buffer Features
 - **Capacity**: Up to 128 simultaneous buffers
@@ -257,7 +282,17 @@ vizero main.c          # Start with main.c as buffer 1
 | `:q` | Quit (fails if unsaved changes) |
 | `:q!` | Force quit (discard changes) |
 | `:wq` | Save current buffer and quit |
-| `:r filename` | Read file into buffer at cursor position |
+| `:r filename` | Read file into buffer at cursor position (only affects current window/buffer) |
+### Other Useful Commands
+| Command | Action |
+|---------|--------|
+| `:file` | Show current filename and status |
+| `:file name` | Set filename for current buffer |
+| `:syntax on/off` | Enable or disable syntax highlighting |
+| `:tabs N` | Set tab size to N |
+| `:set key value` | Set configuration option |
+| `:show` | Show all settings |
+| `:show key` | Show value of specific setting |
 
 ### File Information
 | Command | Action |
@@ -321,6 +356,7 @@ vizero main.c          # Start with main.c as buffer 1
 ### Fullscreen Mode
 | Key | Action |
 |-----|--------|
+| `Ctrl+W` then `h/j/k/l` or arrow key | Switch window focus (when split) |
 | `F11` | Toggle fullscreen mode |
 
 - **Responsive UI**: Interface scales with screen size

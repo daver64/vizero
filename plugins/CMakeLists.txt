@@ -49,8 +49,6 @@ add_vizero_plugin(example_plugin
 # Syntax highlighting plugin
 add_vizero_plugin(syntax_highlight
     syntax_highlight/syntax_highlight.c
-    syntax_highlight/c_syntax.c
-    syntax_highlight/cpp_syntax.c
     syntax_highlight/markdown_syntax.c
 )
 
