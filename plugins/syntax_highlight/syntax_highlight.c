@@ -2,6 +2,7 @@
 #include "vizero/plugin_interface.h"
 #include <string.h>
 #include <stdlib.h>
+#include "markdown_syntax.h"
 #include <ctype.h>
 
 /* Cross-platform unused attribute */
@@ -136,6 +137,10 @@ static int get_file_type(const char* filename) {
         return 2; /* Assembly */
     }
     
+    /* Markdown files */
+    if (strcmp(ext, ".md") == 0 || strcmp(ext, ".markdown") == 0) {
+        return 3; /* Markdown */
+    }
     return 0; /* Unknown */
 }
 
@@ -149,6 +154,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         *token_count = 0;
         return 0;
     }
+    /* Function to highlight Markdown syntax */
     
     /* Allocate maximum possible tokens (one per character is overkill but safe) */
     *tokens = malloc(line_len * sizeof(vizero_syntax_token_t));
@@ -413,6 +419,15 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
         return -1;
     }
     
+    const char* filename = editor_api->get_buffer_filename(buffer);
+    int file_type = get_file_type(filename);
+
+    if (file_type == 3) {
+        /* Markdown file - use markdown_highlight */
+        int result = markdown_highlight(buffer, start_line, end_line, tokens, token_count, editor_api);
+        return result;
+    }
+
     /* Allocate tokens - estimate max 10 tokens per line for word-level highlighting */
     size_t line_count = end_line - start_line + 1;
     size_t max_tokens = line_count * 10;
@@ -421,21 +436,17 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
         *token_count = 0;
         return -1;
     }
-    
+
     *token_count = 0;
-    
-    /* Get filename to determine file type */
-    const char* filename = editor_api->get_buffer_filename(buffer);
-    int file_type = get_file_type(filename);
-    
+
     /* Create word-level tokens */
     for (size_t line = start_line; line <= end_line; line++) {
         const char* line_text = editor_api->get_buffer_line(buffer, line);
         if (!line_text) continue;
-        
+
         size_t line_len = strlen(line_text);
         if (line_len == 0) continue;
-        
+
         if (file_type == 2) {
             /* Assembly file - word-by-word tokenization */
             
@@ -734,7 +745,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER
 )
 
-VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
+int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     if (!plugin || !editor || !api) return -1;
     
     editor_api = api;
@@ -745,7 +756,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     return 0;
 }
 
-VIZERO_PLUGIN_API void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
+void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
     (void)plugin;
     editor_api = NULL;
 }

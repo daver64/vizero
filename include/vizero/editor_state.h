@@ -90,6 +90,7 @@ int vizero_editor_save_project_workspace(vizero_editor_state_t* state, const cha
 /* Command execution */
 int vizero_editor_execute_command(vizero_editor_state_t* state, const char* command);
 void vizero_editor_set_status_message(vizero_editor_state_t* state, const char* message);
+void vizero_editor_set_status_message_with_timeout(vizero_editor_state_t* state, const char* message, unsigned int timeout_ms);
 const char* vizero_editor_get_status_message(vizero_editor_state_t* state);
 
 /* Command mode */

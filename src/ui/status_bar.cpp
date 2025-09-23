@@ -11,14 +11,6 @@
 #define MAX_PANELS 16
 #define MAX_PANEL_TEXT 256
 
-struct vizero_status_bar_t {
-    vizero_status_panel_t panels[MAX_PANELS];
-    size_t panel_count;
-    int width;
-    int height;
-    char* rendered_text;
-    size_t rendered_capacity;
-};
 
 vizero_status_bar_t* vizero_status_bar_create(int width, int height) {
     vizero_status_bar_t* status_bar = (vizero_status_bar_t*)calloc(1, sizeof(vizero_status_bar_t));
@@ -239,22 +231,46 @@ void vizero_status_bar_update(vizero_status_bar_t* status_bar, vizero_editor_sta
         return;
     }
     
-    /* Check for custom status message first */
+    /* Check for custom status message first, and clear if timeout expired */
     const char* status_message = vizero_editor_get_status_message(editor);
+    int show_status = 1;
+    unsigned int timeout = 0, set_time = 0, now = 0;
     if (status_message && status_message[0] != '\0') {
-        /* Display custom status message */
-        size_t msg_len = strlen(status_message);
-        size_t required_len = msg_len + 10; /* message + padding */
-        
-        if (required_len > status_bar->rendered_capacity) {
-            free(status_bar->rendered_text);
-            status_bar->rendered_capacity = required_len * 2;
-            status_bar->rendered_text = (char*)malloc(status_bar->rendered_capacity);
-            if (!status_bar->rendered_text) return;
+        /* Use API to get timeout/set_time if available, else fallback to direct struct (for now) */
+        /* This avoids undefined struct access if the type is incomplete */
+        /* If struct is opaque, add vizero_editor_get_status_message_timeout_ms/editor_get_status_message_set_time API */
+        #ifdef VIZERO_EDITOR_STATE_INTERNAL_H
+        timeout = editor->status_message_timeout_ms;
+        set_time = editor->status_message_set_time;
+        #endif
+        if (timeout > 0) {
+            /* Use SDL_GetTicks if available, else fallback to time(NULL) * 1000 */
+        #ifdef _WIN32
+        /* Windows: use timeGetTime() for millisecond ticks if available, else fallback */
+        /* Avoid error if timeGetTime is not available: fallback to time(NULL) * 1000 */
+        now = (unsigned int)time(NULL) * 1000;
+        #else
+        extern unsigned int SDL_GetTicks(void);
+        if (&SDL_GetTicks) now = SDL_GetTicks();
+        else now = (unsigned int)time(NULL) * 1000;
+        #endif
+            if (now - set_time >= timeout) {
+                vizero_editor_set_status_message(editor, NULL);
+                show_status = 0;
+            }
         }
-        
-        sprintf(status_bar->rendered_text, "%s", status_message);
-        return;
+        if (show_status) {
+            size_t msg_len = strlen(status_message);
+            size_t required_len = msg_len + 10;
+            if (required_len > status_bar->rendered_capacity) {
+                free(status_bar->rendered_text);
+                status_bar->rendered_capacity = required_len * 2;
+                status_bar->rendered_text = (char*)malloc(status_bar->rendered_capacity);
+                if (!status_bar->rendered_text) return;
+            }
+            sprintf(status_bar->rendered_text, "%s", status_message);
+            return;
+        }
     }
     
     /* Normal status bar display */
@@ -288,14 +304,32 @@ void vizero_status_bar_update(vizero_status_bar_t* status_bar, vizero_editor_sta
     status_bar->rendered_text[0] = '\0';
     
     /* Simple concatenation for debugging */
-    for (size_t i = 0; i < status_bar->panel_count; i++) {
-        if (status_bar->panels[i].enabled) {
-            strcat(status_bar->rendered_text, panel_texts[i]);
-            if (i < status_bar->panel_count - 1) {
-                strcat(status_bar->rendered_text, " | ");
+        char left_text[1024] = "";
+        char right_text[256] = "";
+        status_bar->timedate_text[0] = '\0';
+        for (size_t i = 0; i < status_bar->panel_count; i++) {
+            if (!status_bar->panels[i].enabled) continue;
+            if (status_bar->panels[i].type == VIZERO_PANEL_TIME_DATE) {
+                strncpy(status_bar->timedate_text, panel_texts[i], sizeof(status_bar->timedate_text)-1);
+                status_bar->timedate_text[sizeof(status_bar->timedate_text)-1] = '\0';
+            } else if (status_bar->panels[i].alignment == VIZERO_ALIGN_RIGHT) {
+                if (right_text[0] != '\0') strcat(right_text, " ");
+                strcat(right_text, panel_texts[i]);
+            } else {
+                if (left_text[0] != '\0') strcat(left_text, " | ");
+                strcat(left_text, panel_texts[i]);
             }
         }
-    }
+        int left_len = (int)strlen(left_text);
+        int right_len = (int)strlen(right_text);
+        int total_width = (int)status_bar->width;
+        int space = total_width - left_len - right_len - 8; /* 8px padding fudge */
+        if (space < 1) space = 1;
+        if (right_text[0] != '\0') {
+            sprintf(status_bar->rendered_text, "%s%*s%s", left_text, space, "", right_text);
+        } else {
+            sprintf(status_bar->rendered_text, "%s", left_text);
+        }
 }
 
 void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t* renderer, 
@@ -306,7 +340,7 @@ void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t
     vizero_renderer_fill_rect(renderer, (float)x, (float)y, 
                              (float)status_bar->width, (float)status_bar->height, bg_color);
     
-    /* Draw text */
+    /* Draw main text (left and right panels) */
     if (status_bar->rendered_text) {
         vizero_text_info_t text_info = {
             (float)(x + 4), /* Small left padding */
@@ -315,6 +349,19 @@ void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t
             NULL
         };
         vizero_renderer_draw_text(renderer, status_bar->rendered_text, &text_info);
+    }
+    /* Draw time/date panel, right-aligned */
+    if (status_bar->timedate_text[0] != '\0') {
+        int timedate_len = (int)strlen(status_bar->timedate_text);
+        int text_width = timedate_len * 8; /* Approximate width, adjust if needed */
+        int right_x = x + status_bar->width - text_width - 4; /* 4px right padding */
+        vizero_text_info_t td_info = {
+            (float)right_x,
+            (float)(y + 2),
+            text_color,
+            NULL
+        };
+        vizero_renderer_draw_text(renderer, status_bar->timedate_text, &td_info);
     }
 }
 

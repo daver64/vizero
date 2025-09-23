@@ -1,11 +1,17 @@
 # Vizero Development Guide
 
-## Recent Architecture & Bugfixes (2025)
 
-- **Robust buffer/cursor replacement**: Buffer and cursor management now prevents double-free/use-after-free bugs when splitting and loading files. All windows and buffer arrays are always in sync, and no window or array references freed memory.
-- **Window manager helpers**: All access to window manager internals is now via safe helper functions, improving code safety and maintainability. Direct struct access is avoided in favor of API helpers in `editor_window.h/cpp`.
-- **Input routing and window focus**: All input and editing operations now follow the currently focused window. After any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), keypresses and text input go to the correct window and buffer, matching vi-like behavior.
-- **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
+## September 2025: Major Architecture, Features & Bugfixes
+
+- **Word Wrap (linewrap) by Default**: Lines wrap at word boundaries, with hanging indent for wrapped lines. Toggle with `:set linewrap on|off`. Rendering and movement logic are unified for robust cursor/scrolling.
+- **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved color contrast for headings, code, and emphasis. Implemented in the renderer and plugin system.
+- **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, and clear error/info popups. Panel system supports left/right alignment.
+- **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
+- **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
+- **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
+- **Merged Rendering Logic**: Word wrap, syntax highlighting, and cursor/scrolling are now unified in the renderer for consistent behavior.
+- **Settings System**: All settings (including word wrap, line numbers, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`.
+- **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
 
 ## Quick Start
 
@@ -80,16 +86,16 @@ chmod +x build.sh
 - **Plugin**: `src/plugin/` - Plugin system implementation
 - **Utils**: `src/utils/` - Utility functions
 
-### Adding New Features
 
-1. **Core Features**: Add to appropriate `src/` subdirectory
-2. **Plugin Features**: Create new plugin in `plugins/`
-3. **API Changes**: Update headers in `include/vizero/`
+### Adding New Features
+1. **Core Features**: Add to appropriate `src/` subdirectory. For editor/renderer changes, see `src/ui/editor_window.cpp` and related files.
+2. **Plugin Features**: Create new plugin in `plugins/`. For syntax highlighting, see the Markdown plugin and `vizero/plugin_interface.h`.
+3. **API Changes**: Update headers in `include/vizero/`.
+
 
 ### Plugin Development
 
 #### Creating a New Plugin
-
 1. Create directory: `plugins/my_plugin/`
 2. Add source files: `my_plugin.c`
 3. Update `plugins/CMakeLists.txt`:
@@ -98,6 +104,7 @@ chmod +x build.sh
        my_plugin/my_plugin.c
    )
    ```
+4. For syntax highlighting, see the Markdown plugin for an example of color mapping and tokenization.
 
 #### Plugin Template
 
@@ -165,6 +172,8 @@ make test
 # Should see plugin load messages
 ```
 
+gdb ./vizero
+
 ## Debugging
 
 ### Debug Build
@@ -185,6 +194,7 @@ gdb ./vizero
 1. Open `vizero.sln` in Visual Studio
 2. Set vizero as startup project
 3. Set breakpoints and run with F5
+4. For word wrap, cursor, or rendering bugs, set breakpoints in `src/ui/editor_window.cpp` and `src/ui/editor_window_move_visual_row.c`.
 
 ## Performance Profiling
 
@@ -248,8 +258,10 @@ perf report
 - Verify graphics drivers support OpenGL 3.3
 - Run with debugger to identify crash location
 
-**Input not following window focus?**
-- This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window. If you encounter issues, check that you are using the latest code and that all buffer/cursor access goes through the window manager helpers.
 
-**Crashes after split or file load?**
-- These have been resolved with robust buffer/cursor management. If you see new issues, check for direct struct access or missing helper usage in new code.
+**Word wrap not working?**: Word wrap is enabled by default. Use `:set linewrap off` to disable. For bugs, check `src/ui/editor_window.cpp` and `src/ui/editor_window_move_visual_row.c`.
+**Markdown highlighting missing?**: Ensure you are editing a `.md` file. See the Markdown plugin for implementation details.
+**Status bar not updating?**: The right-aligned time/date panel is always visible. Status messages revert to default after a short timeout.
+**Cursor disappears or scrolling broken?**: The cursor is always visible, including on empty lines. Up/down movement preserves the preferred column, and scrolling is smooth in all window modes.
+**Input not following window focus?**: This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window. If you encounter issues, check that you are using the latest code and that all buffer/cursor access goes through the window manager helpers.
+**Crashes after split or file load?**: These have been resolved with robust buffer/cursor management. If you see new issues, check for direct struct access or missing helper usage in new code.

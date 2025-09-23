@@ -44,10 +44,10 @@ vizero_settings_t* vizero_settings_create(void) {
     vizero_settings_t* settings = (vizero_settings_t*)calloc(1, sizeof(vizero_settings_t));
     if (settings) {
         /* Set default values */
-        vizero_settings_set_bool(settings, VIZERO_SETTING_LINE_NUMBERS, 0); /* Off by default */
-        vizero_settings_set_int(settings, VIZERO_SETTING_TAB_SIZE, 4);
-        vizero_settings_set_bool(settings, VIZERO_SETTING_WORD_WRAP, 0);
-        vizero_settings_set_bool(settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING, 1);
+    vizero_settings_set_bool(settings, VIZERO_SETTING_LINE_NUMBERS, 0); /* Off by default */
+    vizero_settings_set_int(settings, VIZERO_SETTING_TAB_SIZE, 4);
+    vizero_settings_set_bool(settings, VIZERO_SETTING_WORD_WRAP, 1); /* Word wrap ON by default */
+    vizero_settings_set_bool(settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING, 1);
         
         /* Set default window settings (will be overridden when window position is saved) */
         vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_X, -1); /* -1 means use centered */

@@ -44,6 +44,7 @@ struct vizero_buffer_t {
     int in_undo_redo;     /* Flag to prevent undo tracking during undo/redo */
     undo_stack_t undo_stack;
     undo_stack_t redo_stack;
+    uint64_t last_disk_mtime; /* Last known modification time on disk (for auto-reload) */
 };
 
 struct vizero_line_t { int dummy; };
@@ -986,4 +987,13 @@ void vizero_buffer_get_stats(vizero_buffer_t* buffer, vizero_buffer_stats_t* sta
     stats->character_count = 0;
     stats->word_count = 0;
     stats->byte_count = 0;
+}
+
+uint64_t vizero_buffer_get_last_disk_mtime(vizero_buffer_t* buffer) {
+    if (!buffer) return 0;
+    return buffer->last_disk_mtime;
+}
+
+void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime) {
+    if (buffer) buffer->last_disk_mtime = mtime;
 }

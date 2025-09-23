@@ -14,11 +14,14 @@
 #include "vizero/string_utils.h"
 #include "vizero/settings.h"
 #include "vizero/search.h"
+#include "vizero/filewatch_poll.h"
 #include <SDL.h>
 #include <GL/glew.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
 
 struct vizero_application_t {
     vizero_window_t* window;
@@ -258,99 +261,8 @@ void vizero_application_shutdown(vizero_application_t* app) {
 static void render_editor_window(vizero_application_t* app, vizero_editor_window_t* window, 
                                 vizero_buffer_t* buffer, vizero_cursor_t* cursor) {
     if (!app || !window || !buffer || !cursor) return;
-    
-    /* Get window content area */
-    int content_x, content_y, content_width, content_height;
-    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, 
-                                            &content_width, &content_height) != 0) {
-        return;
-    }
-    
-    /* Calculate scrolling for this window */
-    vizero_position_t cursor_pos = vizero_cursor_get_position(cursor);
-    int visible_lines = (content_height - 30) / 16; /* 16 pixels per line, 30 for margins */
-    int visible_cols = (content_width - 20) / 8; /* 8 pixels per char, 20 for margins */
-    
-    /* Use window's scroll values */
-    int scroll_x = window->scroll_x;
-    int scroll_y = window->scroll_y;
-    
-    /* Update scrolling based on cursor position */
-    if ((int)cursor_pos.line < scroll_y) {
-        scroll_y = (int)cursor_pos.line;
-    } else if ((int)cursor_pos.line >= scroll_y + visible_lines) {
-        scroll_y = (int)cursor_pos.line - visible_lines + 1;
-    }
-    
-    if ((int)cursor_pos.column < scroll_x) {
-        scroll_x = (int)cursor_pos.column;
-    } else if ((int)cursor_pos.column >= scroll_x + visible_cols) {
-        scroll_x = (int)cursor_pos.column - visible_cols + 1;
-    }
-    
-    /* Update window scroll values */
-    window->scroll_x = scroll_x;
-    window->scroll_y = scroll_y;
-    
-    /* Render window content with syntax highlighting */
-    size_t line_count = vizero_buffer_get_line_count(buffer);
-    size_t start_line = (size_t)scroll_y;
-    size_t end_line = start_line + (content_height / 16) + 1; /* +1 for partial lines */
-    if (end_line > line_count) end_line = line_count;
-    
-    /* Get syntax highlighting tokens from plugin manager */
-    vizero_syntax_token_t* tokens = NULL;
-    size_t token_count = 0;
-    int has_syntax_highlighting = 0;
-    
-    if (app->plugin_manager) {
-        has_syntax_highlighting = vizero_plugin_manager_highlight_syntax(
-            app->plugin_manager, buffer, start_line, end_line, &tokens, &token_count);
-    }
-    
-    /* Render each visible line */
-    for (size_t line_idx = start_line; line_idx < end_line; line_idx++) {
-        const char* line_text = vizero_buffer_get_line_text(buffer, line_idx);
-        if (!line_text) continue;
-
-        float line_y = (float)(content_y + 10 + ((line_idx - scroll_y) * 16));
-
-        if (has_syntax_highlighting > 0 && tokens) {
-            /* Render with syntax highlighting */
-            render_line_with_syntax(app, line_text, line_idx,
-                                  (float)(content_x + 10), line_y,
-                                  scroll_x, tokens, token_count);
-        } else {
-            /* Fallback to plain white text */
-            vizero_color_t text_color = {1.0f, 1.0f, 1.0f, 1.0f};
-            vizero_text_info_t text_info = {
-                (float)(content_x + 10 - (scroll_x * 8)),
-                line_y,
-                text_color,
-                NULL
-            };
-            vizero_renderer_draw_text(app->renderer, line_text, &text_info);
-        }
-    }
-    
-    /* Free syntax tokens if allocated */
-    if (tokens) {
-        free(tokens);
-    }
-    
-    /* Draw cursor if this is the focused window */
-    if (window->is_focused) {
-        int visual_col = (int)cursor_pos.column; /* Simplified, should handle tabs */
-        float cursor_x = (float)(content_x + 10 + ((visual_col - scroll_x) * 8));
-        float cursor_y = (float)(content_y + 10 + ((cursor_pos.line - scroll_y) * 16));
-        
-        /* Only draw cursor if it's visible within the window */
-        if (cursor_x >= content_x && cursor_x < content_x + content_width && 
-            cursor_y >= content_y && cursor_y < content_y + content_height) {
-            vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 1.0f};
-            vizero_renderer_fill_rect(app->renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
-        }
-    }
+    // Use the word wrap/content rendering from ui/editor_window.cpp
+    vizero_editor_window_render_content(window, app->editor, app->renderer);
 }
 
 /* Helper function to render a line with syntax highlighting */
@@ -375,25 +287,18 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
     /* Apply syntax highlighting colors */
     for (size_t t = 0; t < token_count; t++) {
         vizero_syntax_token_t* token = &tokens[t];
-        
-        /* Check if token is on this line */
         if (token->range.start.line == line_num) {
             size_t start_col = token->range.start.column;
             size_t end_col = token->range.end.column;
-            
             /* Clamp to line bounds */
             if (start_col >= line_len) continue;
             if (end_col > line_len) end_col = line_len;
-            
-            /* Convert plugin color to renderer color */
             vizero_color_t render_color = {
                 token->color.r / 255.0f,
                 token->color.g / 255.0f,
                 token->color.b / 255.0f,
                 token->color.a / 255.0f
             };
-            
-            /* Apply color to character range */
             for (size_t col = start_col; col < end_col; col++) {
                 char_colors[col] = render_color;
             }
@@ -470,9 +375,11 @@ int vizero_application_run(vizero_application_t* app) {
     if (!app) {
         return -1;
     }
-    
     printf("Starting main loop...\n");
-    
+
+    uint32_t last_poll_time = SDL_GetTicks();
+    const uint32_t poll_interval_ms = 2000; // 2 seconds
+
     while (!app->should_quit && !vizero_window_should_close(app->window) && !vizero_editor_should_quit(app->editor)) {
         /* Process input events */
         vizero_input_manager_process_events(app->input);
@@ -608,6 +515,40 @@ int vizero_application_run(vizero_application_t* app) {
                 popup_text_info.color.b = 0.7f;
                 popup_text_info.color.a = 1.0f;
                 vizero_renderer_draw_text(app->renderer, instruction, &popup_text_info);
+            }
+        }
+        
+        // --- File change polling logic ---
+        uint32_t now = SDL_GetTicks();
+        if (now - last_poll_time > poll_interval_ms) {
+            last_poll_time = now;
+            vizero_editor_state_t* editor = app->editor;
+            if (editor) {
+                size_t buffer_count = vizero_editor_get_buffer_count(editor);
+                for (size_t i = 0; i < buffer_count; ++i) {
+                    vizero_buffer_t* buf = vizero_editor_get_buffer(editor, i);
+                    if (!buf) continue;
+                    const char* fname = vizero_buffer_get_filename(buf);
+                    if (!fname || !*fname) continue;
+                    uint64_t disk_mtime = vizero_get_file_mtime(fname);
+                    uint64_t last_mtime = vizero_buffer_get_last_disk_mtime(buf);
+                    if (disk_mtime && disk_mtime != last_mtime) {
+                        if (!vizero_buffer_is_modified(buf)) {
+                            if (vizero_buffer_load_from_file(buf, fname) == 0) {
+                                vizero_buffer_set_last_disk_mtime(buf, disk_mtime);
+                                // Optionally: set a status message
+                                char msg[256];
+                                snprintf(msg, sizeof(msg), "File reloaded: %s", fname);
+                                vizero_editor_set_status_message(editor, msg);
+                            }
+                        } else {
+                            // Buffer is modified, warn user
+                            char msg[256];
+                            snprintf(msg, sizeof(msg), "File changed on disk: %s (unsaved changes)", fname);
+                            vizero_editor_set_status_message(editor, msg);
+                        }
+                    }
+                }
             }
         }
         

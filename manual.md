@@ -1,14 +1,11 @@
 # Vizero Editor Manual
 
-**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, robust multi-buffer and multi-window support, and integrated compiler support.
+
+**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, Markdown syntax highlighting, and advanced word wrap.
 
 ---
 
-## Recent Improvements (2025)
 
-- **Robust buffer/cursor management**: Prevents double-free/use-after-free bugs when splitting and loading files. Windows and buffer arrays are always in sync, and no window or array references freed memory.
-- **Window focus and input routing**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `:wincmd`, `Ctrl+w`, or any window focus command, keypresses and text input go to the correct window.
-- **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
 
 ## Table of Contents
 
@@ -302,13 +299,15 @@ vizero main.c          # Start with main.c as buffer 1
 | `:show` | Display all current settings |
 | `:show name` | Display specific setting |
 
+
 ### Available Settings
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `tab_size` | 4 | Number of spaces per tab |
 | `auto_indent` | true | Automatic indentation |
 | `show_line_numbers` | false | Display line numbers |
-| `wrap_text` | false | Text wrapping |
+| `linewrap` | true | Word wrap at word boundaries |
+
 
 ### Persistence
 - Settings automatically saved to `%APPDATA%\Vizero\settings.ini`
@@ -423,14 +422,18 @@ vizero main.c          # Start with main.c as buffer 1
 
 ## Troubleshooting
 
+
 ### Common Issues
 - **File won't save**: Check file permissions
 - **Search not working**: Verify regex syntax
 - **Compilation fails**: Check compiler installation and PATH
 - **Settings not saved**: Verify %APPDATA% directory access
-
-- **Input not following window focus?** This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.
-- **Crashes after split or file load?** These have been resolved with robust buffer/cursor management.
+- **Word wrap not working?**: Word wrap is enabled by default. Use `:set linewrap off` to disable.
+- **Markdown highlighting missing?**: Ensure you are editing a `.md` file. Colors are optimized for readability.
+- **Status bar not updating?**: The right-aligned time/date panel is always visible. Status messages revert to default after a short timeout.
+- **Cursor disappears or scrolling broken?**: The cursor is always visible, including on empty lines. Up/down movement preserves the preferred column, and scrolling is smooth in all window modes.
+- **Input not following window focus?**: This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.
+- **Crashes after split or file load?**: These have been resolved with robust buffer/cursor management.
 
 ### Getting Help
 - Check this manual for command reference

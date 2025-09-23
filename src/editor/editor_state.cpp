@@ -1,5 +1,6 @@
 /* Enhanced multi-buffer implementation */
 #include "vizero/editor_state.h"
+#include "editor_state_internal.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
 #include "vizero/project.h"
@@ -22,60 +23,7 @@
 #include <sys/wait.h>
 #endif
 
-#define MAX_BUFFERS 128
-#define MAX_COMMAND_LENGTH 256
 
-struct vizero_editor_state_t {
-    vizero_editor_mode_t mode;
-    
-    /* Window management */
-    vizero_window_manager_t* window_manager;
-    
-    /* Buffer management (legacy - will be moved to windows) */
-    vizero_buffer_t* buffers[MAX_BUFFERS];
-    vizero_cursor_t* cursors[MAX_BUFFERS];
-    size_t buffer_count;
-    size_t current_buffer_index;
-    
-    /* Project management */
-    vizero_project_t* current_project;
-    
-    /* Command mode */
-    char command_buffer[MAX_COMMAND_LENGTH];
-    size_t command_length;
-    
-    /* Plugin integration */
-    vizero_plugin_manager_t* plugin_manager;
-    char* status_message;
-    
-    /* Compilation results */
-    char* last_compile_output;
-    
-    /* Popup system */
-    int popup_visible;
-    char* popup_content;
-    uint32_t popup_start_time;
-    uint32_t popup_duration_ms;
-    int popup_scroll_offset;  /* Lines scrolled from top */
-    
-    /* Settings */
-    vizero_settings_t* settings;
-    
-    /* Text selection */
-    int has_selection;
-    vizero_position_t selection_start;
-    vizero_position_t selection_end;
-    
-    /* Clipboard */
-    char* clipboard_content;
-    size_t clipboard_size;
-    
-    /* Undo system */
-    vizero_undo_stack_t* undo_stack;
-    
-    /* Application control */
-    int should_quit;
-};
 
 vizero_editor_state_t* vizero_editor_state_create(void) {
     vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
@@ -1107,7 +1055,8 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 } else {
                     sprintf(msg, "\"%s\" [New File]", filename);
                 }
-                vizero_editor_set_status_message(state, msg);
+                // Show status message for 1.5 seconds, then revert to default
+                vizero_editor_set_status_message_with_timeout(state, msg, 1500);
                 return 0;
             } else {
                 vizero_editor_set_status_message(state, "Error opening file");
@@ -1115,41 +1064,41 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
         }
 
-    } else if (strncmp(command, "wincmd", 6) == 0) {
-        // :wincmd [h/j/k/l/number] - switch window focus
-        const char* arg = command + 6;
-        while (*arg == ' ') ++arg;
-        if (*arg == '\0') {
-            vizero_editor_set_status_message(state, "Usage: :wincmd [h/j/k/l/number]");
-            return -1;
-        }
-        if (state->window_manager) {
-            if (*arg == 'h' || *arg == 'j' || *arg == 'k' || *arg == 'l') {
-                if (vizero_window_manager_focus_direction(state->window_manager, *arg) == 0) {
-                    vizero_editor_set_status_message(state, "Window focus changed");
-                    return 0;
-                } else {
-                    vizero_editor_set_status_message(state, "No other window to focus");
-                    return -1;
+    } else if (strncmp(command, "set ", 4) == 0) {
+        /* Set setting command, with special handling for linewrap */
+        const char* args = command + 4;
+        const char* space = strchr(args, ' ');
+        if (space) {
+            size_t key_len = space - args;
+            char key[128];
+            if (key_len < sizeof(key)) {
+                strncpy(key, args, key_len);
+                key[key_len] = '\0';
+                const char* value = space + 1;
+                if (strcmp(key, "linewrap") == 0) {
+                    if (strcmp(value, "on") == 0) {
+                        vizero_settings_set_bool(state->settings, VIZERO_SETTING_WORD_WRAP, 1);
+                        vizero_editor_set_status_message(state, "Line wrap enabled");
+                        return 0;
+                    } else if (strcmp(value, "off") == 0) {
+                        vizero_settings_set_bool(state->settings, VIZERO_SETTING_WORD_WRAP, 0);
+                        vizero_editor_set_status_message(state, "Line wrap disabled");
+                        return 0;
+                    } else {
+                        vizero_editor_set_status_message(state, "Usage: :set linewrap on|off");
+                        return -1;
+                    }
                 }
-            } else if (isdigit((unsigned char)*arg)) {
-                int num = atoi(arg);
-                if (vizero_window_manager_focus_number(state->window_manager, num) == 0) {
-                    vizero_editor_set_status_message(state, "Window focus changed");
-                    return 0;
-                } else {
-                    vizero_editor_set_status_message(state, "Invalid window number");
-                    return -1;
-                }
-            } else {
-                vizero_editor_set_status_message(state, "Unknown wincmd argument");
-                return -1;
+                /* Set the setting (fallback for other keys) */
+                vizero_settings_set_string(state->settings, key, value);
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Set %s = %s", key, value);
+                vizero_editor_set_status_message(state, msg);
+                return 0;
             }
-        } else {
-            vizero_editor_set_status_message(state, "No window manager");
-            return -1;
         }
-        
+        vizero_editor_set_status_message(state, "Usage: :set key value");
+        return -1;
     } else if (strcmp(command, "bn") == 0 || strcmp(command, "bnext") == 0) {
         /* Next buffer */
         if (vizero_editor_next_buffer(state) == 0) {
@@ -1931,10 +1880,24 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     return 0;
 }
 
-void vizero_editor_set_status_message(vizero_editor_state_t* state, const char* message) {
+void vizero_editor_set_status_message_with_timeout(vizero_editor_state_t* state, const char* message, unsigned int timeout_ms) {
     if (!state) return;
-    if (state->status_message) free(state->status_message);
-    state->status_message = message ? strdup(message) : NULL;
+    if (state->status_message) {
+        free(state->status_message);
+        state->status_message = NULL;
+    }
+    if (message) {
+        state->status_message = strdup(message);
+        state->status_message_set_time = SDL_GetTicks();
+        state->status_message_timeout_ms = timeout_ms;
+    } else {
+        state->status_message_set_time = 0;
+        state->status_message_timeout_ms = 0;
+    }
+}
+
+void vizero_editor_set_status_message(vizero_editor_state_t* state, const char* message) {
+    vizero_editor_set_status_message_with_timeout(state, message, 0);
 }
 
 const char* vizero_editor_get_status_message(vizero_editor_state_t* state) {

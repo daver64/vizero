@@ -1,7 +1,5 @@
-
+           
 #include <ctype.h>
-
-
 /* Multi-window editor system implementation */
 #include "vizero/editor_window.h"
 #include "vizero/buffer.h"
@@ -18,7 +16,11 @@
 #define DEFAULT_TITLE_BAR_HEIGHT 24
 #define DEFAULT_MIN_WIDTH 200
 #define DEFAULT_MIN_HEIGHT 100
-
+#include "vizero/settings.h"
+#include "vizero/editor_state.h"
+#include "../editor/editor_state_internal.h"
+#include "vizero/renderer.h"
+#include "vizero/plugin_manager.h"
 /* Window manager structure */
 struct vizero_window_manager_t {
     vizero_editor_window_t* windows[MAX_WINDOWS];
@@ -63,6 +65,7 @@ vizero_window_manager_t* vizero_window_manager_create(void) {
 
 // Window focus helpers (for vi-style window switching)
 int vizero_window_manager_focus_direction(vizero_window_manager_t* manager, char dir) {
+    (void)dir;
     if (!manager) return -1;
     // Only two windows supported for now: horizontal or vertical split
     if (manager->window_count < 2) return -1;
@@ -358,19 +361,250 @@ int vizero_editor_window_set_cursor(vizero_editor_window_t* window, vizero_curso
     return 1;
 }
 
+
+
+
 /* Rendering support */
 int vizero_editor_window_get_content_area(vizero_editor_window_t* window,
                                          int* content_x, int* content_y,
                                          int* content_width, int* content_height) {
     if (!window || !content_x || !content_y || !content_width || !content_height) return -1;
-    
     /* Calculate content area (excluding title bar and scrollbar) */
     *content_x = window->x;
     *content_y = window->y + (window->has_title_bar ? window->title_bar_height : 0);
     *content_width = window->width - (window->has_scrollbar ? 16 : 0); /* 16px scrollbar */
     *content_height = window->height - (window->has_title_bar ? window->title_bar_height : 0);
-    
     return 0;
+}
+
+/* Word wrap rendering: call this from your main render loop for each window */
+void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_editor_state_t* state, vizero_renderer_t* renderer) {
+    if (!window || !state || !renderer) return;
+    vizero_buffer_t* buffer = window->buffer;
+    if (!buffer) return;
+
+    vizero_settings_t* settings = vizero_editor_get_settings(state);
+        int word_wrap = vizero_settings_get_bool(settings, VIZERO_SETTING_WORD_WRAP);
+    int syntax_enabled = vizero_settings_get_bool(settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING);
+    int show_line_numbers = vizero_settings_get_bool(settings, VIZERO_SETTING_LINE_NUMBERS) || vizero_settings_get_bool(settings, VIZERO_SETTING_SHOW_LINE_NUMBERS);
+    int line_number_width = show_line_numbers ? 6 * 8 : 0; // 6 chars wide, 8px per char
+
+    int content_x, content_y, content_width, content_height;
+    vizero_editor_window_get_content_area(window, &content_x, &content_y, &content_width, &content_height);
+
+    int CHAR_WIDTH = 8;
+    int CHAR_HEIGHT = 16;
+    // Subtract line_number_width from content_width to get actual text area
+    int max_cols = (content_width - line_number_width) / CHAR_WIDTH;
+    if (max_cols < 1) max_cols = 1;
+    // [DEBUG] printf removed
+    int max_rows = content_height / CHAR_HEIGHT;
+    // Disable horizontal scrolling when word wrap is enabled
+    if (word_wrap) window->scroll_x = 0;
+
+    // Get cursor position for this window
+    vizero_cursor_t* cursor = window->cursor;
+    vizero_position_t cursor_pos = {0, 0};
+    if (cursor) cursor_pos = vizero_cursor_get_position(cursor);
+
+    // Build a mapping of logical line/col to visual row/col
+    int visual_cursor_row = 0, visual_cursor_col = 0;
+    int found_cursor = 0;
+    struct {
+        int line;
+        int start_col;
+        int visual_row;
+        int visual_col_start;
+        int visual_col_end;
+    } visual_map[2048];
+    int visual_map_count = 0;
+
+    size_t line_count = vizero_buffer_get_line_count(buffer);
+    int row = 0;
+    // Pass 1: Build visual map for the entire buffer
+    for (size_t i = 0; i < line_count; ++i) {
+        const char* line = vizero_buffer_get_line_text(buffer, i);
+        size_t len = line ? strlen(line) : 0;
+        size_t start = 0;
+        int first_visual_row = 1;
+        int indent_len = 0;
+        if (line) {
+            while (line[indent_len] == ' ' || line[indent_len] == '\t') indent_len++;
+        }
+        while (start < len) {
+            size_t actual_chunk = 0;
+            int wrap_at_space = 0;
+            if (word_wrap) {
+                size_t remaining = len - start;
+                if (remaining > (size_t)max_cols) {
+                    size_t try_chunk = (size_t)max_cols;
+                    size_t last_space = 0;
+                    for (size_t j = 0; j < try_chunk; ++j) {
+                        if (line[start + j] == ' ') last_space = j;
+                    }
+                    if (last_space > 0) {
+                        actual_chunk = last_space;
+                        wrap_at_space = 1;
+                    } else {
+                        actual_chunk = try_chunk;
+                    }
+                } else {
+                    actual_chunk = remaining;
+                }
+            } else {
+                actual_chunk = len - start;
+            }
+            if (actual_chunk == 0 && start < len) actual_chunk = 1;
+            if (visual_map_count < (int)(sizeof(visual_map)/sizeof(visual_map[0]))) {
+                visual_map[visual_map_count].line = (int)i;
+                visual_map[visual_map_count].start_col = (int)start;
+                visual_map[visual_map_count].visual_row = row;
+                visual_map[visual_map_count].visual_col_start = 0;
+                visual_map[visual_map_count].visual_col_end = (int)actual_chunk;
+                visual_map_count++;
+            }
+            row++;
+            if (wrap_at_space) {
+                start += actual_chunk + 1;
+            } else {
+                start += actual_chunk;
+            }
+            if (!word_wrap) break;
+            first_visual_row = 0;
+        }
+        if (len == 0) {
+            if (visual_map_count < (int)(sizeof(visual_map)/sizeof(visual_map[0]))) {
+                visual_map[visual_map_count].line = (int)i;
+                visual_map[visual_map_count].start_col = 0;
+                visual_map[visual_map_count].visual_row = row;
+                visual_map[visual_map_count].visual_col_start = 0;
+                visual_map[visual_map_count].visual_col_end = 0;
+                visual_map_count++;
+            }
+            row++;
+        }
+    }
+
+    // Map logical cursor position to visual row/col
+    if (window->is_focused && cursor) {
+        size_t cur_line = cursor_pos.line;
+        size_t cur_col = cursor_pos.column;
+        for (int v = 0; v < visual_map_count; ++v) {
+            int chunk_len = visual_map[v].visual_col_end - visual_map[v].visual_col_start;
+            int chunk_start = visual_map[v].start_col;
+            int chunk_end = chunk_start + chunk_len;
+            if (visual_map[v].line == (int)cur_line) {
+                if (cur_col >= (size_t)chunk_start && cur_col <= (size_t)chunk_end) {
+                    visual_cursor_row = visual_map[v].visual_row;
+                    visual_cursor_col = (int)(cur_col - chunk_start);
+                    found_cursor = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Pass 2: Render only the visible rows
+    int first_visible_row = window->scroll_y;
+    int last_visible_row = window->scroll_y + max_rows;
+    for (int v = 0; v < visual_map_count; ++v) {
+        if (visual_map[v].visual_row < first_visible_row || visual_map[v].visual_row >= last_visible_row) continue;
+        int i = visual_map[v].line;
+        int start = visual_map[v].start_col;
+        const char* line = vizero_buffer_get_line_text(buffer, i);
+        size_t len = line ? strlen(line) : 0;
+        int first_visual_row = (visual_map[v].visual_col_start == 0);
+        int indent_len = 0;
+        if (line) {
+            while (line[indent_len] == ' ' || line[indent_len] == '\t') indent_len++;
+        }
+        int text_x = content_x + line_number_width;
+        int hanging_indent = (first_visual_row ? 0 : indent_len);
+        text_x += hanging_indent * CHAR_WIDTH;
+        size_t actual_chunk = (size_t)(visual_map[v].visual_col_end - visual_map[v].visual_col_start);
+        char visual[1024];
+        if (actual_chunk > 0 && actual_chunk < sizeof(visual)) {
+            size_t copy_start = start;
+            size_t copy_len = actual_chunk;
+            if (!first_visual_row) {
+                while (copy_len > 0 && (line[copy_start] == ' ' || line[copy_start] == '\t')) {
+                    copy_start++;
+                    copy_len--;
+                }
+            }
+            strncpy(visual, line + copy_start, copy_len);
+            visual[copy_len] = '\0';
+        } else {
+            strncpy(visual, line + start, actual_chunk);
+            visual[actual_chunk] = '\0';
+        }
+        if (show_line_numbers && first_visual_row) {
+            char lnbuf[16];
+            snprintf(lnbuf, sizeof(lnbuf), "%5d ", i+1);
+            vizero_text_info_t lninfo = { (float)content_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {0.5f, 0.5f, 0.5f, 1.0f}, NULL };
+            vizero_renderer_draw_text(renderer, lnbuf, &lninfo);
+        }
+        if (syntax_enabled && state->plugin_manager) {
+            vizero_syntax_token_t* tokens = NULL;
+            size_t token_count = 0;
+            vizero_plugin_manager_highlight_syntax(state->plugin_manager, buffer, i, i+1, &tokens, &token_count);
+            for (size_t col = 0; col < strlen(visual); col++) {
+                size_t logical_col = start + col;
+                vizero_color_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+                for (size_t t = 0; t < token_count; t++) {
+                    vizero_syntax_token_t* token = &tokens[t];
+                    if (token->range.start.line == i && logical_col >= token->range.start.column && logical_col < token->range.end.column) {
+                        color.r = token->color.r / 255.0f;
+                        color.g = token->color.g / 255.0f;
+                        color.b = token->color.b / 255.0f;
+                        color.a = token->color.a / 255.0f;
+                        break;
+                    }
+                }
+                char ch[2] = {visual[col], '\0'};
+                vizero_text_info_t info = { (float)(text_x + (int)col * 8), (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), color, NULL };
+                vizero_renderer_draw_text(renderer, ch, &info);
+            }
+            if (tokens) free(tokens);
+        } else {
+            vizero_text_info_t info = { (float)text_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
+            vizero_renderer_draw_text(renderer, visual, &info);
+        }
+    }
+
+    // If cursor was not mapped, try to clamp it to the last visual segment of its logical line
+    if (window->is_focused && !found_cursor && cursor_pos.line < (int)line_count) {
+        for (int v = visual_map_count - 1; v >= 0; --v) {
+            if (visual_map[v].line == cursor_pos.line) {
+                visual_cursor_row = visual_map[v].visual_row;
+                visual_cursor_col = visual_map[v].visual_col_end;
+                found_cursor = 1;
+                break;
+            }
+        }
+    }
+    // If cursor is on an empty line, show it at the start of the line
+    if (window->is_focused && !found_cursor && cursor_pos.line < (int)line_count) {
+        size_t len = vizero_buffer_get_line_length(buffer, cursor_pos.line);
+        if (len == 0) {
+            visual_cursor_row = 0;
+            visual_cursor_col = 0;
+            found_cursor = 1;
+        }
+    }
+    // Scroll vertically to keep the cursor visible
+    if (window->is_focused && found_cursor) {
+        int max_rows = content_height / 16;
+        if (visual_cursor_row < window->scroll_y) {
+            window->scroll_y = visual_cursor_row;
+        } else if (visual_cursor_row >= window->scroll_y + max_rows) {
+            window->scroll_y = visual_cursor_row - max_rows + 1;
+        }
+        float cursor_x = (float)(content_x + line_number_width + (float)visual_cursor_col * 8.0f);
+        float cursor_y = (float)(content_y + (float)(visual_cursor_row - window->scroll_y) * 16.0f);
+        vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 1.0f};
+        vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
+    }
 }
 
 /* Split window functionality */

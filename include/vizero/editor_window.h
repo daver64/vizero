@@ -1,4 +1,3 @@
-
 // ...existing code...
 
 
@@ -9,6 +8,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Move the cursor up/down one visual row, using preferred_column
+int vizero_editor_window_move_visual_row(struct vizero_editor_window_t* window, int direction);
 
 #include <stddef.h>
 #include <stdint.h>
@@ -58,6 +60,9 @@ struct vizero_editor_window_t {
     
     /* Window ID for identification */
     uint32_t window_id;
+
+    /* Preferred column for vertical movement (visual up/down) */
+    int preferred_column;
 };
 /* Helper functions for internal window manager access (for editor_state.cpp) */
 size_t vizero_window_manager_get_window_count_raw(vizero_window_manager_t* manager);
@@ -106,6 +111,10 @@ int vizero_editor_window_set_cursor(vizero_editor_window_t* window, vizero_curso
 int vizero_editor_window_get_content_area(vizero_editor_window_t* window, 
                                          int* content_x, int* content_y, 
                                          int* content_width, int* content_height);
+void vizero_editor_window_render_content(
+    vizero_editor_window_t* window,
+    struct vizero_editor_state_t* state,
+    struct vizero_renderer_t* renderer);
 
 /* Split window functionality */
 int vizero_window_manager_split_horizontal(vizero_window_manager_t* manager, uint32_t window_id);

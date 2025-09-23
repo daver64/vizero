@@ -1,16 +1,29 @@
+
 #ifndef VIZERO_BUFFER_H
 #define VIZERO_BUFFER_H
+
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stddef.h>
-#include <stdint.h>
-
-/* Forward declarations */
 typedef struct vizero_buffer_t vizero_buffer_t;
 typedef struct vizero_line_t vizero_line_t;
+
+typedef struct {
+    size_t line;
+    size_t column;
+    size_t length;
+} vizero_search_result_t;
+
+typedef struct {
+    size_t line_count;
+    size_t character_count;
+    size_t word_count;
+    size_t byte_count;
+} vizero_buffer_stats_t;
 
 /* Buffer creation and destruction */
 vizero_buffer_t* vizero_buffer_create(void);
@@ -50,28 +63,18 @@ int vizero_buffer_save_to_file(vizero_buffer_t* buffer, const char* filename);
 int vizero_buffer_save(vizero_buffer_t* buffer);
 
 /* Search operations */
-typedef struct {
-    size_t line;
-    size_t column;
-    size_t length;
-} vizero_search_result_t;
-
 int vizero_buffer_search(vizero_buffer_t* buffer, const char* pattern, int use_regex,
                         vizero_search_result_t* results, size_t max_results, size_t* result_count);
+
+/* File modification time polling for auto-reload */
+uint64_t vizero_buffer_get_last_disk_mtime(vizero_buffer_t* buffer);
+void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime);
 
 /* Undo/Redo support */
 int vizero_buffer_undo(vizero_buffer_t* buffer);
 int vizero_buffer_redo(vizero_buffer_t* buffer);
 int vizero_buffer_can_undo(vizero_buffer_t* buffer);
 int vizero_buffer_can_redo(vizero_buffer_t* buffer);
-
-/* Buffer statistics */
-typedef struct {
-    size_t line_count;
-    size_t character_count;
-    size_t word_count;
-    size_t byte_count;
-} vizero_buffer_stats_t;
 
 void vizero_buffer_get_stats(vizero_buffer_t* buffer, vizero_buffer_stats_t* stats);
 

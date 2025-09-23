@@ -1,3 +1,4 @@
+
 #ifndef VIZERO_STATUS_BAR_H
 #define VIZERO_STATUS_BAR_H
 
@@ -37,7 +38,15 @@ typedef struct {
     int min_width;
     char* custom_text;
 } vizero_status_panel_t;
-
+typedef struct vizero_status_bar_t {
+    vizero_status_panel_t panels[16];
+    size_t panel_count;
+    int width;
+    int height;
+    char* rendered_text;
+    size_t rendered_capacity;
+    char timedate_text[256];
+} vizero_status_bar_t;
 /* Status bar creation and destruction */
 vizero_status_bar_t* vizero_status_bar_create(int width, int height);
 void vizero_status_bar_destroy(vizero_status_bar_t* status_bar);

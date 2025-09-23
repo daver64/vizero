@@ -226,6 +226,7 @@ endif()
 # Create vizero core library
 add_library(vizero_core STATIC
     src/core/application.cpp
+    src/core/filewatch_poll.c
     src/core/window.cpp
     src/core/renderer.cpp
     src/core/input_manager.cpp
@@ -242,6 +243,7 @@ add_library(vizero_core STATIC
     src/plugin/plugin_interface.cpp
     src/ui/status_bar.cpp
     src/ui/editor_window.cpp
+    src/ui/editor_window_move_visual_row.c
     src/utils/file_utils.cpp
     src/utils/string_utils.cpp
 )
