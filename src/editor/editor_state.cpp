@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 
+
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
@@ -21,6 +22,8 @@
 #else
 #include <unistd.h>
 #include <sys/wait.h>
+#include <dirent.h>
+#include <sys/types.h>
 #endif
 
 
