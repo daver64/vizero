@@ -145,7 +145,7 @@ static GLuint load_bmp_texture(const char* filename) {
     
     /* Read image data */
     fseek(file, 54, SEEK_SET);
-    if (fread(data, 1, image_size, file) != image_size) {
+    if (fread(data, 1, image_size, file) != (size_t)image_size) {
         printf("Failed to read BMP data\n");
         free(data);
         fclose(file);

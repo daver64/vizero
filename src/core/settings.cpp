@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -10,6 +11,8 @@
 #else
 #include <sys/stat.h>
 #include <unistd.h>
+#include <limits.h>
+#define MAX_PATH PATH_MAX
 #endif
 
 #define MAX_SETTINGS 32
@@ -45,6 +48,13 @@ vizero_settings_t* vizero_settings_create(void) {
         vizero_settings_set_int(settings, VIZERO_SETTING_TAB_SIZE, 4);
         vizero_settings_set_bool(settings, VIZERO_SETTING_WORD_WRAP, 0);
         vizero_settings_set_bool(settings, VIZERO_SETTING_SYNTAX_HIGHLIGHTING, 1);
+        
+        /* Set default window settings (will be overridden when window position is saved) */
+        vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_X, -1); /* -1 means use centered */
+        vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_Y, -1); /* -1 means use centered */
+        vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_WIDTH, 1200);
+        vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_HEIGHT, 800);
+        vizero_settings_set_bool(settings, VIZERO_SETTING_WINDOW_MAXIMIZED, 0);
         
         /* Set default compiler settings */
 #ifdef _WIN32
@@ -396,4 +406,33 @@ char* vizero_settings_get_all_as_string(vizero_settings_t* settings) {
     strcpy(result + pos, summary);
     
     return result;
+}
+
+/* Window state management functions */
+void vizero_settings_save_window_state(vizero_settings_t* settings, int x, int y, int width, int height, int maximized) {
+    if (!settings) return;
+    
+    vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_X, x);
+    vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_Y, y);
+    vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_WIDTH, width);
+    vizero_settings_set_int(settings, VIZERO_SETTING_WINDOW_HEIGHT, height);
+    vizero_settings_set_bool(settings, VIZERO_SETTING_WINDOW_MAXIMIZED, maximized);
+}
+
+void vizero_settings_load_window_state(vizero_settings_t* settings, int* x, int* y, int* width, int* height, int* maximized) {
+    if (!settings) {
+        /* Set safe defaults if settings is null */
+        if (x) *x = -1;
+        if (y) *y = -1;
+        if (width) *width = 1200;
+        if (height) *height = 800;
+        if (maximized) *maximized = 0;
+        return;
+    }
+    
+    if (x) *x = vizero_settings_get_int(settings, VIZERO_SETTING_WINDOW_X);
+    if (y) *y = vizero_settings_get_int(settings, VIZERO_SETTING_WINDOW_Y);
+    if (width) *width = vizero_settings_get_int(settings, VIZERO_SETTING_WINDOW_WIDTH);
+    if (height) *height = vizero_settings_get_int(settings, VIZERO_SETTING_WINDOW_HEIGHT);
+    if (maximized) *maximized = vizero_settings_get_bool(settings, VIZERO_SETTING_WINDOW_MAXIMIZED);
 }

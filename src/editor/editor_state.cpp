@@ -130,6 +130,70 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
     return state;
 }
 
+vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_t* settings) {
+    vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
+    if (state) {
+        state->mode = VIZERO_MODE_NORMAL;
+        state->buffer_count = 0;
+        state->current_buffer_index = 0;
+        state->current_project = NULL;
+        state->command_length = 0;
+        state->command_buffer[0] = '\0';
+        state->should_quit = 0;
+        
+        /* Initialize clipboard */
+        state->clipboard_content = NULL;
+        state->clipboard_size = 0;
+        
+        /* Initialize selection */
+        state->has_selection = 0;
+        state->selection_start.line = 0;
+        state->selection_start.column = 0;
+        state->selection_end.line = 0;
+        state->selection_end.column = 0;
+        
+        /* Initialize undo stack */
+        state->undo_stack = (vizero_undo_stack_t*)malloc(sizeof(vizero_undo_stack_t));
+        if (state->undo_stack) {
+            state->undo_stack->operations = (vizero_undo_operation_t*)malloc(MAX_UNDO_OPERATIONS * sizeof(vizero_undo_operation_t));
+            state->undo_stack->count = 0;
+            state->undo_stack->capacity = MAX_UNDO_OPERATIONS;
+            state->undo_stack->current_index = 0;
+        }
+        
+        /* Use provided settings instead of creating new ones */
+        state->settings = settings;
+        
+        /* Initialize compilation output storage */
+        state->last_compile_output = NULL;
+        
+        /* Initialize popup system */
+        state->popup_visible = 0;
+        state->popup_content = NULL;
+        state->popup_start_time = 0;
+        state->popup_duration_ms = 5000; /* 5 seconds default */
+        
+        /* Create initial empty buffer */
+        state->buffers[0] = vizero_buffer_create();
+        state->cursors[0] = vizero_cursor_create(state->buffers[0]);
+        
+        if (state->buffers[0] && state->cursors[0]) {
+            state->buffer_count = 1;
+        } else {
+            /* Cleanup on failure */
+            if (state->buffers[0]) vizero_buffer_destroy(state->buffers[0]);
+            if (state->cursors[0]) vizero_cursor_destroy(state->cursors[0]);
+            if (state->undo_stack) {
+                if (state->undo_stack->operations) free(state->undo_stack->operations);
+                free(state->undo_stack);
+            }
+            free(state);
+            return NULL;
+        }
+    }
+    return state;
+}
+
 void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     if (!state) return;
     
@@ -332,7 +396,7 @@ void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content,
     }
     
     /* Set new popup */
-    state->popup_content = _strdup(content);
+    state->popup_content = strdup(content);
     state->popup_visible = 1;
     state->popup_start_time = SDL_GetTicks();
     state->popup_duration_ms = duration_ms;
@@ -631,7 +695,7 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
             (result == 0) ? "SUCCESS" : "FAILED",
             output[0] ? output : "(no output)");
     
-    state->last_compile_output = _strdup(full_result);
+    state->last_compile_output = strdup(full_result);
     
     /* Show popup with compilation result */
     vizero_editor_show_popup(state, full_result, 5000); /* 5 seconds */
@@ -1278,7 +1342,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
 void vizero_editor_set_status_message(vizero_editor_state_t* state, const char* message) {
     if (!state) return;
     if (state->status_message) free(state->status_message);
-    state->status_message = message ? _strdup(message) : NULL;
+    state->status_message = message ? strdup(message) : NULL;
 }
 
 const char* vizero_editor_get_status_message(vizero_editor_state_t* state) {
@@ -1501,7 +1565,7 @@ int vizero_editor_cut_selection(vizero_editor_state_t* state) {
                 vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
                 vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
                 if (buffer && cursor) {
-                    vizero_position_t start, end;
+                    vizero_position_t start = {0, 0}, end = {0, 0};
                     vizero_editor_get_selection_range(state, &start, &end);
                     
                     /* Delete the selection */
@@ -1823,7 +1887,7 @@ void vizero_editor_push_undo_operation(vizero_editor_state_t* state, vizero_undo
     op->type = type;
     op->position = position;
     op->end_position = end_position;
-    op->text = text ? _strdup(text) : NULL;
+    op->text = text ? strdup(text) : NULL;
     op->text_length = text ? strlen(text) : 0;
     
     stack->count++;

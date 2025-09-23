@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(vizero VERSION 1.0.0 LANGUAGES C CXX)
 
-# Set CMake policies
-cmake_policy(SET CMP0144 NEW)  # Use upper-case <PACKAGENAME>_ROOT variables
-
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -133,76 +130,87 @@ else()
 endif()
 
 # Boost Configuration
-if(DEFINED ENV{BOOST_ROOT})
-    set(Boost_ROOT $ENV{BOOST_ROOT})
-endif()
-
-if(DEFINED ENV{BOOST_LIBRARY_DIR})
-    set(Boost_LIBRARY_DIR $ENV{BOOST_LIBRARY_DIR})
-else()
-    # Default to stage/lib for typical Boost builds
-    if(Boost_ROOT)
-        set(Boost_LIBRARY_DIR ${Boost_ROOT}/stage/lib)
+if(WIN32)
+    # Windows Boost configuration
+    if(DEFINED ENV{BOOST_ROOT})
+        set(Boost_ROOT $ENV{BOOST_ROOT})
     endif()
-endif()
 
-# Set Boost configuration
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
-set(Boost_NO_SYSTEM_PATHS ON)
-
-# Debug output
-message(STATUS "Boost_ROOT: ${Boost_ROOT}")
-message(STATUS "Boost_LIBRARY_DIR: ${Boost_LIBRARY_DIR}")
-
-# Try to find Boost headers first
-find_path(Boost_INCLUDE_DIRS boost/version.hpp PATHS ${Boost_ROOT} ${Boost_ROOT}/boost NO_DEFAULT_PATH)
-
-if(Boost_INCLUDE_DIRS)
-    message(STATUS "Found Boost headers at: ${Boost_INCLUDE_DIRS}")
-    
-    # Manually find the libraries with the correct names
-    find_library(Boost_SYSTEM_LIBRARY 
-        NAMES libboost_system-vc143-mt-s-x64-1_87
-        PATHS ${Boost_LIBRARY_DIR}
-        NO_DEFAULT_PATH
-    )
-    
-    find_library(Boost_FILESYSTEM_LIBRARY 
-        NAMES libboost_filesystem-vc143-mt-s-x64-1_87
-        PATHS ${Boost_LIBRARY_DIR}
-        NO_DEFAULT_PATH
-    )
-    
-    if(Boost_SYSTEM_LIBRARY AND Boost_FILESYSTEM_LIBRARY)
-        message(STATUS "Found Boost system library: ${Boost_SYSTEM_LIBRARY}")
-        message(STATUS "Found Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
-        
-        # Create imported targets
-        add_library(Boost::system STATIC IMPORTED)
-        set_target_properties(Boost::system PROPERTIES
-            IMPORTED_LOCATION ${Boost_SYSTEM_LIBRARY}
-            INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
-        )
-        
-        add_library(Boost::filesystem STATIC IMPORTED)
-        set_target_properties(Boost::filesystem PROPERTIES
-            IMPORTED_LOCATION ${Boost_FILESYSTEM_LIBRARY}
-            INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
-            INTERFACE_LINK_LIBRARIES Boost::system
-        )
-        
-        # Set variables for compatibility
-        set(Boost_FOUND TRUE)
-        set(Boost_LIBRARIES ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY})
-        set(Boost_VERSION "1.87.0")
-        
+    if(DEFINED ENV{BOOST_LIBRARY_DIR})
+        set(Boost_LIBRARY_DIR $ENV{BOOST_LIBRARY_DIR})
     else()
-        message(FATAL_ERROR "Could not find Boost libraries. Found system: ${Boost_SYSTEM_LIBRARY}, filesystem: ${Boost_FILESYSTEM_LIBRARY}")
+        # Default to stage/lib for typical Boost builds
+        if(Boost_ROOT)
+            set(Boost_LIBRARY_DIR ${Boost_ROOT}/stage/lib)
+        endif()
+    endif()
+
+    # Set Boost configuration
+    set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_MULTITHREADED ON)
+    set(Boost_USE_STATIC_RUNTIME OFF)
+    set(Boost_NO_SYSTEM_PATHS ON)
+
+    # Debug output
+    message(STATUS "Boost_ROOT: ${Boost_ROOT}")
+    message(STATUS "Boost_LIBRARY_DIR: ${Boost_LIBRARY_DIR}")
+
+    # Try to find Boost headers first
+    find_path(Boost_INCLUDE_DIRS boost/version.hpp PATHS ${Boost_ROOT} ${Boost_ROOT}/boost NO_DEFAULT_PATH)
+
+    if(Boost_INCLUDE_DIRS)
+        message(STATUS "Found Boost headers at: ${Boost_INCLUDE_DIRS}")
+        
+        # Manually find the libraries with the correct names
+        find_library(Boost_SYSTEM_LIBRARY 
+            NAMES libboost_system-vc143-mt-s-x64-1_87
+            PATHS ${Boost_LIBRARY_DIR}
+            NO_DEFAULT_PATH
+        )
+        
+        find_library(Boost_FILESYSTEM_LIBRARY 
+            NAMES libboost_filesystem-vc143-mt-s-x64-1_87
+            PATHS ${Boost_LIBRARY_DIR}
+            NO_DEFAULT_PATH
+        )
+        
+        if(Boost_SYSTEM_LIBRARY AND Boost_FILESYSTEM_LIBRARY)
+            message(STATUS "Found Boost system library: ${Boost_SYSTEM_LIBRARY}")
+            message(STATUS "Found Boost filesystem library: ${Boost_FILESYSTEM_LIBRARY}")
+            
+            # Create imported targets
+            add_library(Boost::system STATIC IMPORTED)
+            set_target_properties(Boost::system PROPERTIES
+                IMPORTED_LOCATION ${Boost_SYSTEM_LIBRARY}
+                INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
+            )
+            
+            add_library(Boost::filesystem STATIC IMPORTED)
+            set_target_properties(Boost::filesystem PROPERTIES
+                IMPORTED_LOCATION ${Boost_FILESYSTEM_LIBRARY}
+                INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
+                INTERFACE_LINK_LIBRARIES Boost::system
+            )
+            
+            # Set variables for compatibility
+            set(Boost_FOUND TRUE)
+            set(Boost_LIBRARIES ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY})
+            set(Boost_VERSION "1.87.0")
+            
+        else()
+            message(FATAL_ERROR "Could not find Boost libraries. Found system: ${Boost_SYSTEM_LIBRARY}, filesystem: ${Boost_FILESYSTEM_LIBRARY}")
+        endif()
+    else()
+        message(FATAL_ERROR "Could not find Boost headers")
     endif()
 else()
-    message(FATAL_ERROR "Could not find Boost headers")
+    # Unix Boost configuration - use standard find_package
+    find_package(Boost REQUIRED COMPONENTS system filesystem)
+    if(Boost_FOUND)
+        message(STATUS "Found Boost version: ${Boost_VERSION}")
+        message(STATUS "Boost include directories: ${Boost_INCLUDE_DIRS}")
+        message(STATUS "Boost libraries: ${Boost_LIBRARIES}")
+    endif()
 endif()
 
 # OpenGL

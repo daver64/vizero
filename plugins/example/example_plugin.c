@@ -17,7 +17,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "Vizero Team",
     "Example plugin demonstrating the plugin system",
     VIZERO_PLUGIN_TYPE_GENERIC
-);
+)
 
 /* Wrapper function for cleanup callback */
 static void cleanup_wrapper(void) {
@@ -26,7 +26,9 @@ static void cleanup_wrapper(void) {
 
 /* Plugin callback implementations */
 static int on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
-    if (plugin_state.api && plugin_state.api->set_status_message) {
+    (void)buffer; /* Unused parameter */
+    
+    if (plugin_state.api && plugin_state.editor) {
         char message[256];
         snprintf(message, sizeof(message), "Example plugin: Opened file %s", filename);
         plugin_state.api->set_status_message(plugin_state.editor, message);
@@ -35,12 +37,17 @@ static int on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
 }
 
 static void on_buffer_close(vizero_buffer_t* buffer) {
+    (void)buffer; /* Unused parameter */
+    
     if (plugin_state.api && plugin_state.api->set_status_message) {
         plugin_state.api->set_status_message(plugin_state.editor, "Example plugin: Buffer closed");
     }
 }
 
 static int on_text_changed(vizero_buffer_t* buffer, vizero_range_t range, const char* new_text) {
+    (void)range; /* Unused parameter */
+    (void)new_text; /* Unused parameter */
+    
     /* Example: Count characters in the buffer */
     if (plugin_state.api && plugin_state.api->get_buffer_text) {
         const char* text = plugin_state.api->get_buffer_text(buffer);
@@ -57,6 +64,9 @@ static int on_text_changed(vizero_buffer_t* buffer, vizero_range_t range, const 
 }
 
 static void on_cursor_moved(vizero_cursor_t* cursor, vizero_position_t old_pos, vizero_position_t new_pos) {
+    (void)cursor; /* Unused parameter */
+    (void)old_pos; /* Unused parameter */
+    
     /* Example: Show cursor position */
     if (plugin_state.api && plugin_state.api->set_status_message) {
         char message[128];
@@ -84,6 +94,8 @@ static int on_command(vizero_editor_t* editor, const char* command, const char* 
 }
 
 static int on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
+    (void)modifiers; /* Unused parameter */
+    
     /* Example: Handle F1 key to show plugin info */
     if (key == 0x3A) { /* F1 key (SDL scancode) */
         if (plugin_state.api && plugin_state.api->set_status_message) {
@@ -131,6 +143,8 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
 }
 
 VIZERO_PLUGIN_API void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
+    (void)plugin; /* Unused parameter */
+    
     if (!plugin_state.initialized) {
         return;
     }

@@ -35,12 +35,23 @@ int vizero_settings_save_to_file(vizero_settings_t* settings);
 /* Settings enumeration */
 char* vizero_settings_get_all_as_string(vizero_settings_t* settings);
 
+/* Window state management */
+void vizero_settings_save_window_state(vizero_settings_t* settings, int x, int y, int width, int height, int maximized);
+void vizero_settings_load_window_state(vizero_settings_t* settings, int* x, int* y, int* width, int* height, int* maximized);
+
 /* Predefined settings */
 #define VIZERO_SETTING_LINE_NUMBERS "line_numbers"
 #define VIZERO_SETTING_SHOW_LINE_NUMBERS "show_line_numbers"
 #define VIZERO_SETTING_TAB_SIZE "tab_size"
 #define VIZERO_SETTING_WORD_WRAP "word_wrap"
 #define VIZERO_SETTING_SYNTAX_HIGHLIGHTING "syntax_highlighting"
+
+/* Window settings */
+#define VIZERO_SETTING_WINDOW_X "window_x"
+#define VIZERO_SETTING_WINDOW_Y "window_y"
+#define VIZERO_SETTING_WINDOW_WIDTH "window_width"
+#define VIZERO_SETTING_WINDOW_HEIGHT "window_height"
+#define VIZERO_SETTING_WINDOW_MAXIMIZED "window_maximized"
 
 /* Compiler settings */
 #define VIZERO_SETTING_ASSEMBLER "assembler"          /* "fasm" or "nasm" */

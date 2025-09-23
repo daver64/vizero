@@ -35,7 +35,7 @@ int vizero_command_parser_parse(vizero_command_parser_t* parser, const char* inp
     
     if (cmd_len >= sizeof(parser->command_buffer)) return -1;
     
-    strncpy(parser->command_buffer, cmd_start, cmd_len);
+    memcpy(parser->command_buffer, cmd_start, cmd_len);
     parser->command_buffer[cmd_len] = '\0';
     
     /* Parse arguments */

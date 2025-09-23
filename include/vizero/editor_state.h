@@ -7,6 +7,7 @@ extern "C" {
 
 #include <stddef.h>
 #include "plugin_interface.h"  /* For vizero_position_t */
+#include "settings.h"  /* For vizero_settings_t */
 
 /* Forward declarations */
 typedef struct vizero_editor_state_t vizero_editor_state_t;
@@ -54,6 +55,7 @@ typedef struct {
 
 /* Editor state creation and destruction */
 vizero_editor_state_t* vizero_editor_state_create(void);
+vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_t* settings);
 void vizero_editor_state_destroy(vizero_editor_state_t* state);
 
 /* Mode management */

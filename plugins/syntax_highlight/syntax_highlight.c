@@ -133,7 +133,7 @@ static int get_file_type(const char* filename) {
 }
 
 /* C syntax highlighting */
-static int highlight_c_line(const char* line, size_t line_num, 
+static int __attribute__((unused)) highlight_c_line(const char* line, size_t line_num, 
                            vizero_syntax_token_t** tokens, size_t* token_count) {
     if (!line || !tokens || !token_count) return -1;
     
@@ -296,7 +296,7 @@ static int highlight_c_line(const char* line, size_t line_num,
 }
 
 /* Assembly syntax highlighting */
-static int highlight_asm_line(const char* line, size_t line_num,
+static int __attribute__((unused)) highlight_asm_line(const char* line, size_t line_num,
                              vizero_syntax_token_t** tokens, size_t* token_count) {
     if (!line || !tokens || !token_count) return -1;
     
@@ -725,7 +725,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "Vizero Team", 
     "Syntax highlighting plugin for C and Assembly",
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER
-);
+)
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     if (!plugin || !editor || !api) return -1;

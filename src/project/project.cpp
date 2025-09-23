@@ -20,7 +20,7 @@ vizero_project_t* vizero_project_create(const char* root_directory) {
     vizero_project_t* project = (vizero_project_t*)calloc(1, sizeof(vizero_project_t));
     if (!project) return NULL;
     
-    project->root_directory = _strdup(root_directory);
+    project->root_directory = strdup(root_directory);
     if (!project->root_directory) {
         free(project);
         return NULL;
@@ -37,7 +37,7 @@ vizero_project_t* vizero_project_create(const char* root_directory) {
         name_start = last_backslash + 1;
     }
     
-    project->name = _strdup(name_start);
+    project->name = strdup(name_start);
     project->buffer_count = 0;
     
     return project;
@@ -46,7 +46,7 @@ vizero_project_t* vizero_project_create(const char* root_directory) {
 vizero_project_t* vizero_project_create_empty(void) {
     vizero_project_t* project = (vizero_project_t*)calloc(1, sizeof(vizero_project_t));
     if (project) {
-        project->name = _strdup("Untitled Project");
+        project->name = strdup("Untitled Project");
         project->buffer_count = 0;
     }
     return project;
@@ -74,7 +74,7 @@ const char* vizero_project_get_root_directory(vizero_project_t* project) {
 int vizero_project_set_root_directory(vizero_project_t* project, const char* directory) {
     if (!project || !directory) return -1;
     
-    char* new_dir = _strdup(directory);
+    char* new_dir = strdup(directory);
     if (!new_dir) return -1;
     
     if (project->root_directory) free(project->root_directory);
@@ -89,7 +89,7 @@ const char* vizero_project_get_name(vizero_project_t* project) {
 int vizero_project_set_name(vizero_project_t* project, const char* name) {
     if (!project || !name) return -1;
     
-    char* new_name = _strdup(name);
+    char* new_name = strdup(name);
     if (!new_name) return -1;
     
     if (project->name) free(project->name);

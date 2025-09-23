@@ -107,7 +107,7 @@ int vizero_status_bar_set_custom_text(vizero_status_bar_t* status_bar, size_t pa
     
     /* Set new text */
     if (text) {
-        panel->custom_text = _strdup(text);
+        panel->custom_text = strdup(text);
         if (!panel->custom_text) return -1;
     }
     

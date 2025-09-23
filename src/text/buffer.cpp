@@ -159,7 +159,7 @@ vizero_buffer_t* vizero_buffer_create(void) {
 vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
     vizero_buffer_t* buffer = vizero_buffer_create();
     if (buffer && filename) {
-        buffer->filename = _strdup(filename);
+        buffer->filename = strdup(filename);
         
         /* Load file content */
         FILE* file = fopen(filename, "r");
@@ -220,7 +220,7 @@ const char* vizero_buffer_get_filename(vizero_buffer_t* buffer) {
 int vizero_buffer_set_filename(vizero_buffer_t* buffer, const char* filename) {
     if (!buffer) return -1;
     if (buffer->filename) free(buffer->filename);
-    buffer->filename = filename ? _strdup(filename) : NULL;
+    buffer->filename = filename ? strdup(filename) : NULL;
     return 0;
 }
 

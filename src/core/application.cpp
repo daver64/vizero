@@ -29,6 +29,9 @@ struct vizero_application_t {
     /* Scrolling state */
     int scroll_x;
     int scroll_y;
+    
+    /* Temporary settings during initialization */
+    vizero_settings_t* settings;
 };
 
 vizero_application_t* vizero_application_create(const vizero_app_config_t* config) {
@@ -71,15 +74,38 @@ int vizero_application_initialize(vizero_application_t* app) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     
-    /* Create window */
-    app->window = vizero_window_create(app->config.title, 
-                                      app->config.width, 
-                                      app->config.height, 
-                                      app->config.fullscreen);
+    /* Load settings early to get window position */
+    vizero_settings_t* settings = vizero_settings_create();
+    if (settings) {
+        vizero_settings_load_from_file(settings);
+    }
+    
+    /* Get saved window state */
+    int saved_x, saved_y, saved_width, saved_height, saved_maximized;
+    vizero_settings_load_window_state(settings, &saved_x, &saved_y, &saved_width, &saved_height, &saved_maximized);
+    
+    /* Use saved dimensions if available, otherwise use config defaults */
+    int window_width = (saved_width > 0) ? saved_width : app->config.width;
+    int window_height = (saved_height > 0) ? saved_height : app->config.height;
+    
+    /* Create window with saved position */
+    app->window = vizero_window_create_with_position(app->config.title, 
+                                                    saved_x, saved_y,
+                                                    window_width, window_height,
+                                                    app->config.fullscreen);
     if (!app->window) {
+        if (settings) vizero_settings_destroy(settings);
         SDL_Quit();
         return -1;
     }
+    
+    /* Restore maximized state if needed */
+    if (saved_maximized && !app->config.fullscreen) {
+        SDL_MaximizeWindow(vizero_window_get_sdl_window(app->window));
+    }
+    
+    /* Store settings pointer for later use */
+    app->settings = settings;
     
     /* Initialize GLEW */
     if (glewInit() != GLEW_OK) {
@@ -106,8 +132,8 @@ int vizero_application_initialize(vizero_application_t* app) {
         return -1;
     }
     
-    /* Create editor state */
-    app->editor = vizero_editor_state_create();
+    /* Create editor state with pre-loaded settings */
+    app->editor = vizero_editor_state_create_with_settings(app->settings);
     if (!app->editor) {
         vizero_input_manager_destroy(app->input);
         vizero_renderer_destroy(app->renderer);
@@ -117,7 +143,6 @@ int vizero_application_initialize(vizero_application_t* app) {
     }
     
     /* Create status bar */
-    int window_width, window_height;
     vizero_window_get_size(app->window, &window_width, &window_height);
     app->status_bar = vizero_status_bar_create(window_width, 20); /* 20 pixel height */
     if (!app->status_bar) {
@@ -166,6 +191,21 @@ void vizero_application_shutdown(vizero_application_t* app) {
         return;
     }
     
+    /* Save window position before destroying anything */
+    if (app->window && app->settings) {
+        int x, y, width, height;
+        vizero_window_get_position(app->window, &x, &y);
+        vizero_window_get_size(app->window, &width, &height);
+        
+        /* Check if window is maximized */
+        SDL_Window* sdl_window = vizero_window_get_sdl_window(app->window);
+        int maximized = (SDL_GetWindowFlags(sdl_window) & SDL_WINDOW_MAXIMIZED) != 0;
+        
+        /* Save window state to settings */
+        vizero_settings_save_window_state(app->settings, x, y, width, height, maximized);
+        vizero_settings_save_to_file(app->settings);
+    }
+    
     if (app->plugin_manager) {
         vizero_plugin_manager_destroy(app->plugin_manager);
         app->plugin_manager = NULL;
@@ -174,11 +214,6 @@ void vizero_application_shutdown(vizero_application_t* app) {
     if (app->status_bar) {
         vizero_status_bar_destroy(app->status_bar);
         app->status_bar = NULL;
-    }
-    
-    if (app->editor) {
-        vizero_editor_state_destroy(app->editor);
-        app->editor = NULL;
     }
     
     if (app->input) {
@@ -195,6 +230,15 @@ void vizero_application_shutdown(vizero_application_t* app) {
         vizero_window_destroy(app->window);
         app->window = NULL;
     }
+    
+    /* Destroy editor AFTER saving window state, since editor will destroy settings */
+    if (app->editor) {
+        vizero_editor_state_destroy(app->editor);
+        app->editor = NULL;
+    }
+    
+    /* Settings are destroyed by editor state, so just clear our reference */
+    app->settings = NULL;
     
     SDL_Quit();
 }
@@ -263,7 +307,7 @@ int vizero_application_run(vizero_application_t* app) {
             vizero_color_t line_num_color = {0.6f, 0.6f, 0.7f, 1.0f}; /* Light gray */
             size_t buffer_line_count = vizero_buffer_get_line_count(current_buffer);
             
-            for (size_t line = app->scroll_y; line < buffer_line_count && line < app->scroll_y + visible_lines; line++) {
+            for (size_t line = app->scroll_y; line < buffer_line_count && line < app->scroll_y + (size_t)visible_lines; line++) {
                 char line_num_str[16];
                 snprintf(line_num_str, sizeof(line_num_str), "%4zu", line + 1); /* 1-based line numbers */
                 
@@ -302,7 +346,7 @@ int vizero_application_run(vizero_application_t* app) {
             
             /* Check if there's a text selection to highlight */
             int has_selection = vizero_editor_has_selection(app->editor);
-            vizero_position_t selection_start = {0}, selection_end = {0};
+            vizero_position_t selection_start = {0, 0}, selection_end = {0, 0};
             if (has_selection) {
                 vizero_editor_get_selection_range(app->editor, &selection_start, &selection_end);
             }
@@ -506,7 +550,7 @@ int vizero_application_run(vizero_application_t* app) {
         
         /* Find the start of the current line */
         for (int i = 0; buffer_text && buffer_text[i] != '\0'; i++) {
-            if (current_line == cursor_pos.line) {
+            if ((size_t)current_line == cursor_pos.line) {
                 break;
             }
             if (buffer_text[i] == '\n') {

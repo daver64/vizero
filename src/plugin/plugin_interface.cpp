@@ -97,6 +97,8 @@ static int api_clear_syntax_tokens(vizero_editor_t* editor) {
 void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     if (!api) return;
     
+    (void)editor; /* Unused parameter */
+    
     /* Buffer operations */
     api->get_buffer_text = api_get_buffer_text;
     api->get_buffer_filename = api_get_buffer_filename;
