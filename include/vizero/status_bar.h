@@ -1,4 +1,3 @@
-
 #ifndef VIZERO_STATUS_BAR_H
 #define VIZERO_STATUS_BAR_H
 
@@ -13,7 +12,6 @@ extern "C" {
 typedef struct vizero_status_bar_t vizero_status_bar_t;
 typedef struct vizero_editor_state_t vizero_editor_state_t;
 
-/* Status bar panel types */
 typedef enum {
     VIZERO_PANEL_FILENAME,
     VIZERO_PANEL_CURSOR_POSITION,
@@ -23,14 +21,12 @@ typedef enum {
     VIZERO_PANEL_CUSTOM
 } vizero_panel_type_t;
 
-/* Panel alignment */
 typedef enum {
     VIZERO_ALIGN_LEFT,
     VIZERO_ALIGN_CENTER,
     VIZERO_ALIGN_RIGHT
 } vizero_panel_align_t;
 
-/* Status bar panel */
 typedef struct {
     vizero_panel_type_t type;
     vizero_panel_align_t alignment;
@@ -38,7 +34,8 @@ typedef struct {
     int min_width;
     char* custom_text;
 } vizero_status_panel_t;
-typedef struct vizero_status_bar_t {
+
+struct vizero_status_bar_t {
     vizero_status_panel_t panels[16];
     size_t panel_count;
     int width;
@@ -46,14 +43,14 @@ typedef struct vizero_status_bar_t {
     char* rendered_text;
     size_t rendered_capacity;
     char timedate_text[256];
-} vizero_status_bar_t;
+};
+
 /* Status bar creation and destruction */
 vizero_status_bar_t* vizero_status_bar_create(int width, int height);
 void vizero_status_bar_destroy(vizero_status_bar_t* status_bar);
 
 /* Panel management */
-int vizero_status_bar_add_panel(vizero_status_bar_t* status_bar, vizero_panel_type_t type, 
-                               vizero_panel_align_t alignment, int min_width);
+int vizero_status_bar_add_panel(vizero_status_bar_t* status_bar, vizero_panel_type_t type, vizero_panel_align_t alignment, int min_width);
 int vizero_status_bar_remove_panel(vizero_status_bar_t* status_bar, size_t panel_index);
 int vizero_status_bar_set_panel_enabled(vizero_status_bar_t* status_bar, size_t panel_index, int enabled);
 int vizero_status_bar_set_custom_text(vizero_status_bar_t* status_bar, size_t panel_index, const char* text);
@@ -63,8 +60,7 @@ void vizero_status_bar_update(vizero_status_bar_t* status_bar, vizero_editor_sta
 void vizero_status_bar_resize(vizero_status_bar_t* status_bar, int width, int height);
 
 /* Rendering */
-void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t* renderer, 
-                             int x, int y, vizero_color_t bg_color, vizero_color_t text_color);
+void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t* renderer, int x, int y, vizero_color_t bg_color, vizero_color_t text_color);
 
 /* Panel information */
 size_t vizero_status_bar_get_panel_count(vizero_status_bar_t* status_bar);

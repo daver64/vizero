@@ -22,7 +22,24 @@
 11. [Compiler Integration](#compiler-integration)
 12. [Settings and Configuration](#settings-and-configuration)
 13. [Advanced Features](#advanced-features)
-14. [Keyboard Reference](#keyboard-reference)
+14. [Working Directory](#working-directory)
+15. [Keyboard Reference](#keyboard-reference)
+## Working Directory
+
+### Changing the Working Directory
+
+Use the `:chdir <path>` command to change the editor's current working directory at runtime. This affects file open/save dialogs and relative path resolution for all subsequent file operations.
+
+**Usage:**
+```
+:chdir c:\\users\\daver\\source\\foo\\
+```
+or
+```
+:chdir /home/username/projects/
+```
+
+On success, a status message will confirm the new directory. On failure, an error message will be shown.
 
 ---
 
@@ -426,12 +443,30 @@ vizero main.c          # Start with main.c as buffer 1
 | `Ctrl+C/X/V` | Clipboard operations |
 | `Ctrl+Z` | Undo |
 
+
 ### Command Mode
 | Key | Action |
 |-----|--------|
 | `Enter` | Execute command |
 | `Esc` | Cancel command |
 | `Backspace` | Edit command |
+
+#### Command Reference (partial)
+
+| Command | Description |
+|---------|-------------|
+| `:w`    | Write (save) current buffer |
+| `:q`    | Quit (if no unsaved changes) |
+| `:wq`   | Write and quit |
+| `:e <file>` | Open file in new buffer |
+| `:r <file>` | Read file into buffer |
+| `:chdir <path>` | Change working directory |
+| `:bn`, `:bp` | Next/previous buffer |
+| `:ls`   | List all buffers |
+| `:bd`   | Delete current buffer |
+| `:split`, `:vsplit` | Split window horizontally/vertically |
+| `:close` | Close current window |
+| `:help` | Show help popup |
 
 ---
 

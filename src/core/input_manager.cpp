@@ -97,6 +97,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             vizero_window_manager_t* wm = vizero_editor_get_window_manager(editor);
                             vizero_editor_window_t* focused_window = wm ? vizero_window_manager_get_focused_window(wm) : NULL;
                             vizero_cursor_t* cursor = focused_window ? vizero_editor_window_get_cursor(focused_window) : vizero_editor_get_current_cursor(editor);
+                            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                             // --- Ctrl+w window switching logic ---
                             if (input->awaiting_window_cmd) {
                                 // Awaiting direction/number after Ctrl+w
@@ -178,21 +179,26 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         break;
                                     }
                                     case SDLK_l:
-                                    case SDLK_RIGHT:
+                                    case SDLK_RIGHT: {
+                                        /* Prevent moving past end of line in normal mode */
                                         focused_window->preferred_column = col + 1;
-                                        if (event.key.keysym.mod & KMOD_SHIFT) {
-                                            /* Shift+Right: Start or extend selection */
-                                            if (!vizero_editor_has_selection(editor)) {
-                                                vizero_editor_start_selection(editor);
+                                        const char* line_text = buffer ? vizero_buffer_get_line_text(buffer, vizero_cursor_get_line(cursor)) : NULL;
+                                        size_t line_len = line_text ? strlen(line_text) : 0;
+                                        if (col < (int)line_len - 1) {
+                                            if (event.key.keysym.mod & KMOD_SHIFT) {
+                                                if (!vizero_editor_has_selection(editor)) {
+                                                    vizero_editor_start_selection(editor);
+                                                }
+                                                vizero_cursor_move_right(cursor);
+                                                vizero_editor_update_selection(editor);
+                                            } else {
+                                                vizero_editor_clear_selection(editor);
+                                                vizero_cursor_move_right(cursor);
                                             }
-                                            vizero_cursor_move_right(cursor);
-                                            vizero_editor_update_selection(editor);
-                                        } else {
-                                            /* Clear selection if moving without shift */
-                                            vizero_editor_clear_selection(editor);
-                                            vizero_cursor_move_right(cursor);
                                         }
                                         break;
+                                    }
+
                                     case SDLK_f:
                                         /* Ctrl+F for page down (vi style) */
                                         if (event.key.keysym.mod & KMOD_CTRL) {
@@ -246,15 +252,12 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         }
                                         break;
                                     case SDLK_a:
-                                        /* Ctrl+A for select all */
                                         if (event.key.keysym.mod & KMOD_CTRL) {
-                                            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                                            /* Ctrl+A for select all */
                                             if (buffer) {
                                                 size_t line_count = vizero_buffer_get_line_count(buffer);
                                                 if (line_count > 0) {
-                                                    /* Start selection at beginning of buffer */
                                                     vizero_editor_start_selection_at(editor, 0, 0);
-                                                    /* Move cursor to end of buffer and update selection */
                                                     const char* last_line = vizero_buffer_get_line_text(buffer, line_count - 1);
                                                     size_t end_col = last_line ? strlen(last_line) : 0;
                                                     vizero_cursor_set_position(cursor, line_count - 1, end_col);
@@ -262,6 +265,17 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                     vizero_editor_set_status_message(editor, "All text selected");
                                                 }
                                             }
+                                        } else {
+                                            /* Vi-like append: move cursor right (if not at EOL), then enter insert mode */
+                                            if (buffer && cursor) {
+                                                const char* line_text = buffer ? vizero_buffer_get_line_text(buffer, vizero_cursor_get_line(cursor)) : NULL;
+                                                size_t len = line_text ? strlen(line_text) : 0;
+                                                if (col < (int)len) {
+                                                    vizero_cursor_set_position(cursor, vizero_cursor_get_line(cursor), col + 1);
+                                                }
+                                            }
+                                            vizero_editor_set_mode(editor, VIZERO_MODE_INSERT);
+                                            input->mode_changed_this_frame = 1;
                                         }
                                         break;
                                     case SDLK_n:
@@ -291,6 +305,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         vizero_editor_set_mode(editor, VIZERO_MODE_INSERT);
                                         input->mode_changed_this_frame = 1;
                                         break;
+
                                     case SDLK_SEMICOLON:
                                         /* Check if shift is held for colon */
                                         if (event.key.keysym.mod & KMOD_SHIFT) {
@@ -433,18 +448,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 default:
                                     /* Arrow keys work in insert mode too */
                                     switch (event.key.keysym.sym) {
-                                        case SDLK_LEFT:
-                                            vizero_cursor_move_left(cursor);
-                                            break;
-                                        case SDLK_RIGHT:
-                                            vizero_cursor_move_right(cursor);
-                                            break;
-                                        case SDLK_UP:
-                                            vizero_cursor_move_up(cursor);
-                                            break;
-                                        case SDLK_DOWN:
-                                            vizero_cursor_move_down(cursor);
-                                            break;
+
                                         case SDLK_c:
                                             /* Ctrl+C for copy in insert mode */
                                             if (event.key.keysym.mod & KMOD_CTRL) {
@@ -511,13 +515,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 if (input->app) {
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
-                        /* Skip mode-switching characters that just switched modes */
-                        const char* text = event.text.text;
-                        if (input->mode_changed_this_frame && strlen(text) == 1 && 
-                            (text[0] == 'i' || text[0] == ':')) {
+                        /* Suppress the first SDL_TEXTINPUT event after switching to insert mode (e.g., after 'a') */
+                        if (input->mode_changed_this_frame) {
                             break;
                         }
-                        
+                        const char* text = event.text.text;
                         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
                         if (buffer && cursor) {
@@ -525,12 +527,10 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             for (const char* c = text; *c; c++) {
                                 size_t line = vizero_cursor_get_line(cursor);
                                 size_t col = vizero_cursor_get_column(cursor);
-                                
                                 /* Track undo for character insertion */
                                 vizero_position_t pos = {line, col};
                                 char char_str[2] = {*c, '\0'};
                                 vizero_editor_push_undo_operation(editor, VIZERO_UNDO_INSERT_CHAR, pos, pos, char_str);
-                                
                                 if (vizero_buffer_insert_char(buffer, line, col, *c) == 0) {
                                     /* Move cursor forward after successful insertion */
                                     vizero_cursor_move_right(cursor);

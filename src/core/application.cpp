@@ -449,58 +449,67 @@ int vizero_application_run(vizero_application_t* app) {
                 int popup_height = (int)(window_height * 0.6f); /* 60% of window height */
                 int popup_x = (window_width - popup_width) / 2;
                 int popup_y = (window_height - popup_height) / 2;
-                
+
                 /* Draw popup background */
                 vizero_color_t popup_bg = {0.1f, 0.1f, 0.1f, 0.9f}; /* Dark semi-transparent */
-                vizero_renderer_fill_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10), 
+                vizero_renderer_fill_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_bg);
-                
+
                 /* Draw popup border */
                 vizero_color_t popup_border = {0.5f, 0.5f, 0.5f, 1.0f}; /* Gray border */
-                vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10), 
+                vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
-                
-                /* Draw popup text with scrolling support */
+
+                /* Draw popup text with scrolling support and per-line color */
                 int scroll_offset = vizero_editor_get_popup_scroll_offset(app->editor);
                 int visible_lines = (popup_height - 80) / 16; /* Approximate lines that fit (16px per line) */
-                
+
                 /* Create a buffer for the visible portion of text */
                 const char* line_start = popup_content;
-                char visible_text[8192] = "";  /* Buffer for visible text */
                 int current_line = 0;
                 int lines_added = 0;
-                
-                /* Skip lines before scroll offset */
-                while (*line_start && current_line < scroll_offset) {
-                    if (*line_start == '\n') {
-                        current_line++;
+                float line_y = (float)popup_y;
+                while (*line_start && lines_added < visible_lines) {
+                    /* Skip lines before scroll offset */
+                    if (current_line < scroll_offset) {
+                        if (*line_start == '\n') current_line++;
+                        line_start++;
+                        continue;
                     }
-                    line_start++;
-                }
-                
-                /* Copy visible lines */
-                const char* p = line_start;
-                char* out = visible_text;
-                while (*p && lines_added < visible_lines && (out - visible_text) < sizeof(visible_text) - 1) {
-                    *out++ = *p;
-                    if (*p == '\n') {
-                        lines_added++;
+                    /* Find end of line */
+                    const char* line_end = strchr(line_start, '\n');
+                    size_t line_len = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
+                    if (line_len > 511) line_len = 511;
+                    char line_buf[512];
+                    memcpy(line_buf, line_start, line_len);
+                    line_buf[line_len] = '\0';
+
+                    /* Determine color by suffix */
+                    vizero_color_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+                    if (strstr(line_buf, "[DIR]")) {
+                        color.r = 128.0f/255.0f; color.g = 192.0f/255.0f; color.b = 255.0f/255.0f; color.a = 1.0f; // pale blue
+                    } else if (strstr(line_buf, "[EXE]")) {
+                        color.r = 255.0f/255.0f; color.g = 128.0f/255.0f; color.b = 128.0f/255.0f; color.a = 1.0f; // pale red
+                    } else if (strstr(line_buf, "[FILE]")) {
+                        color.r = 255.0f/255.0f; color.g = 255.0f/255.0f; color.b = 192.0f/255.0f; color.a = 1.0f; // pale yellow
                     }
-                    p++;
+
+                    vizero_text_info_t popup_text_info;
+                    popup_text_info.x = (float)popup_x;
+                    popup_text_info.y = line_y;
+                    popup_text_info.color = color;
+                    popup_text_info.font = NULL;
+                    vizero_renderer_draw_text(app->renderer, line_buf, &popup_text_info);
+
+                    lines_added++;
+                    if (line_end) {
+                        line_start = line_end + 1;
+                    } else {
+                        break;
+                    }
+                    line_y += 16.0f;
                 }
-                *out = '\0';
-                
-                vizero_text_info_t popup_text_info;
-                popup_text_info.x = (float)popup_x;
-                popup_text_info.y = (float)popup_y;
-                popup_text_info.color.r = 1.0f;
-                popup_text_info.color.g = 1.0f;
-                popup_text_info.color.b = 1.0f;
-                popup_text_info.color.a = 1.0f;
-                popup_text_info.font = NULL; /* Use default font */
-                
-                vizero_renderer_draw_text(app->renderer, visible_text, &popup_text_info);
-                
+
                 /* Draw dismiss instruction */
                 uint32_t popup_duration = vizero_editor_get_popup_duration(app->editor);
                 const char* instruction;
@@ -509,11 +518,14 @@ int vizero_application_run(vizero_application_t* app) {
                 } else {
                     instruction = "\n\nPress ESC to close, or use UP/DOWN arrows to scroll";
                 }
+                vizero_text_info_t popup_text_info;
+                popup_text_info.x = (float)popup_x;
                 popup_text_info.y = (float)(popup_y + popup_height - 40);
                 popup_text_info.color.r = 0.7f;
                 popup_text_info.color.g = 0.7f;
                 popup_text_info.color.b = 0.7f;
                 popup_text_info.color.a = 1.0f;
+                popup_text_info.font = NULL;
                 vizero_renderer_draw_text(app->renderer, instruction, &popup_text_info);
             }
         }

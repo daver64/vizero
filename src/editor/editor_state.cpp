@@ -1053,13 +1053,121 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
 }
 
 int vizero_editor_execute_command(vizero_editor_state_t* state, const char* command) {
+ 
     if (!state || !command) return -1;
     
     /* Skip leading colon if present */
     if (command[0] == ':') command++;
     
     /* Parse and execute commands */
-    if (strcmp(command, "q") == 0 || strcmp(command, "quit") == 0) {
+    if (strcmp(command, "ls") == 0) {
+        /* List files in current directory in a popup */
+        #ifdef _WIN32
+        WIN32_FIND_DATAA findFileData;
+        HANDLE hFind = FindFirstFileA("*", &findFileData);
+        if (hFind == INVALID_HANDLE_VALUE) {
+            vizero_editor_set_status_message(state, "No files found");
+            return -1;
+        }
+        char popup[8192] = "";
+        strcat(popup, "Files in current directory:\n\n");
+        do {
+            const char* name = findFileData.cFileName;
+            if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+            int is_dir = (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            int is_exe = 0;
+            if (!is_dir) {
+                const char* ext = strrchr(name, '.');
+                if (ext && (_stricmp(ext, ".exe") == 0 || _stricmp(ext, ".bat") == 0 || _stricmp(ext, ".com") == 0)) {
+                    is_exe = 1;
+                }
+            }
+            char line[512];
+            if (is_dir) {
+                snprintf(line, sizeof(line), "\033[38;2;128;192;255m%-40s   [DIR]\033[0m\n", name); // pale blue
+            } else if (is_exe) {
+                unsigned long long size = ((unsigned long long)findFileData.nFileSizeHigh << 32) | findFileData.nFileSizeLow;
+                snprintf(line, sizeof(line), "\033[38;2;255;128;128m%-40s   [EXE]  %10llu bytes\033[0m\n", name, size); // pale red
+            } else {
+                unsigned long long size = ((unsigned long long)findFileData.nFileSizeHigh << 32) | findFileData.nFileSizeLow;
+                snprintf(line, sizeof(line), "\033[38;2;255;255;192m%-40s   [FILE] %10llu bytes\033[0m\n", name, size); // pale yellow
+            }
+            strcat(popup, line);
+        } while (FindNextFileA(hFind, &findFileData));
+        FindClose(hFind);
+        vizero_editor_show_popup(state, popup, 0); /* No timeout, stays until ESC */
+        return 0;
+        #else
+        DIR* dir = opendir(".");
+        if (!dir) {
+            vizero_editor_set_status_message(state, "No files found");
+            return -1;
+        }
+        char popup[8192] = "";
+        strcat(popup, "Files in current directory:\n\n");
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            const char* name = entry->d_name;
+            if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+            int is_dir = (entry->d_type == DT_DIR);
+            int is_exe = 0;
+            if (!is_dir) {
+                const char* ext = strrchr(name, '.');
+                if (ext && (strcasecmp(ext, ".exe") == 0 || strcasecmp(ext, ".sh") == 0)) {
+                    is_exe = 1;
+                }
+            }
+            char line[512];
+            if (is_dir) {
+                snprintf(line, sizeof(line), "\033[38;2;128;192;255m%-40s   [DIR]\033[0m\n", name); // pale blue
+            } else if (is_exe) {
+                snprintf(line, sizeof(line), "\033[38;2;255;128;128m%-40s   [EXE]\033[0m\n", name); // pale red
+            } else {
+                snprintf(line, sizeof(line), "\033[38;2;255;255;192m%-40s   [FILE]\033[0m\n", name); // pale yellow
+            }
+            strcat(popup, line);
+        }
+        closedir(dir);
+        vizero_editor_show_popup(state, popup, 0);
+        return 0;
+        #endif
+    }
+    else if (strncmp(command, "chdir ", 6) == 0) {
+        /* Change working directory */
+        const char* path = command + 6;
+        while (*path == ' ' || *path == '\t') path++;
+        if (strlen(path) == 0) {
+            vizero_editor_set_status_message(state, "Usage: :chdir <path>");
+            return -1;
+        }
+#ifdef _WIN32
+        int result = SetCurrentDirectoryA(path);
+        if (result) {
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Changed directory to: %s", path);
+            vizero_editor_set_status_message(state, msg);
+            return 0;
+        } else {
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Failed to change directory: %s", path);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+#else
+        int result = chdir(path);
+        if (result == 0) {
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Changed directory to: %s", path);
+            vizero_editor_set_status_message(state, msg);
+            return 0;
+        } else {
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Failed to change directory: %s", path);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+#endif
+    } else if (strcmp(command, "q") == 0 || strcmp(command, "quit") == 0) {
         /* Quit command - check for unsaved changes */
         int has_unsaved = 0;
         

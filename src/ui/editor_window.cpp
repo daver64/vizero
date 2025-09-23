@@ -1,3 +1,41 @@
+#include <stdio.h>
+#include <string.h>
+#include "vizero/editor_state.h"
+#include "vizero/renderer.h"
+#ifdef _WIN32
+#include <direct.h>
+#define getcwd _getcwd
+#else
+#include <unistd.h>
+#endif
+// Helper to get current working directory (static buffer)
+static const char* vizero_get_cwd(void) {
+    static char cwd[512];
+    if (getcwd(cwd, sizeof(cwd))) {
+        return cwd;
+    } else {
+        return "[unknown dir]";
+    }
+}
+// Draw status bar with current directory
+void vizero_draw_status_bar_with_cwd(vizero_editor_state_t* state, vizero_renderer_t* renderer, int screen_width, int screen_height) {
+    // Draw background bar
+    vizero_color_t bar_color = {0.15f, 0.15f, 0.18f, 1.0f};
+    vizero_renderer_fill_rect(renderer, 0, screen_height - 24, screen_width, 24, bar_color);
+
+    // Left: status message
+    const char* status = vizero_editor_get_status_message(state);
+    vizero_text_info_t info = {8.0f, (float)(screen_height - 18), {1.0f, 1.0f, 1.0f, 1.0f}, NULL};
+    vizero_renderer_draw_text(renderer, status ? status : "", &info);
+
+    // Right: current working directory
+    const char* cwd = vizero_get_cwd();
+    char cwd_buf[512];
+    snprintf(cwd_buf, sizeof(cwd_buf), "CWD: %s", cwd);
+    int text_width = (int)strlen(cwd_buf) * 8;
+    vizero_text_info_t info2 = {(float)(screen_width - text_width - 8), (float)(screen_height - 18), {0.7f, 0.7f, 1.0f, 1.0f}, NULL};
+    vizero_renderer_draw_text(renderer, cwd_buf, &info2);
+}
 // ...existing code...
 // Safely set the window title, freeing the old one
 #include "vizero/editor_window_constants.h"

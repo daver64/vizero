@@ -8,7 +8,10 @@ extern "C" {
 #endif
 void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t *renderer, int x, int y, vizero_color_t bg_color, vizero_color_t text_color) {
     if (!status_bar || !renderer) return;
-    // Optionally draw background here using bg_color (not implemented)
+
+    // Draw a slightly lighter blue background for the status bar
+    vizero_color_t panel_bg = {0.28f, 0.34f, 0.48f, 1.0f}; // lighter blue
+    vizero_renderer_fill_rect(renderer, (float)x, (float)y, (float)status_bar->width, 24.0f, panel_bg);
 
     // Draw the main status bar text
     vizero_text_info_t info = {

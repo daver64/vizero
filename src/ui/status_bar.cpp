@@ -1,14 +1,16 @@
-    // ...existing code...
+
 /* Status bar implementation */
 #include "vizero/status_bar.h"
 #include "vizero/editor_state.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
+#include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
 
+#include "../editor/editor_state_internal.h" // Ensure timeout logic is enabled
 #define MAX_PANELS 16
 #define MAX_PANEL_TEXT 256
 
@@ -294,27 +296,12 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
     unsigned int timeout = 0, set_time = 0, now = 0;
     if (status_message && status_message[0] != '\0')
     {
-/* Use API to get timeout/set_time if available, else fallback to direct struct (for now) */
-/* This avoids undefined struct access if the type is incomplete */
-/* If struct is opaque, add vizero_editor_get_status_message_timeout_ms/editor_get_status_message_set_time API */
-#ifdef VIZERO_EDITOR_STATE_INTERNAL_H
         timeout = editor->status_message_timeout_ms;
         set_time = editor->status_message_set_time;
-#endif
         if (timeout > 0)
         {
-            /* Use SDL_GetTicks if available, else fallback to time(NULL) * 1000 */
-#ifdef _WIN32
-            /* Windows: use timeGetTime() for millisecond ticks if available, else fallback */
-            /* Avoid error if timeGetTime is not available: fallback to time(NULL) * 1000 */
-            now = (unsigned int)time(NULL) * 1000;
-#else
-            extern unsigned int SDL_GetTicks(void);
-            if (&SDL_GetTicks)
-                now = SDL_GetTicks();
-            else
-                now = (unsigned int)time(NULL) * 1000;
-#endif
+            /* Always use SDL_GetTicks for timing */
+            now = SDL_GetTicks();
             if (now - set_time >= timeout)
             {
                 vizero_editor_set_status_message(editor, NULL);
