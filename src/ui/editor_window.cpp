@@ -602,7 +602,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         }
         float cursor_x = (float)(content_x + line_number_width + (float)visual_cursor_col * 8.0f);
         float cursor_y = (float)(content_y + (float)(visual_cursor_row - window->scroll_y) * 16.0f);
-        vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 1.0f};
+        vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 0.5f}; // 50% transparent yellow
         vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
     }
 }
