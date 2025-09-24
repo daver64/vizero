@@ -1,7 +1,6 @@
 #include "vizero/vizero.h"
 #include <stdio.h>
 #include <stdlib.h>
-
 int main(int argc, char* argv[]) {
     printf("Vizero - Vi Clone v1.0.0\n");
     printf("Built with SDL2 and cross-platform plugin support\n\n");
@@ -20,9 +19,13 @@ int main(int argc, char* argv[]) {
     if (!app) {
         fprintf(stderr, "Failed to create application\n");
         return 1;
+ 
+    // Global variable for startup filename
+   
     }
     
     /* Initialize application */
+
     if (vizero_application_initialize(app) != 0) {
         fprintf(stderr, "Failed to initialize application\n");
         vizero_application_destroy(app);

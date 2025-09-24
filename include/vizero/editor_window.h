@@ -46,9 +46,8 @@ struct vizero_editor_window_t {
     int x, y;
     int width, height;
     
-    /* Associated buffer and cursor */
-    vizero_buffer_t* buffer;
-    vizero_cursor_t* cursor;
+    /* Associated buffer index (references editor state buffer/cursor arrays) */
+    size_t buffer_index;
     
     /* Window state */
     int is_focused;
@@ -88,10 +87,10 @@ void vizero_window_manager_destroy(vizero_window_manager_t* manager);
 
 /* Window lifecycle */
 vizero_editor_window_t* vizero_window_manager_create_window(vizero_window_manager_t* manager, 
-                                                           vizero_buffer_t* buffer,
+                                                           size_t buffer_index,
                                                            int x, int y, int width, int height);
 int vizero_window_manager_destroy_window(vizero_window_manager_t* manager, uint32_t window_id);
-int vizero_window_manager_close_window(vizero_window_manager_t* manager, uint32_t window_id);
+int vizero_window_manager_close_window(vizero_window_manager_t* manager, uint32_t window_id, struct vizero_editor_state_t* state);
 
 /* Window management */
 vizero_editor_window_t* vizero_window_manager_get_focused_window(vizero_window_manager_t* manager);
@@ -111,14 +110,16 @@ int vizero_editor_window_is_focused(vizero_editor_window_t* window);
 int vizero_editor_window_is_maximized(vizero_editor_window_t* window);
 const char* vizero_editor_window_get_title(vizero_editor_window_t* window);
 
-/* Window content access */
-vizero_buffer_t* vizero_editor_window_get_buffer(vizero_editor_window_t* window);
-vizero_cursor_t* vizero_editor_window_get_cursor(vizero_editor_window_t* window);
+/* Forward declaration for editor state */
+struct vizero_editor_state_t;
 
-/* Buffer and cursor access */
-vizero_buffer_t* vizero_editor_window_get_buffer(vizero_editor_window_t* window);
-vizero_cursor_t* vizero_editor_window_get_cursor(vizero_editor_window_t* window);
-int vizero_editor_window_set_cursor(vizero_editor_window_t* window, vizero_cursor_t* cursor);
+/* Window content access */
+vizero_buffer_t* vizero_editor_window_get_buffer(vizero_editor_window_t* window, struct vizero_editor_state_t* state);
+vizero_cursor_t* vizero_editor_window_get_cursor(vizero_editor_window_t* window, struct vizero_editor_state_t* state);
+
+/* Buffer index access */
+size_t vizero_editor_window_get_buffer_index(vizero_editor_window_t* window);
+int vizero_editor_window_set_buffer_index(vizero_editor_window_t* window, size_t buffer_index);
 
 /* Rendering support */
 int vizero_editor_window_get_content_area(vizero_editor_window_t* window, 

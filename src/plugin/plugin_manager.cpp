@@ -346,22 +346,33 @@ int vizero_plugin_manager_on_key_input(vizero_plugin_manager_t* manager, vizero_
     return 0; /* Key not handled */
 }
 
-int vizero_plugin_manager_highlight_syntax(vizero_plugin_manager_t* manager, vizero_buffer_t* buffer, 
-                                          size_t start_line, size_t end_line, 
-                                          vizero_syntax_token_t** tokens, size_t* token_count) {
-    if (!manager) return 0;
-    
+// --- PATCH: Use caller-allocated tokens buffer for plugin syntax highlighting ---
+// Helper for max tokens per line
+#define VIZERO_SYNTAX_MAX_TOKENS_PER_LINE 32
+
+// Updated API: caller allocates tokens buffer, plugin fills it
+int vizero_plugin_manager_highlight_syntax(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    size_t start_line,
+    size_t end_line,
+    vizero_syntax_token_t* tokens,
+    size_t max_tokens,
+    size_t* token_count)
+{
+    if (!manager || !tokens || !token_count) return 0;
+    *token_count = 0;
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
-        if (plugin && plugin->info.type == VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER && 
-            plugin->callbacks.highlight_syntax) {
-            if (plugin->callbacks.highlight_syntax(buffer, start_line, end_line, tokens, token_count) != 0) {
-                return 1; /* Syntax highlighting provided */
+        if (plugin && plugin->info.type == VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER && plugin->callbacks.highlight_syntax) {
+            int n = plugin->callbacks.highlight_syntax(buffer, start_line, end_line, tokens, max_tokens);
+            if (n > 0) {
+                *token_count = (size_t)n;
+                return 1;
             }
         }
     }
-    
-    return 0; /* No syntax highlighting */
+    return 0;
 }
 
 /* API function implementations */

@@ -129,9 +129,8 @@ typedef struct {
     /* Optional: Called for command processing */
     int (*on_command)(vizero_editor_t* editor, const char* command, const char* args);
     
-    /* Optional: Called for syntax highlighting */
-    int (*highlight_syntax)(vizero_buffer_t* buffer, size_t start_line, size_t end_line, 
-                           vizero_syntax_token_t** tokens, size_t* token_count);
+    /* Optional: Called for syntax highlighting (updated signature) */
+    int (*highlight_syntax)(vizero_buffer_t* buffer, size_t start_line, size_t end_line, vizero_syntax_token_t* tokens, size_t max_tokens);
     
     /* Optional: Called for key input processing */
     int (*on_key_input)(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
@@ -199,4 +198,4 @@ int vizero_plugin_interface_check_version(const vizero_plugin_info_t* info);
 }
 #endif
 
-#endif /* VIZERO_PLUGIN_INTERFACE_H */
+#endif /* VIZERO_PLUGIN_INTERFACE_H */#endif /* VIZERO_PLUGIN_INTERFACE_H */

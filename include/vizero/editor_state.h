@@ -70,6 +70,7 @@ vizero_cursor_t* vizero_editor_get_current_cursor(vizero_editor_state_t* state);
 size_t vizero_editor_get_current_buffer_index(vizero_editor_state_t* state);
 size_t vizero_editor_get_buffer_count(vizero_editor_state_t* state);
 vizero_buffer_t* vizero_editor_get_buffer(vizero_editor_state_t* state, size_t index);
+vizero_cursor_t* vizero_editor_get_cursor(vizero_editor_state_t* state, size_t index);
 
 /* Buffer operations */
 int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename);

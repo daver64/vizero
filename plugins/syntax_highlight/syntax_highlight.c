@@ -146,24 +146,13 @@ static int get_file_type(const char* filename) {
 
 /* C syntax highlighting */
 static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num, 
-                           vizero_syntax_token_t** tokens, size_t* token_count) {
-    if (!line || !tokens || !token_count) return -1;
-    
+                           vizero_syntax_token_t* tokens, size_t max_tokens) {
+    if (!line || !tokens) return 0;
     size_t line_len = strlen(line);
-    if (line_len == 0) {
-        *token_count = 0;
-        return 0;
-    }
-    /* Function to highlight Markdown syntax */
-    
-    /* Allocate maximum possible tokens (one per character is overkill but safe) */
-    *tokens = malloc(line_len * sizeof(vizero_syntax_token_t));
-    if (!*tokens) return -1;
-    
-    *token_count = 0;
+    if (line_len == 0) return 0;
     size_t i = 0;
-    
-    while (i < line_len) {
+    size_t count = 0;
+    while (i < line_len && count < max_tokens) {
         /* Skip whitespace */
         if (isspace(line[i])) {
             i++;
@@ -172,8 +161,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         /* Comments */
         if (i < line_len - 1 && line[i] == '/' && line[i + 1] == '/') {
-            /* Single line comment */
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
             token->range.end.line = line_num;
@@ -184,20 +172,19 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         }
         
         if (i < line_len - 1 && line[i] == '/' && line[i + 1] == '*') {
-            /* Multi-line comment start - for now just highlight this line */
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = line_len;
             token->color = colors[TOKEN_COMMENT];
             token->flags = SYNTAX_ITALIC;
-            break;
+            break; /* Rest of line is comment */
         }
         
         /* Preprocessor directives */
         if (line[i] == '#') {
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
             token->range.end.line = line_num;
@@ -216,7 +203,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             if (i < line_len) i++; /* Include closing quote */
             
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
             token->range.end.line = line_num;
@@ -235,7 +222,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             if (i < line_len) i++; /* Include closing quote */
             
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
             token->range.end.line = line_num;
@@ -256,7 +243,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
                 while (i < line_len && (isdigit(line[i]) || line[i] == '.')) i++;
             }
             
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
             token->range.end.line = line_num;
@@ -280,7 +267,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             
             if (type != TOKEN_NORMAL) {
-                vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+                vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;
                 token->range.end.line = line_num;
@@ -293,7 +280,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         /* Operators */
         if (strchr("+-*/%=<>!&|^~?:;,.(){}[]", line[i])) {
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
             token->range.end.line = line_num;
@@ -304,36 +291,21 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         i++;
     }
-    
-    return 0;
+    return (int)count;
 }
 
 /* Assembly syntax highlighting */
 static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
-                             vizero_syntax_token_t** tokens, size_t* token_count) {
-    if (!line || !tokens || !token_count) return -1;
-    
+                             vizero_syntax_token_t* tokens, size_t max_tokens) {
+    if (!line || !tokens) return 0;
     size_t line_len = strlen(line);
-    if (line_len == 0) {
-        *token_count = 0;
-        return 0;
-    }
-    
-    *tokens = malloc(line_len * sizeof(vizero_syntax_token_t));
-    if (!*tokens) return -1;
-    
-    *token_count = 0;
+    if (line_len == 0) return 0;
     size_t i = 0;
-    
-    while (i < line_len) {
-        if (isspace(line[i])) {
-            i++;
-            continue;
-        }
-        
-        /* Comments */
+    size_t count = 0;
+    while (i < line_len && count < max_tokens) {
+        if (isspace(line[i])) { i++; continue; }
         if (line[i] == ';' || (line[i] == '/' && i + 1 < line_len && line[i + 1] == '/')) {
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
             token->range.end.line = line_num;
@@ -342,17 +314,13 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             token->flags = SYNTAX_ITALIC;
             break;
         }
-        
-        /* Labels (word followed by colon) */
         if (isalpha(line[i]) || line[i] == '_') {
             size_t start = i;
             while (i < line_len && (isalnum(line[i]) || line[i] == '_')) i++;
-            
-            /* Check if followed by colon */
             size_t temp_i = i;
             while (temp_i < line_len && isspace(line[temp_i])) temp_i++;
             if (temp_i < line_len && line[temp_i] == ':') {
-                vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+                vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;
                 token->range.end.line = line_num;
@@ -361,18 +329,12 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
                 token->flags = SYNTAX_BOLD;
                 continue;
             }
-            
-            /* Check for instructions or registers */
             size_t len = i - start;
             token_type_t type = TOKEN_NORMAL;
-            if (is_keyword(line + start, len, asm_instructions)) {
-                type = TOKEN_INSTRUCTION;
-            } else if (is_keyword(line + start, len, asm_registers)) {
-                type = TOKEN_REGISTER;
-            }
-            
+            if (is_keyword(line + start, len, asm_instructions)) type = TOKEN_INSTRUCTION;
+            else if (is_keyword(line + start, len, asm_registers)) type = TOKEN_REGISTER;
             if (type != TOKEN_NORMAL) {
-                vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+                vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;
                 token->range.end.line = line_num;
@@ -382,10 +344,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             }
             continue;
         }
-        
-        /* Numbers (including hex) */
-        if (isdigit(line[i]) || (line[i] == '0' && i + 1 < line_len && 
-                                (line[i + 1] == 'x' || line[i + 1] == 'X'))) {
+        if (isdigit(line[i]) || (line[i] == '0' && i + 1 < line_len && (line[i + 1] == 'x' || line[i + 1] == 'X'))) {
             size_t start = i;
             if (line[i] == '0' && i + 1 < line_len && (line[i + 1] == 'x' || line[i + 1] == 'X')) {
                 i += 2;
@@ -394,7 +353,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
                 while (i < line_len && isdigit(line[i])) i++;
             }
             
-            vizero_syntax_token_t* token = &(*tokens)[(*token_count)++];
+            vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
             token->range.end.line = line_num;
@@ -406,335 +365,34 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
         
         i++;
     }
-    
-    return 0;
+    return (int)count;
 }
 
-/* Main syntax highlighting function */
+/* Update plugin API: highlight_syntax takes caller-allocated buffer */
 static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t end_line,
-                           vizero_syntax_token_t** tokens, size_t* token_count) {
-    if (!buffer || !tokens || !token_count || !editor_api) return -1;
-    
-    if (!editor_api->get_buffer_line || !editor_api->get_buffer_filename) {
-        return -1;
-    }
-    
+                           vizero_syntax_token_t* tokens, size_t max_tokens) {
+    if (!buffer || !tokens || !editor_api) return 0;
+    if (!editor_api->get_buffer_line || !editor_api->get_buffer_filename) return 0;
     const char* filename = editor_api->get_buffer_filename(buffer);
     int file_type = get_file_type(filename);
-
     if (file_type == 3) {
         /* Markdown file - use markdown_highlight */
-        int result = markdown_highlight(buffer, start_line, end_line, tokens, token_count, editor_api);
+        int result = markdown_highlight(buffer, start_line, end_line, &tokens, &max_tokens, editor_api);
         return result;
     }
-
-    /* Allocate tokens - estimate max 10 tokens per line for word-level highlighting */
-    size_t line_count = end_line - start_line + 1;
-    size_t max_tokens = line_count * 10;
-    *tokens = malloc(max_tokens * sizeof(vizero_syntax_token_t));
-    if (!*tokens) {
-        *token_count = 0;
-        return -1;
-    }
-
-    *token_count = 0;
-
-    /* Create word-level tokens */
-    for (size_t line = start_line; line <= end_line; line++) {
+    size_t token_count = 0;
+    for (size_t line = start_line; line <= end_line && token_count < max_tokens; line++) {
         const char* line_text = editor_api->get_buffer_line(buffer, line);
         if (!line_text) continue;
-
-        size_t line_len = strlen(line_text);
-        if (line_len == 0) continue;
-
+        int n = 0;
         if (file_type == 2) {
-            /* Assembly file - word-by-word tokenization */
-            
-            /* Check for comment first */
-            if (strchr(line_text, ';') == line_text) {
-                /* Entire line is comment */
-                if (*token_count >= max_tokens) break;
-                vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                token->range.start.line = line;
-                token->range.start.column = 0;
-                token->range.end.line = line;
-                token->range.end.column = line_len;
-                token->color = colors[TOKEN_COMMENT];
-                token->flags = SYNTAX_ITALIC;
-                (*token_count)++;
-                continue;
-            }
-            
-            /* Check for labels */
-            if (line_len > 0 && line_text[line_len - 1] == ':') {
-                if (*token_count >= max_tokens) break;
-                vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                token->range.start.line = line;
-                token->range.start.column = 0;
-                token->range.end.line = line;
-                token->range.end.column = line_len - 1;
-                token->color = colors[TOKEN_LABEL];
-                token->flags = SYNTAX_BOLD;
-                (*token_count)++;
-                continue;
-            }
-            
-            /* Parse words in the line */
-            const char* pos = line_text;
-            while (pos < line_text + line_len && *token_count < max_tokens) {
-                /* Skip whitespace */
-                while (pos < line_text + line_len && (*pos == ' ' || *pos == '\t')) {
-                    pos++;
-                }
-                if (pos >= line_text + line_len) break;
-                
-                /* Handle comment in middle of line */
-                if (*pos == ';') {
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = pos - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = line_len;
-                    token->color = colors[TOKEN_COMMENT];
-                    token->flags = SYNTAX_ITALIC;
-                    (*token_count)++;
-                    break;
-                }
-                
-                /* Find end of current token */
-                const char* token_start = pos;
-                
-                /* Handle bracketed expressions like [ebx+9] */
-                if (*pos == '[') {
-                    /* Find closing bracket */
-                    while (pos < line_text + line_len && *pos != ']') {
-                        pos++;
-                    }
-                    if (pos < line_text + line_len && *pos == ']') {
-                        pos++; /* Include the closing bracket */
-                    }
-                } else {
-                    /* Regular word - stop at whitespace or punctuation */
-                    while (pos < line_text + line_len && 
-                           *pos != ' ' && *pos != '\t' && *pos != ',' && 
-                           *pos != ';' && *pos != '[' && *pos != ']') {
-                        pos++;
-                    }
-                }
-                
-                if (pos > token_start) {
-                    size_t token_len = pos - token_start;
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    
-                    /* Determine token color */
-                    if (*token_start == '[') {
-                        /* Bracketed expression - normal color */
-                        token->color = colors[TOKEN_NORMAL];
-                        token->flags = 0;
-                    } else if (is_keyword(token_start, token_len, asm_instructions)) {
-                        token->color = colors[TOKEN_INSTRUCTION];
-                        token->flags = SYNTAX_BOLD;
-                    } else if (is_keyword(token_start, token_len, asm_registers)) {
-                        token->color = colors[TOKEN_REGISTER];
-                        token->flags = 0;
-                    } else if (*token_start >= '0' && *token_start <= '9') {
-                        token->color = colors[TOKEN_NUMBER];
-                        token->flags = 0;
-                    } else {
-                        token->color = colors[TOKEN_NORMAL];
-                        token->flags = 0;
-                    }
-                    (*token_count)++;
-                }
-                
-                /* Skip comma or other punctuation */
-                if (pos < line_text + line_len && (*pos == ',' || *pos == ':')) {
-                    pos++;
-                }
-            }
-            
+            n = highlight_asm_line(line_text, line, tokens + token_count, max_tokens - token_count);
         } else if (file_type == 1) {
-            /* C file - word-by-word tokenization */
-            
-            /* Check for preprocessor lines first */
-            if (line_text[0] == '#') {
-                if (*token_count >= max_tokens) break;
-                vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                token->range.start.line = line;
-                token->range.start.column = 0;
-                token->range.end.line = line;
-                token->range.end.column = line_len;
-                token->color = colors[TOKEN_PREPROCESSOR];
-                token->flags = 0;
-                (*token_count)++;
-                continue;
-            }
-            
-            /* Check for comment lines */
-            if (strstr(line_text, "//") == line_text || strstr(line_text, "/*") == line_text) {
-                if (*token_count >= max_tokens) break;
-                vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                token->range.start.line = line;
-                token->range.start.column = 0;
-                token->range.end.line = line;
-                token->range.end.column = line_len;
-                token->color = colors[TOKEN_COMMENT];
-                token->flags = SYNTAX_ITALIC;
-                (*token_count)++;
-                continue;
-            }
-            
-            /* Parse words in the line */
-            const char* pos = line_text;
-            while (pos < line_text + line_len && *token_count < max_tokens) {
-                /* Skip whitespace */
-                while (pos < line_text + line_len && (*pos == ' ' || *pos == '\t')) {
-                    pos++;
-                }
-                if (pos >= line_text + line_len) break;
-                
-                /* Handle strings */
-                if (*pos == '"') {
-                    const char* token_start = pos;
-                    pos++; /* Skip opening quote */
-                    /* Find closing quote */
-                    while (pos < line_text + line_len && *pos != '"') {
-                        if (*pos == '\\' && pos + 1 < line_text + line_len) {
-                            pos += 2; /* Skip escaped character */
-                        } else {
-                            pos++;
-                        }
-                    }
-                    if (pos < line_text + line_len && *pos == '"') {
-                        pos++; /* Include closing quote */
-                    }
-                    
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    token->color = colors[TOKEN_STRING];
-                    token->flags = 0;
-                    (*token_count)++;
-                    continue;
-                }
-                
-                /* Handle single-line comments */
-                if (pos + 1 < line_text + line_len && pos[0] == '/' && pos[1] == '/') {
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = pos - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = line_len;
-                    token->color = colors[TOKEN_COMMENT];
-                    token->flags = SYNTAX_ITALIC;
-                    (*token_count)++;
-                    break;
-                }
-                
-                /* Handle block comments */
-                if (pos + 1 < line_text + line_len && pos[0] == '/' && pos[1] == '*') {
-                    const char* token_start = pos;
-                    pos += 2;
-                    /* Find closing */
-                    while (pos + 1 < line_text + line_len && !(pos[0] == '*' && pos[1] == '/')) {
-                        pos++;
-                    }
-                    if (pos + 1 < line_text + line_len) {
-                        pos += 2; /* Include closing */
-                    }
-                    
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    token->color = colors[TOKEN_COMMENT];
-                    token->flags = SYNTAX_ITALIC;
-                    (*token_count)++;
-                    continue;
-                }
-                
-                /* Handle regular words/identifiers */
-                const char* token_start = pos;
-                if ((*pos >= 'a' && *pos <= 'z') || (*pos >= 'A' && *pos <= 'Z') || *pos == '_') {
-                    /* Identifier or keyword */
-                    while (pos < line_text + line_len && 
-                           ((*pos >= 'a' && *pos <= 'z') || (*pos >= 'A' && *pos <= 'Z') || 
-                            (*pos >= '0' && *pos <= '9') || *pos == '_')) {
-                        pos++;
-                    }
-                    
-                    size_t token_len = pos - token_start;
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    
-                    /* Check if it's a keyword or type */
-                    if (is_keyword(token_start, token_len, c_keywords)) {
-                        token->color = colors[TOKEN_KEYWORD];
-                        token->flags = SYNTAX_BOLD;
-                    } else if (is_keyword(token_start, token_len, c_types)) {
-                        token->color = colors[TOKEN_TYPE];
-                        token->flags = 0;
-                    } else {
-                        token->color = colors[TOKEN_NORMAL];
-                        token->flags = 0;
-                    }
-                    (*token_count)++;
-                } else if (*pos >= '0' && *pos <= '9') {
-                    /* Number */
-                    while (pos < line_text + line_len && 
-                           ((*pos >= '0' && *pos <= '9') || *pos == '.' || 
-                            *pos == 'x' || *pos == 'X' || (*pos >= 'a' && *pos <= 'f') || 
-                            (*pos >= 'A' && *pos <= 'F'))) {
-                        pos++;
-                    }
-                    
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    token->color = colors[TOKEN_NUMBER];
-                    token->flags = 0;
-                    (*token_count)++;
-                } else {
-                    /* Single character operator or punctuation */
-                    pos++;
-                    
-                    vizero_syntax_token_t* token = &(*tokens)[*token_count];
-                    token->range.start.line = line;
-                    token->range.start.column = token_start - line_text;
-                    token->range.end.line = line;
-                    token->range.end.column = pos - line_text;
-                    token->color = colors[TOKEN_OPERATOR];
-                    token->flags = 0;
-                    (*token_count)++;
-                }
-            }
-        } else {
-            /* Unknown file type */
-            if (*token_count >= max_tokens) break;
-            vizero_syntax_token_t* token = &(*tokens)[*token_count];
-            token->range.start.line = line;
-            token->range.start.column = 0;
-            token->range.end.line = line;
-            token->range.end.column = line_len;
-            token->color = colors[TOKEN_NORMAL];
-            token->flags = 0;
-            (*token_count)++;
+            n = highlight_c_line(line_text, line, tokens + token_count, max_tokens - token_count);
         }
+        if (n > 0) token_count += n;
     }
-    
-    return (*token_count > 0) ? 1 : 0;
+    return (int)token_count;
 }
 
 VIZERO_PLUGIN_DEFINE_INFO(
@@ -747,12 +405,8 @@ VIZERO_PLUGIN_DEFINE_INFO(
 
 int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     if (!plugin || !editor || !api) return -1;
-    
     editor_api = api;
-    
-    /* Register syntax highlighting callback */
     plugin->callbacks.highlight_syntax = highlight_syntax;
-    
     return 0;
 }
 

@@ -34,9 +34,15 @@ int vizero_plugin_manager_on_command(vizero_plugin_manager_t* manager, vizero_ed
 int vizero_plugin_manager_on_key_input(vizero_plugin_manager_t* manager, vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
 
 /* Syntax highlighting */
-int vizero_plugin_manager_highlight_syntax(vizero_plugin_manager_t* manager, vizero_buffer_t* buffer, 
-                                          size_t start_line, size_t end_line, 
-                                          vizero_syntax_token_t** tokens, size_t* token_count);
+// Updated API: caller allocates tokens buffer, plugin fills it
+int vizero_plugin_manager_highlight_syntax(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    size_t start_line,
+    size_t end_line,
+    vizero_syntax_token_t* tokens,
+    size_t max_tokens,
+    size_t* token_count);
 
 #ifdef __cplusplus
 }

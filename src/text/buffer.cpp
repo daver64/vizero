@@ -294,7 +294,9 @@ vizero_line_t* vizero_buffer_get_line(vizero_buffer_t* buffer, size_t line_num) 
 }
 
 const char* vizero_buffer_get_line_text(vizero_buffer_t* buffer, size_t line_num) {
-    if (!buffer || line_num >= buffer->line_count) return NULL;
+    if (!buffer)
+        return NULL;
+    if (line_num >= buffer->line_count) return NULL;
     return buffer->lines[line_num];
 }
 
@@ -580,9 +582,10 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     /* Clear existing lines */
     for (size_t i = 0; i < buffer->line_count; i++) {
         free(buffer->lines[i]);
+        buffer->lines[i] = NULL;
     }
     free(buffer->lines);
-    
+    buffer->lines = NULL;
     /* Read file into memory first */
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);

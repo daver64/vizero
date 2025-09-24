@@ -345,6 +345,7 @@ if(BUILD_TESTS)
     add_executable(vizero_tests
         tests/test_framework.cpp
         tests/test_editor.cpp
+
     )
     
     target_include_directories(vizero_tests PRIVATE

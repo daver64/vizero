@@ -96,7 +96,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             // Use the focused window's cursor in windowed mode
                             vizero_window_manager_t* wm = vizero_editor_get_window_manager(editor);
                             vizero_editor_window_t* focused_window = wm ? vizero_window_manager_get_focused_window(wm) : NULL;
-                            vizero_cursor_t* cursor = focused_window ? vizero_editor_window_get_cursor(focused_window) : vizero_editor_get_current_cursor(editor);
+                            vizero_cursor_t* cursor = focused_window ? vizero_editor_window_get_cursor(focused_window, editor) : vizero_editor_get_current_cursor(editor);
                             vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                             // --- Ctrl+w window switching logic ---
                             if (input->awaiting_window_cmd) {
