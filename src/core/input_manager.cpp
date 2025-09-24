@@ -73,6 +73,15 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             break; /* Consume the ESC key */
                         }
                         
+                        /* Handle ESC key for mode manager when no popup is visible */
+                        if (event.key.keysym.sym == SDLK_ESCAPE) {
+                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                            if (mode_manager) {
+                                vizero_mode_manager_handle_key(mode_manager, 27, 0); /* 27 is ASCII for ESC */
+                            }
+                            break; /* Consume the ESC key */
+                        }
+                        
                         /* Check for UP/DOWN keys to scroll popup */
                         if (vizero_editor_is_popup_visible(editor)) {
                             if (event.key.keysym.sym == SDLK_UP) {

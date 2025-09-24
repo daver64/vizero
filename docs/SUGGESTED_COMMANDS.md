@@ -32,6 +32,13 @@
 - ✅ `gg` - Go to first line (implemented as normal mode command)
 - ✅ `G` - Go to last line (implemented as normal mode command)
 
+### Normal Mode Commands
+- ✅ `i` - Enter insert mode at cursor
+- ✅ `o` - Open new line below and enter insert mode
+- ✅ `O` - Open new line above and enter insert mode
+- ✅ `dd` - Delete current line
+- ✅ `v` - Enter visual mode
+
 ### Search/Replace
 - ✅ `/<pattern>` - Forward search with highlighting
 - ✅ `?<pattern>` - Backward search with highlighting

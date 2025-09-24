@@ -3824,3 +3824,44 @@ int vizero_editor_go_to_end(vizero_editor_state_t* state) {
     
     return 0;
 }
+
+/* Insert new line commands */
+int vizero_editor_open_line_below(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    
+    if (!buffer || !cursor) return -1;
+    
+    size_t current_line = vizero_cursor_get_line(cursor);
+    
+    /* Insert empty line after current line */
+    if (vizero_buffer_insert_line(buffer, current_line + 1, "") == 0) {
+        /* Move cursor to the new line */
+        vizero_cursor_set_position(cursor, current_line + 1, 0);
+        return 0;
+    }
+    
+    return -1;
+}
+
+int vizero_editor_open_line_above(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    
+    if (!buffer || !cursor) return -1;
+    
+    size_t current_line = vizero_cursor_get_line(cursor);
+    
+    /* Insert empty line at current line (pushing current line down) */
+    if (vizero_buffer_insert_line(buffer, current_line, "") == 0) {
+        /* Move cursor to the new line (which is at current_line position) */
+        vizero_cursor_set_position(cursor, current_line, 0);
+        return 0;
+    }
+    
+    return -1;
+}

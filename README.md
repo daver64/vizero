@@ -269,6 +269,8 @@ static int highlight_syntax(/* ... */) {
 | `0/$` | Line start/end |
 | `Page Up/Down` | Page navigation |
 | `i` | Enter Insert Mode |
+| `o` | Open line below and enter Insert Mode |
+| `O` | Open line above and enter Insert Mode |
 | `/` | Search forward |
 | `n/N` | Next/previous search result |
 | `:` | Enter Command Mode |

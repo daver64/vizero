@@ -182,6 +182,20 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
             vizero_editor_go_to_end(manager->state);
             return 1; /* Key handled */
             
+        case 'o': /* Open line below and enter insert mode */
+            manager->pending_key = 0; /* Clear any pending key */
+            if (vizero_editor_open_line_below(manager->state) == 0) {
+                vizero_mode_manager_enter_insert_mode(manager);
+            }
+            return 1; /* Key handled */
+            
+        case 'O': /* Open line above and enter insert mode */
+            manager->pending_key = 0; /* Clear any pending key */
+            if (vizero_editor_open_line_above(manager->state) == 0) {
+                vizero_mode_manager_enter_insert_mode(manager);
+            }
+            return 1; /* Key handled */
+            
         case 'y': /* Yank */
         case 'p': /* Paste */
             /* These would be handled by the main editor */

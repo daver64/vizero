@@ -107,6 +107,8 @@ On success, a status message will confirm the new directory. On failure, an erro
 | Key | Action |
 |-----|--------|
 | `i` | Insert at cursor position |
+| `o` | Open new line below and enter insert mode |
+| `O` | Open new line above and enter insert mode |
 
 ### Insert Mode Operations
 | Key | Action |
@@ -504,6 +506,8 @@ vizero main.c          # Start with main.c as buffer 1
 | `Ctrl+F/B` | Page down/up (vi style) |
 | `Tab` | Smart indent navigation |
 | `i` | Enter Insert Mode |
+| `o` | Open line below and enter Insert Mode |
+| `O` | Open line above and enter Insert Mode |
 | `:` | Enter Command Mode |
 | `/` | Forward search |
 | `n` | Next search result |

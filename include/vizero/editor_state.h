@@ -134,6 +134,10 @@ const char* vizero_editor_get_clipboard_content(vizero_editor_state_t* state);
 int vizero_editor_go_to_line(vizero_editor_state_t* state, size_t line_number);
 int vizero_editor_go_to_end(vizero_editor_state_t* state);
 
+/* Line insertion operations */
+int vizero_editor_open_line_below(vizero_editor_state_t* state);
+int vizero_editor_open_line_above(vizero_editor_state_t* state);
+
 /* Undo/Redo operations */
 int vizero_editor_undo(vizero_editor_state_t* state);
 int vizero_editor_redo(vizero_editor_state_t* state);
