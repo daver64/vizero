@@ -72,8 +72,8 @@ int vizero_status_bar_add_panel(vizero_status_bar_t *status_bar, vizero_panel_ty
     panel->enabled = 1;
     panel->min_width = min_width;
     panel->custom_text = NULL;
-    panel->has_custom_color = 0;
-    panel->custom_color = {1.0f, 1.0f, 1.0f, 1.0f}; /* Default white */
+    panel->has_custom_colour = 0;
+    panel->custom_colour = {1.0f, 1.0f, 1.0f, 1.0f}; /* Default white */
 
     status_bar->panel_count++;
     return (int)(status_bar->panel_count - 1);
@@ -250,23 +250,23 @@ static void generate_panel_text(vizero_status_panel_t *panel, vizero_editor_stat
             {
                 sprintf(buffer, " ro ");
                 /* Set pale red color for read-only */
-                panel->has_custom_color = 1;
-                panel->custom_color = {1.0f, 0.5f, 0.5f, 1.0f}; /* Pale red */
+                panel->has_custom_colour = 1;
+                panel->custom_colour = {1.0f, 0.5f, 0.5f, 1.0f}; /* Pale red */
             }
             else
             {
                 sprintf(buffer, " rw ");
                 /* Set pale green color for read-write */
-                panel->has_custom_color = 1;
-                panel->custom_color = {0.5f, 1.0f, 0.5f, 1.0f}; /* Pale green */
+                panel->has_custom_colour = 1;
+                panel->custom_colour = {0.5f, 1.0f, 0.5f, 1.0f}; /* Pale green */
             }
         }
         else
         {
             sprintf(buffer, " rw ");
             /* Set pale green color for read-write (default) */
-            panel->has_custom_color = 1;
-            panel->custom_color = {0.5f, 1.0f, 0.5f, 1.0f}; /* Pale green */
+            panel->has_custom_colour = 1;
+            panel->custom_colour = {0.5f, 1.0f, 0.5f, 1.0f}; /* Pale green */
         }
         break;
     }

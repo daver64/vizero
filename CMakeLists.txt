@@ -232,6 +232,7 @@ add_library(vizero_core STATIC
     src/core/input_manager.cpp
     src/core/settings.cpp
     src/core/search.cpp
+    src/core/colour_theme.cpp
     src/text/buffer.cpp
     src/text/cursor.cpp
     src/text/line.cpp

@@ -73,7 +73,7 @@ Word wrap is default-enabled with hanging indent. Logic is unified in `src/ui/ed
 - DLL copying for Windows runtime
 
 ### OpenGL Rendering
-Hardware-accelerated text rendering at 60fps with immediate mode. Color values in plugins use 0-255 range, converted to 0.0-1.0 for OpenGL.
+Hardware-accelerated text rendering at 60fps with immediate mode. colour values in plugins use 0-255 range, converted to 0.0-1.0 for OpenGL.
 
 ### Vi Command System
 Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling in `src/editor/mode_manager.cpp`. New commands should follow existing `:command args` pattern.

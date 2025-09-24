@@ -16,7 +16,7 @@ struct vizero_renderer_t {
     GLuint shader_program;
     GLuint vao, vbo;
     GLint mvp_uniform;
-    GLint color_uniform;
+    GLint colour_uniform;
     GLint char_uniform;
     GLint font_texture_uniform;
     GLint use_font_texture_uniform;
@@ -47,11 +47,11 @@ static const char* vertex_shader_source =
 static const char* fragment_shader_source = 
 "#version 330 core\n"
 "in vec2 TexCoord;\n"
-"uniform vec4 uColor;\n"
+"uniform vec4 uColour;\n"
 "uniform int uChar;\n"
 "uniform sampler2D uFontTexture;\n"
 "uniform int uUseFontTexture;\n"
-"out vec4 FragColor;\n"
+"out vec4 FragColour;\n"
 "\n"
 "void main() {\n"
 "    if (uUseFontTexture == 1 && uChar > 0) {\n"
@@ -75,10 +75,10 @@ static const char* fragment_shader_source =
 "            discard;\n"
 "        }\n"
 "        \n"
-"        FragColor = vec4(uColor.rgb, uColor.a * alpha);\n"
+"        FragColour = vec4(uColour.rgb, uColour.a * alpha);\n"
 "    } else {\n"
 "        // Non-font rendering (rectangles, lines)\n"
-"        FragColor = uColor;\n"
+"        FragColour = uColour;\n"
 "    }\n"
 "}\n";
 
@@ -225,7 +225,7 @@ vizero_renderer_t* vizero_renderer_create(vizero_window_t* window) {
     
     /* Get uniform locations */
     renderer->mvp_uniform = glGetUniformLocation(renderer->shader_program, "uMVP");
-    renderer->color_uniform = glGetUniformLocation(renderer->shader_program, "uColor");
+    renderer->colour_uniform = glGetUniformLocation(renderer->shader_program, "uColour");
     renderer->char_uniform = glGetUniformLocation(renderer->shader_program, "uChar");
     renderer->font_texture_uniform = glGetUniformLocation(renderer->shader_program, "uFontTexture");
     renderer->use_font_texture_uniform = glGetUniformLocation(renderer->shader_program, "uUseFontTexture");
@@ -278,9 +278,9 @@ void vizero_renderer_destroy(vizero_renderer_t* renderer) {
     }
 }
 
-void vizero_renderer_clear(vizero_renderer_t* renderer, vizero_color_t color) {
+void vizero_renderer_clear(vizero_renderer_t* renderer, vizero_colour_t colour) {
     if (!renderer) return;
-    glClearColor(color.r, color.g, color.b, color.a);
+    glClearColor(colour.r, colour.g, colour.b, colour.a);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
@@ -308,7 +308,7 @@ void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vi
     
     glUseProgram(renderer->shader_program);
     glUniformMatrix4fv(renderer->mvp_uniform, 1, GL_FALSE, renderer->projection);
-    glUniform4f(renderer->color_uniform, info->color.r, info->color.g, info->color.b, info->color.a);
+    glUniform4f(renderer->colour_uniform, info->colour.r, info->colour.g, info->colour.b, info->colour.a);
     glUniform1i(renderer->use_font_texture_uniform, renderer->font_texture ? 1 : 0);
     
     /* Bind font texture if available */
@@ -397,12 +397,12 @@ void vizero_renderer_get_text_size(vizero_renderer_t* renderer, const char* text
     if (height) *height = (float)(lines * CHAR_HEIGHT);
 }
 
-void vizero_renderer_draw_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_color_t color) {
+void vizero_renderer_draw_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_colour_t colour) {
     if (!renderer) return;
     
     glUseProgram(renderer->shader_program);
     glUniformMatrix4fv(renderer->mvp_uniform, 1, GL_FALSE, renderer->projection);
-    glUniform4f(renderer->color_uniform, color.r, color.g, color.b, color.a);
+    glUniform4f(renderer->colour_uniform, colour.r, colour.g, colour.b, colour.a);
     glUniform1i(renderer->char_uniform, 0); /* No character */
     glUniform1i(renderer->use_font_texture_uniform, 0); /* No font texture */
     
@@ -421,12 +421,12 @@ void vizero_renderer_draw_rect(vizero_renderer_t* renderer, float x, float y, fl
     glDrawArrays(GL_LINE_STRIP, 0, 5);
 }
 
-void vizero_renderer_fill_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_color_t color) {
+void vizero_renderer_fill_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_colour_t colour) {
     if (!renderer) return;
     
     glUseProgram(renderer->shader_program);
     glUniformMatrix4fv(renderer->mvp_uniform, 1, GL_FALSE, renderer->projection);
-    glUniform4f(renderer->color_uniform, color.r, color.g, color.b, color.a);
+    glUniform4f(renderer->colour_uniform, colour.r, colour.g, colour.b, colour.a);
     glUniform1i(renderer->char_uniform, 0); /* No character */
     glUniform1i(renderer->use_font_texture_uniform, 0); /* No font texture */
     
@@ -444,12 +444,12 @@ void vizero_renderer_fill_rect(vizero_renderer_t* renderer, float x, float y, fl
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void vizero_renderer_draw_line(vizero_renderer_t* renderer, float x1, float y1, float x2, float y2, vizero_color_t color) {
+void vizero_renderer_draw_line(vizero_renderer_t* renderer, float x1, float y1, float x2, float y2, vizero_colour_t colour) {
     if (!renderer) return;
     
     glUseProgram(renderer->shader_program);
     glUniformMatrix4fv(renderer->mvp_uniform, 1, GL_FALSE, renderer->projection);
-    glUniform4f(renderer->color_uniform, color.r, color.g, color.b, color.a);
+    glUniform4f(renderer->colour_uniform, colour.r, colour.g, colour.b, colour.a);
     glUniform1i(renderer->char_uniform, 0); /* No character */
     glUniform1i(renderer->use_font_texture_uniform, 0); /* No font texture */
     

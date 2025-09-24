@@ -1,6 +1,3 @@
-#include "vizero/renderer.h"
-
-
 #include "vizero/application.h"
 #include "vizero/window.h"
 #include "vizero/renderer.h"
@@ -8,6 +5,7 @@
 #include "vizero/editor_state.h"
 #include "vizero/editor_window.h"
 #include "vizero/plugin_manager.h"
+#include "vizero/colour_theme.h"
 #include "vizero/status_bar.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
@@ -29,6 +27,7 @@ struct vizero_application_t {
     vizero_input_manager_t* input;
     vizero_editor_state_t* editor;
     vizero_plugin_manager_t* plugin_manager;
+    vizero_theme_manager_t* theme_manager;
     vizero_status_bar_t* status_bar;
     int should_quit;
     vizero_app_config_t config;
@@ -193,6 +192,31 @@ int vizero_application_initialize(vizero_application_t* app) {
     /* Set up editor-plugin manager connection */
     vizero_editor_set_plugin_manager(app->editor, app->plugin_manager);
     
+    /* Create theme manager */
+    app->theme_manager = vizero_theme_manager_create();
+    if (!app->theme_manager) {
+        vizero_plugin_manager_destroy(app->plugin_manager);
+        vizero_status_bar_destroy(app->status_bar);
+        vizero_editor_state_destroy(app->editor);
+        vizero_input_manager_destroy(app->input);
+        vizero_renderer_destroy(app->renderer);
+        vizero_window_destroy(app->window);
+        SDL_Quit();
+        return -1;
+    }
+    
+    /* Load built-in themes */
+    vizero_theme_manager_load_builtin_themes(app->theme_manager);
+    
+    /* Set up editor-theme manager connection */
+    vizero_editor_set_theme_manager(app->editor, (void*)app->theme_manager);
+    
+    /* Load default theme from settings or apply "Default" theme */
+    const char* saved_theme = vizero_settings_get_string(app->settings, "theme");
+    if (!saved_theme || vizero_theme_manager_set_current_theme(app->theme_manager, saved_theme) != 0) {
+        vizero_theme_manager_set_current_theme(app->theme_manager, "Default");
+    }
+    
     /* Load plugins from plugin directory */
     if (app->config.plugin_dir) {
         int loaded = vizero_plugin_manager_scan_directory(app->plugin_manager, app->config.plugin_dir);
@@ -226,6 +250,11 @@ void vizero_application_shutdown(vizero_application_t* app) {
     if (app->plugin_manager) {
         vizero_plugin_manager_destroy(app->plugin_manager);
         app->plugin_manager = NULL;
+    }
+    
+    if (app->theme_manager) {
+        vizero_theme_manager_destroy(app->theme_manager);
+        app->theme_manager = NULL;
     }
     
     if (app->status_bar) {
@@ -278,17 +307,17 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
     size_t line_len = strlen(line_text);
     if (line_len == 0) return;
     
-    /* Create array to store color for each character */
-    vizero_color_t* char_colors = (vizero_color_t*)malloc(line_len * sizeof(vizero_color_t));
-    if (!char_colors) return;
+    /* Create array to store colour for each character */
+    vizero_colour_t* char_colours = (vizero_colour_t*)malloc(line_len * sizeof(vizero_colour_t));
+    if (!char_colours) return;
     
-    /* Initialize all characters to default white color */
-    vizero_color_t default_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    /* Initialize all characters to default white colour */
+    vizero_colour_t default_colour = {1.0f, 1.0f, 1.0f, 1.0f};
     for (size_t i = 0; i < line_len; i++) {
-        char_colors[i] = default_color;
+        char_colours[i] = default_colour;
     }
     
-    /* Apply syntax highlighting colors */
+    /* Apply syntax highlighting colours */
     for (size_t t = 0; t < token_count; t++) {
         vizero_syntax_token_t* token = &tokens[t];
         if (token->range.start.line == line_num) {
@@ -297,19 +326,19 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
             /* Clamp to line bounds */
             if (start_col >= line_len) continue;
             if (end_col > line_len) end_col = line_len;
-            vizero_color_t render_color = {
-                token->color.r / 255.0f,
-                token->color.g / 255.0f,
-                token->color.b / 255.0f,
-                token->color.a / 255.0f
+            vizero_colour_t render_colour = {
+                token->colour.r / 255.0f,
+                token->colour.g / 255.0f,
+                token->colour.b / 255.0f,
+                token->colour.a / 255.0f
             };
             for (size_t col = start_col; col < end_col; col++) {
-                char_colors[col] = render_color;
+                char_colours[col] = render_colour;
             }
         }
     }
     
-    /* Render characters with their assigned colors */
+    /* Render characters with their assigned colours */
     for (size_t col = 0; col < line_len; col++) {
         if ((int)col < scroll_x) continue; /* Skip characters scrolled out of view */
         
@@ -319,14 +348,14 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
         vizero_text_info_t text_info = {
             char_x,
             y,
-            char_colors[col],
+            char_colours[col],
             NULL
         };
         
         vizero_renderer_draw_text(app->renderer, char_str, &text_info);
     }
     
-    free(char_colors);
+    free(char_colours);
 }
 #endif
 
@@ -334,7 +363,7 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
 static void draw_window_borders(vizero_application_t* app, vizero_editor_window_t** windows, size_t count) {
     if (!app || !windows || count < 2) return;
     
-    vizero_color_t border_color = {0.5f, 0.5f, 0.5f, 1.0f};
+    vizero_colour_t border_colour = {0.5f, 0.5f, 0.5f, 1.0f};
     
     for (size_t i = 0; i < count; i++) {
         vizero_editor_window_t* window = windows[i];
@@ -344,7 +373,7 @@ static void draw_window_borders(vizero_application_t* app, vizero_editor_window_
         vizero_renderer_draw_rect(app->renderer, 
                                 (float)window->x, (float)window->y, 
                                 (float)window->width, (float)window->height, 
-                                border_color);
+                                border_colour);
     }
 }
 
@@ -394,9 +423,15 @@ int vizero_application_run(vizero_application_t* app) {
         /* Process input events */
         vizero_input_manager_process_events(app->input);
         
-        /* Clear screen */
-        vizero_color_t clear_color = {0.1f, 0.1f, 0.2f, 1.0f};
-        vizero_renderer_clear(app->renderer, clear_color);
+        /* Clear screen with theme background colour */
+        vizero_colour_t clear_colour = {0.1f, 0.1f, 0.2f, 1.0f}; /* Default fallback */
+        if (app->theme_manager) {
+            const vizero_colour_theme_t* current_theme = vizero_theme_manager_get_current_theme(app->theme_manager);
+            if (current_theme) {
+                clear_colour = current_theme->background;
+            }
+        }
+        vizero_renderer_clear(app->renderer, clear_colour);
         
         /* Get window dimensions */
         int window_width, window_height;
@@ -448,8 +483,8 @@ int vizero_application_run(vizero_application_t* app) {
         /* Update and render status bar */
         vizero_status_bar_update(app->status_bar, app->editor);
         vizero_status_bar_resize(app->status_bar, window_width, 24);
-        vizero_color_t status_bg = {0.2f, 0.2f, 0.3f, 1.0f};
-        vizero_color_t status_text = {1.0f, 1.0f, 1.0f, 1.0f};
+        vizero_colour_t status_bg = {0.2f, 0.2f, 0.3f, 1.0f};
+        vizero_colour_t status_text = {1.0f, 1.0f, 1.0f, 1.0f};
         vizero_status_bar_render(app->status_bar, app->renderer, 0, window_height - 24, status_bg, status_text);
         
         /* Render popup if visible */
@@ -463,16 +498,16 @@ int vizero_application_run(vizero_application_t* app) {
                 int popup_y = (window_height - popup_height) / 2;
 
                 /* Draw popup background */
-                vizero_color_t popup_bg = {0.1f, 0.1f, 0.1f, 0.9f}; /* Dark semi-transparent */
+                vizero_colour_t popup_bg = {0.1f, 0.1f, 0.1f, 0.9f}; /* Dark semi-transparent */
                 vizero_renderer_fill_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_bg);
 
                 /* Draw popup border */
-                vizero_color_t popup_border = {0.5f, 0.5f, 0.5f, 1.0f}; /* Gray border */
+                vizero_colour_t popup_border = {0.5f, 0.5f, 0.5f, 1.0f}; /* Gray border */
                 vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
 
-                /* Draw popup text with scrolling support and per-line color */
+                /* Draw popup text with scrolling support and per-line colour */
                 int scroll_offset = vizero_editor_get_popup_scroll_offset(app->editor);
                 int visible_lines = (popup_height - 80) / 16; /* Approximate lines that fit (16px per line) */
 
@@ -496,20 +531,20 @@ int vizero_application_run(vizero_application_t* app) {
                     memcpy(line_buf, line_start, line_len);
                     line_buf[line_len] = '\0';
 
-                    /* Determine color by suffix */
-                    vizero_color_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+                    /* Determine colour by suffix */
+                    vizero_colour_t colour = {1.0f, 1.0f, 1.0f, 1.0f};
                     if (strstr(line_buf, "[DIR]")) {
-                        color.r = 128.0f/255.0f; color.g = 192.0f/255.0f; color.b = 255.0f/255.0f; color.a = 1.0f; // pale blue
+                        colour.r = 128.0f/255.0f; colour.g = 192.0f/255.0f; colour.b = 255.0f/255.0f; colour.a = 1.0f; // pale blue
                     } else if (strstr(line_buf, "[EXE]")) {
-                        color.r = 255.0f/255.0f; color.g = 128.0f/255.0f; color.b = 128.0f/255.0f; color.a = 1.0f; // pale red
+                        colour.r = 255.0f/255.0f; colour.g = 128.0f/255.0f; colour.b = 128.0f/255.0f; colour.a = 1.0f; // pale red
                     } else if (strstr(line_buf, "[FILE]")) {
-                        color.r = 255.0f/255.0f; color.g = 255.0f/255.0f; color.b = 192.0f/255.0f; color.a = 1.0f; // pale yellow
+                        colour.r = 255.0f/255.0f; colour.g = 255.0f/255.0f; colour.b = 192.0f/255.0f; colour.a = 1.0f; // pale yellow
                     }
 
                     vizero_text_info_t popup_text_info;
                     popup_text_info.x = (float)popup_x;
                     popup_text_info.y = line_y;
-                    popup_text_info.color = color;
+                    popup_text_info.colour = colour;
                     popup_text_info.font = NULL;
                     vizero_renderer_draw_text(app->renderer, line_buf, &popup_text_info);
 
@@ -533,10 +568,10 @@ int vizero_application_run(vizero_application_t* app) {
                 vizero_text_info_t popup_text_info;
                 popup_text_info.x = (float)popup_x;
                 popup_text_info.y = (float)(popup_y + popup_height - 40);
-                popup_text_info.color.r = 0.7f;
-                popup_text_info.color.g = 0.7f;
-                popup_text_info.color.b = 0.7f;
-                popup_text_info.color.a = 1.0f;
+                popup_text_info.colour.r = 0.7f;
+                popup_text_info.colour.g = 0.7f;
+                popup_text_info.colour.b = 0.7f;
+                popup_text_info.colour.a = 1.0f;
                 popup_text_info.font = NULL;
                 vizero_renderer_draw_text(app->renderer, instruction, &popup_text_info);
             }

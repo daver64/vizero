@@ -10,16 +10,16 @@
 #define STYLE_LINK   5
 
 // Pale, high-contrast colors for Markdown highlighting
-static vizero_plugin_color_t header_color = { 255, 220, 120, 255 };   // Pale gold
-static vizero_plugin_color_t bold_color   = { 240, 255, 240, 255 };   // Brighter pale green
-static vizero_plugin_color_t italic_color = { 220, 220, 255, 255 };   // Pale blue
-static vizero_plugin_color_t code_color   = { 255, 240, 200, 255 };   // Pale cream
-static vizero_plugin_color_t link_color   = { 200, 240, 255, 255 };   // Pale cyan
+static vizero_plugin_colour_t header_colour = { 255, 220, 120, 255 };   // Pale gold
+static vizero_plugin_colour_t bold_colour   = { 240, 255, 240, 255 };   // Brighter pale green
+static vizero_plugin_colour_t italic_colour = { 220, 220, 255, 255 };   // Pale blue
+static vizero_plugin_colour_t code_colour   = { 255, 240, 200, 255 };   // Pale cream
+static vizero_plugin_colour_t link_colour   = { 200, 240, 255, 255 };   // Pale cyan
 
-static void add_token(vizero_syntax_token_t* tokens, size_t* count, size_t max_tokens, vizero_range_t range, vizero_plugin_color_t color, uint32_t flags) {
+static void add_token(vizero_syntax_token_t* tokens, size_t* count, size_t max_tokens, vizero_range_t range, vizero_plugin_colour_t color, uint32_t flags) {
     if (*count < max_tokens) {
         tokens[*count].range = range;
-        tokens[*count].color = color;
+        tokens[*count].colour = color;
         tokens[*count].flags = flags;
         (*count)++;
     }
@@ -45,7 +45,7 @@ int markdown_highlight(
             while (text[i] == '#') ++i;
             while (text[i] == ' ') ++i;
             vizero_range_t r = { {line, 0}, {line, len} };
-            add_token(tokens, &token_count, max_tokens, r, header_color, 0);
+            add_token(tokens, &token_count, max_tokens, r, header_colour, 0);
             // debug_token_count++;
             continue;
         }
@@ -57,7 +57,7 @@ int markdown_highlight(
                 while (i+1 < len && !(text[i] == delim && text[i+1] == delim)) ++i;
                 if (i+1 < len) {
                     vizero_range_t r = { {line, start}, {line, i+2} };
-                    add_token(tokens, &token_count, max_tokens, r, bold_color, 1);
+                    add_token(tokens, &token_count, max_tokens, r, bold_colour, 1);
                     // debug_token_count++;
                     i += 2;
                     continue;
@@ -70,7 +70,7 @@ int markdown_highlight(
                 while (i < len && text[i] != delim) ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, &token_count, max_tokens, r, italic_color, 2);
+                    add_token(tokens, &token_count, max_tokens, r, italic_colour, 2);
                     // debug_token_count++;
                     i++;
                     continue;
@@ -82,7 +82,7 @@ int markdown_highlight(
                 while (i < len && text[i] != '`') ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, &token_count, max_tokens, r, code_color, 3);
+                    add_token(tokens, &token_count, max_tokens, r, code_colour, 3);
                     // debug_token_count++;
                     i++;
                     continue;
@@ -98,7 +98,7 @@ int markdown_highlight(
                     if (i < len && text[i] == ')') {
                         link_end = i+1;
                         vizero_range_t r = { {line, start}, {line, link_end} };
-                        add_token(tokens, &token_count, max_tokens, r, link_color, 4);
+                        add_token(tokens, &token_count, max_tokens, r, link_colour, 4);
                         // debug_token_count++;
                         i++;
                         continue;

@@ -105,6 +105,10 @@ int vizero_editor_execute_current_command(vizero_editor_state_t* state);
 void vizero_editor_set_plugin_manager(vizero_editor_state_t* state, vizero_plugin_manager_t* manager);
 vizero_plugin_manager_t* vizero_editor_get_plugin_manager(vizero_editor_state_t* state);
 
+/* Theme manager integration - functions defined in editor_state.cpp */
+void vizero_editor_set_theme_manager(vizero_editor_state_t* state, void* manager);
+void* vizero_editor_get_theme_manager(vizero_editor_state_t* state);
+
 /* Mode Manager */
 typedef struct vizero_mode_manager_t vizero_mode_manager_t;
 vizero_mode_manager_t* vizero_editor_get_mode_manager(vizero_editor_state_t* state);

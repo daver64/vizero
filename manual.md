@@ -494,7 +494,7 @@ vizero main.c          # Start with main.c as buffer 1
 
 ### Search Match Highlighting
 - **Real-time Visual Feedback**: All search matches highlighted
-- **Color-coded Results**: Current match vs. other matches
+- **colour-coded Results**: Current match vs. other matches
 - **Performance Optimized**: Efficient highlighting for large files
 
 ---
@@ -662,7 +662,7 @@ vizero main.c          # Start with main.c as buffer 1
 - **Compilation fails**: Check compiler installation and PATH
 - **Settings not saved**: Verify %APPDATA% directory access
 - **Word wrap not working?**: Word wrap is enabled by default. Use `:set linewrap off` to disable.
-- **Markdown highlighting missing?**: Ensure you are editing a `.md` file. Colors are optimized for readability.
+- **Markdown highlighting missing?**: Ensure you are editing a `.md` file. colours are optimized for readability.
 - **Status bar not updating?**: The right-aligned time/date panel is always visible. Status messages revert to default after a short timeout.
 - **Cursor disappears or scrolling broken?**: The cursor is always visible, including on empty lines. Up/down movement preserves the preferred column, and scrolling is smooth in all window modes.
 - **Input not following window focus?**: This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.

@@ -17,7 +17,7 @@
 #define SYNTAX_ITALIC     0x02
 #define SYNTAX_UNDERLINE  0x04
 
-/* Token types and their colors */
+/* Token types and their colours */
 typedef enum {
     TOKEN_NORMAL,
     TOKEN_KEYWORD,
@@ -53,7 +53,7 @@ static int is_keyword(const char* text, size_t len, const char** keywords) {
 }
 
 /* Color definitions */
-static vizero_plugin_color_t colors[] = {
+static vizero_plugin_colour_t colours[] = {
     {255, 255, 255, 255}, /* TOKEN_NORMAL - white */
     {86, 156, 214, 255},  /* TOKEN_KEYWORD - blue */
     {206, 145, 120, 255}, /* TOKEN_STRING - orange */
@@ -166,7 +166,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = line_len;
-            token->color = colors[TOKEN_COMMENT];
+            token->colour = colours[TOKEN_COMMENT];
             token->flags = SYNTAX_ITALIC;
             break; /* Rest of line is comment */
         }
@@ -177,7 +177,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = line_len;
-            token->color = colors[TOKEN_COMMENT];
+            token->colour = colours[TOKEN_COMMENT];
             token->flags = SYNTAX_ITALIC;
             break; /* Rest of line is comment */
         }
@@ -189,7 +189,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = line_len;
-            token->color = colors[TOKEN_PREPROCESSOR];
+            token->colour = colours[TOKEN_PREPROCESSOR];
             token->flags = 0;
             break; /* Rest of line is preprocessor */
         }
@@ -208,7 +208,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = start;
             token->range.end.line = line_num;
             token->range.end.column = i;
-            token->color = colors[TOKEN_STRING];
+            token->colour = colours[TOKEN_STRING];
             token->flags = 0;
             continue;
         }
@@ -227,7 +227,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = start;
             token->range.end.line = line_num;
             token->range.end.column = i;
-            token->color = colors[TOKEN_STRING];
+            token->colour = colours[TOKEN_STRING];
             token->flags = 0;
             continue;
         }
@@ -248,7 +248,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = start;
             token->range.end.line = line_num;
             token->range.end.column = i;
-            token->color = colors[TOKEN_NUMBER];
+            token->colour = colours[TOKEN_NUMBER];
             token->flags = 0;
             continue;
         }
@@ -272,7 +272,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
                 token->range.start.column = start;
                 token->range.end.line = line_num;
                 token->range.end.column = i;
-                token->color = colors[type];
+                token->colour = colours[type];
                 token->flags = (type == TOKEN_KEYWORD) ? SYNTAX_BOLD : 0;
             }
             continue;
@@ -285,7 +285,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = i + 1;
-            token->color = colors[TOKEN_OPERATOR];
+            token->colour = colours[TOKEN_OPERATOR];
             token->flags = 0;
         }
         
@@ -310,7 +310,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             token->range.start.column = i;
             token->range.end.line = line_num;
             token->range.end.column = line_len;
-            token->color = colors[TOKEN_COMMENT];
+            token->colour = colours[TOKEN_COMMENT];
             token->flags = SYNTAX_ITALIC;
             break;
         }
@@ -325,7 +325,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
                 token->range.start.column = start;
                 token->range.end.line = line_num;
                 token->range.end.column = i;
-                token->color = colors[TOKEN_LABEL];
+                token->colour = colours[TOKEN_LABEL];
                 token->flags = SYNTAX_BOLD;
                 continue;
             }
@@ -339,7 +339,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
                 token->range.start.column = start;
                 token->range.end.line = line_num;
                 token->range.end.column = i;
-                token->color = colors[type];
+                token->colour = colours[type];
                 token->flags = (type == TOKEN_INSTRUCTION) ? SYNTAX_BOLD : 0;
             }
             continue;
@@ -358,7 +358,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             token->range.start.column = start;
             token->range.end.line = line_num;
             token->range.end.column = i;
-            token->color = colors[TOKEN_NUMBER];
+            token->colour = colours[TOKEN_NUMBER];
             token->flags = 0;
             continue;
         }

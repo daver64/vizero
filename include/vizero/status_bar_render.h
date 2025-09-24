@@ -10,7 +10,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t *renderer, int x, int y, uint32_t text_color);
+void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t *renderer, int x, int y, uint32_t text_colour);
 #ifdef __cplusplus
 }
 #endif

@@ -79,7 +79,7 @@
 ## September 2025: Major Features and Fixes
 
 - **Word Wrap (linewrap) by Default**: Lines wrap at word boundaries, with hanging indent for wrapped lines. Toggle with `:set linewrap on|off`.
-- **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved color contrast for headings, code, and emphasis.
+- **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved colour contrast for headings, code, and emphasis.
 - **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, clear error/info popups, and read-only status indicator (pale green 'rw' / pale red 'ro').
 - **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
 - **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
@@ -137,7 +137,7 @@
 - ❌ `:source filename` - Execute commands from file
 
 ### Advanced Configuration  
-- ❌ `:colorscheme name` - Set color scheme
+- ❌ `:colourscheme name` - Set colour scheme
 - ❌ `:set number` - Show line numbers (alias for :linenum on)
 - ❌ `:set nonumber` - Hide line numbers (alias for :linenum off) 
 - ❌ `:set hlsearch` - Highlight search results (search highlighting is always on)
@@ -150,7 +150,7 @@
 
 ### Lower Priority (Advanced Features)  
 1. ❌ `:mksession` - Session management
-2. ❌ `:colorscheme` - Theme support
+2. ❌ `:colourscheme` - Theme support
 3. ❌ `:jumps` / `:changes` - History navigation
 4. ❌ `:source filename` - Script execution
 5. ❌ `:grep` integration
@@ -190,5 +190,5 @@ The editor is remarkably feature-complete for a vi clone and includes many moder
 ## Troubleshooting
 
 - **Word wrap not working?**: Word wrap is enabled by default. Use `:set linewrap off` to disable.
-- **Markdown highlighting missing?**: Ensure you are editing a `.md` file. Colors are optimized for readability.
+- **Markdown highlighting missing?**: Ensure you are editing a `.md` file. colours are optimized for readability.
 - **Input not following window focus?**: This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window.

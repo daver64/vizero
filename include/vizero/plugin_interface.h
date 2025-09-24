@@ -64,15 +64,15 @@ typedef struct {
     vizero_position_t end;
 } vizero_range_t;
 
-/* Color structure for syntax highlighting */
+/* Colour structure for syntax highlighting */
 typedef struct {
     uint8_t r, g, b, a;
-} vizero_plugin_color_t;
+} vizero_plugin_colour_t;
 
 /* Syntax highlight token */
 typedef struct {
     vizero_range_t range;
-    vizero_plugin_color_t color;
+    vizero_plugin_colour_t colour;
     uint32_t flags; /* bold, italic, underline, etc. */
 } vizero_syntax_token_t;
 

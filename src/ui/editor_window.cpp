@@ -20,8 +20,8 @@ static const char* vizero_get_cwd(void) {
 // Draw status bar with current directory
 void vizero_draw_status_bar_with_cwd(vizero_editor_state_t* state, vizero_renderer_t* renderer, int screen_width, int screen_height) {
     // Draw background bar
-    vizero_color_t bar_color = {0.15f, 0.15f, 0.18f, 1.0f};
-    vizero_renderer_fill_rect(renderer, 0.0f, (float)(screen_height - 24), (float)screen_width, 24.0f, bar_color);
+    vizero_colour_t bar_colour = {0.15f, 0.15f, 0.18f, 1.0f};
+    vizero_renderer_fill_rect(renderer, 0.0f, (float)(screen_height - 24), (float)screen_width, 24.0f, bar_colour);
 
     // Left: status message
     const char* status = vizero_editor_get_status_message(state);
@@ -578,19 +578,29 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 state->plugin_manager, buffer, i, i+1, tokens, 64, &token_count);
             for (size_t col = 0; col < strlen(visual); col++) {
                 size_t logical_col = start + col;
-                vizero_color_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+                
+                /* Get default text colour from theme */
+                vizero_colour_t colour = {1.0f, 1.0f, 1.0f, 1.0f}; // Fallback
+                void* theme_manager = vizero_editor_get_theme_manager(state);
+                if (theme_manager) {
+                    const vizero_colour_theme_t* current_theme = vizero_theme_manager_get_current_theme((vizero_theme_manager_t*)theme_manager);
+                    if (current_theme) {
+                        colour = current_theme->foreground;
+                    }
+                }
+                
                 for (size_t t = 0; t < token_count; t++) {
                     vizero_syntax_token_t* token = &tokens[t];
                     if (token->range.start.line == (size_t)i && logical_col >= token->range.start.column && logical_col < token->range.end.column) {
-                        color.r = token->color.r / 255.0f;
-                        color.g = token->color.g / 255.0f;
-                        color.b = token->color.b / 255.0f;
-                        color.a = token->color.a / 255.0f;
+                        colour.r = token->colour.r / 255.0f;
+                        colour.g = token->colour.g / 255.0f;
+                        colour.b = token->colour.b / 255.0f;
+                        colour.a = token->colour.a / 255.0f;
                         break;
                     }
                 }
                 char ch[2] = {visual[col], '\0'};
-                vizero_text_info_t info = { (float)(text_x + (int)col * 8), (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), color, NULL };
+                vizero_text_info_t info = { (float)(text_x + (int)col * 8), (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), colour, NULL };
                 vizero_renderer_draw_text(renderer, ch, &info);
             }
             // No free needed, stack buffer
@@ -630,8 +640,18 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         }
         float cursor_x = (float)(content_x + line_number_width + (float)visual_cursor_col * 8.0f);
         float cursor_y = (float)(content_y + (float)(visual_cursor_row - window->scroll_y) * 16.0f);
-        vizero_color_t cursor_color = {1.0f, 1.0f, 0.0f, 0.5f}; // 50% transparent yellow
-        vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_color);
+        
+        /* Get cursor colour from theme */
+        vizero_colour_t cursor_colour = {1.0f, 1.0f, 0.0f, 0.5f}; // Default fallback
+        void* theme_manager = vizero_editor_get_theme_manager(state);
+        if (theme_manager) {
+            const vizero_colour_theme_t* current_theme = vizero_theme_manager_get_current_theme((vizero_theme_manager_t*)theme_manager);
+            if (current_theme) {
+                cursor_colour = current_theme->cursor;
+            }
+        }
+        
+        vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_colour);
     }
 }
 

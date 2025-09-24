@@ -9,6 +9,7 @@
 #include "vizero/file_utils.h"
 #include "vizero/editor_window.h"
 #include "vizero/mode_manager.h"
+#include "vizero/colour_theme.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2316,6 +2317,14 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     } else if (strcmp(command, "bn") == 0 || strcmp(command, "bnext") == 0) {
         /* Next buffer */
         if (vizero_editor_next_buffer(state) == 0) {
+            /* Update focused window's buffer index to the new current buffer */
+            if (state->window_manager) {
+                vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (focused_window) {
+                    vizero_editor_window_set_buffer_index(focused_window, state->current_buffer_index);
+                }
+            }
+            
             char msg[256];
             vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
             const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
@@ -2327,6 +2336,14 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     } else if (strcmp(command, "bp") == 0 || strcmp(command, "bprev") == 0) {
         /* Previous buffer */
         if (vizero_editor_previous_buffer(state) == 0) {
+            /* Update focused window's buffer index to the new current buffer */
+            if (state->window_manager) {
+                vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (focused_window) {
+                    vizero_editor_window_set_buffer_index(focused_window, state->current_buffer_index);
+                }
+            }
+            
             char msg[256];
             vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
             const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
@@ -2587,6 +2604,79 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             sprintf(msg, "Invalid syntax value: %s (use 'on' or 'off')", value);
             vizero_editor_set_status_message(state, msg);
             return -1;
+        }
+        return 0;
+        
+    } else if (strncmp(command, "colourscheme", 12) == 0 || strncmp(command, "colorscheme", 11) == 0) {
+        /* Theme switching command - support both UK and US spelling */
+        const char* theme_name = strchr(command, ' ');
+        if (theme_name) {
+            theme_name++; /* Skip the space */
+            if (state->theme_manager) {
+                if (vizero_theme_manager_set_current_theme((vizero_theme_manager_t*)state->theme_manager, theme_name) == 0) {
+                    /* Apply the theme */
+                    vizero_theme_manager_apply_theme((vizero_theme_manager_t*)state->theme_manager);
+                    
+                    char msg[256];
+                    sprintf(msg, "Colour scheme changed to: %s", theme_name);
+                    vizero_editor_set_status_message_with_timeout(state, msg, 3000); /* 3 second timeout */
+                    
+                    /* Save the setting */
+                    if (state->settings) {
+                        vizero_settings_set_string(state->settings, "theme", theme_name);
+                        vizero_settings_save_to_file(state->settings);
+                    }
+                } else {
+                    char msg[256];
+                    sprintf(msg, "Unknown colour scheme: %s", theme_name);
+                    vizero_editor_set_status_message_with_timeout(state, msg, 3000); /* 3 second timeout */
+                    
+                    /* List available themes */
+                    size_t theme_count = vizero_theme_manager_get_theme_count((vizero_theme_manager_t*)state->theme_manager);
+                    char popup[2048] = "Available colour schemes:\n\n";
+                    for (size_t i = 0; i < theme_count; i++) {
+                        const vizero_colour_theme_t* theme = vizero_theme_manager_get_theme_at_index((vizero_theme_manager_t*)state->theme_manager, i);
+                        if (theme) {
+                            strcat(popup, theme->name);
+                            strcat(popup, " - ");
+                            strcat(popup, theme->description);
+                            strcat(popup, "\n");
+                        }
+                    }
+                    vizero_editor_show_popup(state, popup, 5000);
+                    return -1;
+                }
+            } else {
+                vizero_editor_set_status_message(state, "Theme manager not available");
+                return -1;
+            }
+        } else {
+            /* Show current theme and list available themes */
+            if (state->theme_manager) {
+                const vizero_colour_theme_t* current = vizero_theme_manager_get_current_theme((vizero_theme_manager_t*)state->theme_manager);
+                size_t theme_count = vizero_theme_manager_get_theme_count((vizero_theme_manager_t*)state->theme_manager);
+                
+                char popup[2048];
+                if (current) {
+                    sprintf(popup, "Current colour scheme: %s\n\nAvailable colour schemes:\n\n", current->name);
+                } else {
+                    strcpy(popup, "Available colour schemes:\n\n");
+                }
+                
+                for (size_t i = 0; i < theme_count; i++) {
+                    const vizero_colour_theme_t* theme = vizero_theme_manager_get_theme_at_index((vizero_theme_manager_t*)state->theme_manager, i);
+                    if (theme) {
+                        strcat(popup, theme->name);
+                        strcat(popup, " - ");
+                        strcat(popup, theme->description);
+                        strcat(popup, "\n");
+                    }
+                }
+                vizero_editor_show_popup(state, popup, 8000);
+            } else {
+                vizero_editor_set_status_message(state, "Theme manager not available");
+                return -1;
+            }
         }
         return 0;
         
@@ -3298,6 +3388,14 @@ void vizero_editor_set_plugin_manager(vizero_editor_state_t* state, vizero_plugi
 
 vizero_plugin_manager_t* vizero_editor_get_plugin_manager(vizero_editor_state_t* state) {
     return state ? state->plugin_manager : NULL;
+}
+
+void vizero_editor_set_theme_manager(vizero_editor_state_t* state, void* manager) {
+    if (state) state->theme_manager = (vizero_theme_manager_t*)manager;
+}
+
+void* vizero_editor_get_theme_manager(vizero_editor_state_t* state) {
+    return state ? (void*)state->theme_manager : NULL;
 }
 
 /* Mode Manager */

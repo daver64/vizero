@@ -34,8 +34,8 @@ typedef struct {
     int enabled;
     int min_width;
     char* custom_text;
-    vizero_color_t custom_color;
-    int has_custom_color;
+    vizero_colour_t custom_colour;
+    int has_custom_colour;
 } vizero_status_panel_t;
 
 struct vizero_status_bar_t {
@@ -63,7 +63,7 @@ void vizero_status_bar_update(vizero_status_bar_t* status_bar, vizero_editor_sta
 void vizero_status_bar_resize(vizero_status_bar_t* status_bar, int width, int height);
 
 /* Rendering */
-void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t* renderer, int x, int y, vizero_color_t bg_color, vizero_color_t text_color);
+void vizero_status_bar_render(vizero_status_bar_t* status_bar, vizero_renderer_t* renderer, int x, int y, vizero_colour_t bg_colour, vizero_colour_t text_colour);
 
 /* Panel information */
 size_t vizero_status_bar_get_panel_count(vizero_status_bar_t* status_bar);
