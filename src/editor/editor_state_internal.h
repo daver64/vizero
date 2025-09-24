@@ -56,6 +56,9 @@ struct vizero_editor_state_t {
     /* Application control */
     int should_quit;
     
+    /* Startup directory for finding manual.md and other resources */
+    char* startup_directory;
+    
     /* Help system - temporary buffer restoration */
     int help_mode_active;
     vizero_buffer_t* help_original_buffer;

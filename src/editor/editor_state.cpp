@@ -14,6 +14,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <direct.h>
+#define getcwd _getcwd
+#else
+#include <unistd.h>
+#endif
 
 
 #ifdef _WIN32
@@ -109,6 +115,14 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
             state->buffer_mru[i] = SIZE_MAX;  /* Invalid index marker */
         }
         
+        /* Store startup directory for resource loading */
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            state->startup_directory = strdup(cwd);
+        } else {
+            state->startup_directory = NULL;
+        }
+        
         /* Create initial empty buffer */
         state->buffers[0] = vizero_buffer_create();
         state->cursors[0] = vizero_cursor_create(state->buffers[0]);
@@ -177,6 +191,14 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         state->popup_content = NULL;
         state->popup_start_time = 0;
         state->popup_duration_ms = 5000; /* 5 seconds default */
+        
+        /* Store startup directory for resource loading */
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            state->startup_directory = strdup(cwd);
+        } else {
+            state->startup_directory = NULL;
+        }
         
         /* Create initial empty buffer and window, but if a file is opened, replace them safely */
         state->buffers[0] = vizero_buffer_create();
@@ -258,6 +280,9 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     
     /* Clean up popup content */
     if (state->popup_content) free(state->popup_content);
+    
+    /* Clean up startup directory */
+    if (state->startup_directory) free(state->startup_directory);
     
     /* Clean up undo stack */
     if (state->undo_stack) {
@@ -2031,13 +2056,13 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
             char line[512];
             if (is_dir) {
-                snprintf(line, sizeof(line), "\033[38;2;128;192;255m%-40s   [DIR]\033[0m\n", name); // pale blue
+                snprintf(line, sizeof(line), "%-40s   [DIR]\n", name);
             } else if (is_exe) {
                 unsigned long long size = ((unsigned long long)findFileData.nFileSizeHigh << 32) | findFileData.nFileSizeLow;
-                snprintf(line, sizeof(line), "\033[38;2;255;128;128m%-40s   [EXE]  %10llu bytes\033[0m\n", name, size); // pale red
+                snprintf(line, sizeof(line), "%-40s   [EXE]  %10llu bytes\n", name, size);
             } else {
                 unsigned long long size = ((unsigned long long)findFileData.nFileSizeHigh << 32) | findFileData.nFileSizeLow;
-                snprintf(line, sizeof(line), "\033[38;2;255;255;192m%-40s   [FILE] %10llu bytes\033[0m\n", name, size); // pale yellow
+                snprintf(line, sizeof(line), "%-40s   [FILE] %10llu bytes\n", name, size);
             }
             strcat(popup, line);
         } while (FindNextFileA(hFind, &findFileData));
@@ -2066,11 +2091,11 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
             char line[512];
             if (is_dir) {
-                snprintf(line, sizeof(line), "\033[38;2;128;192;255m%-40s   [DIR]\033[0m\n", name); // pale blue
+                snprintf(line, sizeof(line), "%-40s   [DIR]\n", name);
             } else if (is_exe) {
-                snprintf(line, sizeof(line), "\033[38;2;255;128;128m%-40s   [EXE]\033[0m\n", name); // pale red
+                snprintf(line, sizeof(line), "%-40s   [EXE]\n", name);
             } else {
-                snprintf(line, sizeof(line), "\033[38;2;255;255;192m%-40s   [FILE]\033[0m\n", name); // pale yellow
+                snprintf(line, sizeof(line), "%-40s   [FILE]\n", name);
             }
             strcat(popup, line);
         }
@@ -4237,10 +4262,26 @@ int vizero_editor_enter_help_mode(vizero_editor_state_t* state) {
     /* Store the current buffer index for restoration */
     state->help_original_buffer_index = state->current_buffer_index;
     
-    /* Create help buffer and load manual.md */
-    vizero_buffer_t* help_buffer = vizero_buffer_create_from_file("manual.md");
+    /* Create help buffer and load manual.md from startup directory */
+    char manual_path[1024];
+    if (state->startup_directory) {
+        snprintf(manual_path, sizeof(manual_path), "%s%smanual.md", 
+                 state->startup_directory, 
+                 #ifdef _WIN32
+                 "\\"
+                 #else
+                 "/"
+                 #endif
+                );
+    } else {
+        strcpy(manual_path, "manual.md");
+    }
+    
+    vizero_buffer_t* help_buffer = vizero_buffer_create_from_file(manual_path);
     if (!help_buffer) {
-        vizero_editor_set_status_message(state, "Error: Could not load manual.md");
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Error: Could not load manual.md from %s", manual_path);
+        vizero_editor_set_status_message(state, error_msg);
         return -1;
     }
     

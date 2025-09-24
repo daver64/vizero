@@ -4,6 +4,7 @@
 #include "vizero/buffer.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <SDL.h>
 
 /* Forward declarations for helper functions */
@@ -45,7 +46,12 @@ void vizero_mode_manager_enter_normal_mode(vizero_mode_manager_t* manager) {
     
     /* Update editor state mode */
     vizero_editor_set_mode(manager->state, VIZERO_MODE_NORMAL);
-    /* Don't clear status message - let existing messages remain visible */
+    
+    /* Clear command mode status display when returning to normal mode */
+    const char* current_status = vizero_editor_get_status_message(manager->state);
+    if (current_status && (current_status[0] == ':' || strcmp(current_status, ":") == 0)) {
+        vizero_editor_set_status_message(manager->state, NULL);
+    }
 }
 
 void vizero_mode_manager_enter_insert_mode(vizero_mode_manager_t* manager) {

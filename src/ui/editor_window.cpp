@@ -641,7 +641,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         float cursor_x = (float)(content_x + line_number_width + (float)visual_cursor_col * 8.0f);
         float cursor_y = (float)(content_y + (float)(visual_cursor_row - window->scroll_y) * 16.0f);
         
-        /* Get cursor colour from theme */
+        /* Get cursor colour from theme and check mode for special styling */
         vizero_colour_t cursor_colour = {1.0f, 1.0f, 0.0f, 0.5f}; // Default fallback
         void* theme_manager = vizero_editor_get_theme_manager(state);
         if (theme_manager) {
@@ -651,7 +651,16 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             }
         }
         
-        vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_colour);
+        /* Check if we're in command mode for special cursor styling */
+        vizero_editor_mode_t current_mode = vizero_editor_get_mode(state);
+        if (current_mode == VIZERO_MODE_COMMAND) {
+            /* Yellow underline cursor for command mode */
+            vizero_colour_t yellow_colour = {1.0f, 1.0f, 0.0f, 0.8f}; // Solid yellow
+            vizero_renderer_fill_rect(renderer, cursor_x, cursor_y + 14.0f, 8.0f, 2.0f, yellow_colour);
+        } else {
+            /* Normal block cursor for other modes */
+            vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_colour);
+        }
     }
 }
 

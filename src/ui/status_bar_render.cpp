@@ -3,6 +3,7 @@
 #include "vizero/editor_state.h"
 #include <string.h>
 #include <stdio.h>
+#include <SDL.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +24,23 @@ void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t
         NULL
     };
     vizero_renderer_draw_text(renderer, status_bar->rendered_text, &info);
+    
+    // Add flashing cursor for command mode
+    // Note: We need to detect command mode here, but we don't have access to editor state
+    // So we'll check if the text starts with ":"
+    if (status_bar->rendered_text && status_bar->rendered_text[0] == ':') {
+        // Calculate cursor position at end of command text
+        int text_len = (int)strlen(status_bar->rendered_text);
+        float cursor_x = (float)x + (text_len * 8.0f); // 8px per character
+        float cursor_y = (float)y;
+        
+        // Create a flashing effect using SDL ticks
+        uint32_t ticks = SDL_GetTicks();
+        if ((ticks / 500) % 2 == 0) { // Flash every 500ms
+            vizero_colour_t cursor_colour = {1.0f, 1.0f, 0.0f, 0.8f}; // Yellow
+            vizero_renderer_fill_rect(renderer, cursor_x, cursor_y + 18.0f, 8.0f, 2.0f, cursor_colour);
+        }
+    }
     
     // Special handling for coloured panels - find and re-render them
     for (size_t i = 0; i < status_bar->panel_count; i++) {
