@@ -7,6 +7,7 @@
 #include "vizero/cursor.h"
 #include "vizero/project.h"
 #include "vizero/plugin_manager.h"
+#include "vizero/mode_manager.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -20,6 +21,7 @@ extern "C" {
 struct vizero_editor_state_t {
     vizero_editor_mode_t mode;
     vizero_window_manager_t* window_manager;
+    vizero_mode_manager_t* mode_manager;
     vizero_buffer_t* buffers[MAX_BUFFERS];
     vizero_cursor_t* cursors[MAX_BUFFERS];
     size_t buffer_count;

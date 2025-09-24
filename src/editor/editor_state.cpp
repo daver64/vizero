@@ -8,6 +8,7 @@
 #include "vizero/search.h"
 #include "vizero/file_utils.h"
 #include "vizero/editor_window.h"
+#include "vizero/mode_manager.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +37,14 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
         /* Initialize window manager */
         state->window_manager = vizero_window_manager_create();
         if (!state->window_manager) {
+            free(state);
+            return NULL;
+        }
+        
+        /* Initialize mode manager */
+        state->mode_manager = vizero_mode_manager_create(state);
+        if (!state->mode_manager) {
+            vizero_window_manager_destroy(state->window_manager);
             free(state);
             return NULL;
         }
@@ -103,6 +112,14 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         /* Initialize window manager */
         state->window_manager = vizero_window_manager_create();
         if (!state->window_manager) {
+            free(state);
+            return NULL;
+        }
+        
+        /* Initialize mode manager */
+        state->mode_manager = vizero_mode_manager_create(state);
+        if (!state->mode_manager) {
+            vizero_window_manager_destroy(state->window_manager);
             free(state);
             return NULL;
         }
@@ -190,17 +207,18 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
         vizero_window_manager_destroy(state->window_manager);
     }
     
+    /* Clean up mode manager */
+    if (state->mode_manager) {
+        vizero_mode_manager_destroy(state->mode_manager);
+    }
+    
     /* Clean up all buffers and cursors */
     for (size_t i = 0; i < state->buffer_count; i++) {
         if (state->cursors[i]) {
-            printf("[DEBUG] vizero_editor_state_destroy: destroying cursor %p (index %zu)\n", (void*)state->cursors[i], i);
             vizero_cursor_destroy(state->cursors[i]);
-            printf("[DEBUG] vizero_editor_state_destroy: destroyed cursor %p (index %zu)\n", (void*)state->cursors[i], i);
         }
         if (state->buffers[i]) {
-            printf("[DEBUG] vizero_editor_state_destroy: destroying buffer %p (index %zu)\n", (void*)state->buffers[i], i);
             vizero_buffer_destroy(state->buffers[i]);
-            printf("[DEBUG] vizero_editor_state_destroy: destroyed buffer %p (index %zu)\n", (void*)state->buffers[i], i);
         }
     }
     
@@ -2129,7 +2147,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Unknown command */
         char msg[256];
         sprintf(msg, "Not an editor command: %s", command);
-        vizero_editor_set_status_message(state, msg);
+        vizero_editor_set_status_message_with_timeout(state, msg, 3000); /* 3 second timeout */
         return -1;
     }
     
@@ -2168,6 +2186,11 @@ void vizero_editor_set_plugin_manager(vizero_editor_state_t* state, vizero_plugi
 
 vizero_plugin_manager_t* vizero_editor_get_plugin_manager(vizero_editor_state_t* state) {
     return state ? state->plugin_manager : NULL;
+}
+
+/* Mode Manager */
+vizero_mode_manager_t* vizero_editor_get_mode_manager(vizero_editor_state_t* state) {
+    return state ? state->mode_manager : NULL;
 }
 
 /* Project management functions */
@@ -2828,5 +2851,49 @@ int vizero_editor_redo(vizero_editor_state_t* state) {
     
     stack->current_index++;
     vizero_editor_set_status_message(state, "Redo successful");
+    return 0;
+}
+
+/* Navigation functions */
+int vizero_editor_go_to_line(vizero_editor_state_t* state, size_t line_number) {
+    if (!state) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    
+    if (!buffer || !cursor) return -1;
+    
+    size_t total_lines = vizero_buffer_get_line_count(buffer);
+    if (line_number < 1) line_number = 1;
+    if (line_number > total_lines) line_number = total_lines;
+    
+    /* Convert to 0-based line number and go to start of line */
+    vizero_cursor_set_position(cursor, line_number - 1, 0);
+    
+    char msg[64];
+    sprintf(msg, "Line %zu", line_number);
+    vizero_editor_set_status_message_with_timeout(state, msg, 2000);
+    
+    return 0;
+}
+
+int vizero_editor_go_to_end(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    
+    if (!buffer || !cursor) return -1;
+    
+    size_t total_lines = vizero_buffer_get_line_count(buffer);
+    if (total_lines == 0) total_lines = 1;
+    
+    /* Go to last line, start of line */
+    vizero_cursor_set_position(cursor, total_lines - 1, 0);
+    
+    char msg[64];
+    sprintf(msg, "Line %zu", total_lines);
+    vizero_editor_set_status_message_with_timeout(state, msg, 2000);
+    
     return 0;
 }

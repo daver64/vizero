@@ -2,18 +2,14 @@
 #include <math.h>
 #include <string.h>
 
-int answer = 42;
-
+int get_answer()
+{
+    return 42;
+}
 
 int main(int argc, char **argv[])
 {
-    printf("hello world\n");
-    printf("from my editor!\n");
-    return 0;
-}
-
-int hello()
-{
-    printf("hello!\n");
-    return 42;
+    int answer=get_answer();
+    printf("The answer is %d\n",answer);
+    return 0; 
 }

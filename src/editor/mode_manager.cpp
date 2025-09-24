@@ -3,6 +3,7 @@
 #include "vizero/editor_state.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <SDL.h>
 
 /* Forward declarations for helper functions */
 static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, uint32_t modifiers);
@@ -15,6 +16,8 @@ struct vizero_mode_manager_t {
     vizero_editor_mode_t current_mode;
     char command_buffer[256];       /* For command mode input */
     size_t command_length;
+    uint32_t pending_key;           /* For sequence commands like dd */
+    uint32_t pending_key_time;      /* Timeout for sequence commands */
 };
 
 vizero_mode_manager_t* vizero_mode_manager_create(vizero_editor_state_t* state) {
@@ -23,6 +26,8 @@ vizero_mode_manager_t* vizero_mode_manager_create(vizero_editor_state_t* state) 
         manager->state = state;
         manager->current_mode = VIZERO_MODE_NORMAL;  /* Start in normal mode */
         manager->command_length = 0;
+        manager->pending_key = 0;
+        manager->pending_key_time = 0;
     }
     return manager;
 }
@@ -108,16 +113,25 @@ int vizero_mode_manager_handle_key(vizero_mode_manager_t* manager, uint32_t key,
 static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, uint32_t modifiers) {
     (void)modifiers; /* Most vi commands don't use modifiers */
     
+    /* Check for timeout on pending key (1 second) */
+    if (manager->pending_key != 0 && SDL_GetTicks() - manager->pending_key_time > 1000) {
+        manager->pending_key = 0;
+        manager->pending_key_time = 0;
+    }
+    
     switch (key) {
         case 'i': /* Insert mode */
+            manager->pending_key = 0; /* Clear pending key */
             vizero_mode_manager_enter_insert_mode(manager);
             return 1;
             
         case 'v': /* Visual mode */
+            manager->pending_key = 0; /* Clear pending key */
             vizero_mode_manager_enter_visual_mode(manager);
             return 1;
             
         case ':': /* Command mode */
+            manager->pending_key = 0; /* Clear pending key */
             vizero_mode_manager_enter_command_mode(manager);
             return 1;
             
@@ -126,18 +140,55 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
         case 'j': /* Down */
         case 'k': /* Up */
         case 'l': /* Right */
+            manager->pending_key = 0; /* Clear pending key on movement */
             /* These would be handled by the cursor system */
             return 0; /* Let the main editor handle movement */
             
         /* Basic editing */
         case 'x': /* Delete character */
-        case 'd': /* Delete (would need to handle dd, dw, etc.) */
+            return 0; /* Let editor handle this */
+            
+        case 'd': /* Delete commands (dd, dw, etc.) */
+            if (manager->pending_key == 'd') {
+                /* Second 'd' - execute delete line */
+                manager->pending_key = 0;
+                manager->pending_key_time = 0;
+                vizero_editor_cut_current_line(manager->state);
+                return 1; /* Key handled */
+            } else {
+                /* First 'd' - wait for second key */
+                manager->pending_key = 'd';
+                manager->pending_key_time = SDL_GetTicks();
+                return 1; /* Key handled */
+            }
+            
+        case 'g': /* Go to commands (gg, etc.) */
+            if (manager->pending_key == 'g') {
+                /* Second 'g' - go to first line (gg) */
+                manager->pending_key = 0;
+                manager->pending_key_time = 0;
+                vizero_editor_go_to_line(manager->state, 1);
+                return 1; /* Key handled */
+            } else {
+                /* First 'g' - wait for second key */
+                manager->pending_key = 'g';
+                manager->pending_key_time = SDL_GetTicks();
+                return 1; /* Key handled */
+            }
+            
+        case 'G': /* Go to last line */
+            manager->pending_key = 0; /* Clear any pending key */
+            manager->pending_key_time = 0;
+            vizero_editor_go_to_end(manager->state);
+            return 1; /* Key handled */
+            
         case 'y': /* Yank */
         case 'p': /* Paste */
             /* These would be handled by the main editor */
             return 0;
             
         default:
+            manager->pending_key = 0; /* Clear pending key on unhandled keys */
             return 0; /* Key not handled */
     }
 }

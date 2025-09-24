@@ -1,5 +1,67 @@
 
-# Suggested Additional Commands for Vizero
+# Vizero Command Status and Suggestions
+
+## Currently Implemented Commands (✅ Complete)
+
+### File Operations
+- ✅ `:w` - Write (save) current buffer
+- ✅ `:wa` - Write all modified buffers
+- ✅ `:q` - Quit (if no unsaved changes)
+- ✅ `:q!` - Force quit (discard changes)
+- ✅ `:wq`, `:x` - Write and quit
+- ✅ `:e filename` - Open file in new buffer
+- ✅ `:r filename` - Read file into buffer at cursor
+- ✅ `:file` - Show current filename and status
+- ✅ `:file name` - Set filename for current buffer
+
+### Buffer/Window Management
+- ✅ `:ls`, `:buffers` - List all buffers or files in directory
+- ✅ `:bd`, `:bdelete` - Delete/close current buffer
+- ✅ `:bd N`, `:bdelete N` - Delete buffer number N
+- ✅ `:bn`, `:bnext` - Next buffer
+- ✅ `:bp`, `:bprev` - Previous buffer
+- ✅ `:b1`, `:b2`, `:b3` - Switch to buffer number
+- ✅ `:new` - Create new empty buffer
+- ✅ `:split`, `:sp` - Split window horizontally
+- ✅ `:vsplit`, `:vsp` - Split window vertically
+- ✅ `:close`, `:clo` - Close current window
+
+### Navigation
+- ✅ `:<number>` - Go to line number (e.g., `:42`)
+- ✅ `:$` - Go to last line
+- ✅ `gg` - Go to first line (implemented as normal mode command)
+- ✅ `G` - Go to last line (implemented as normal mode command)
+
+### Search/Replace
+- ✅ `/<pattern>` - Forward search with highlighting
+- ✅ `?<pattern>` - Backward search with highlighting
+- ✅ `:s/pattern/replacement/[g]` - Substitute on current line
+- ✅ `:%s/pattern/replacement/[g]` - Global substitute (entire file)
+
+### Directory Operations
+- ✅ `:chdir <path>` - Change working directory
+
+### Compilation & Execution
+- ✅ `:cc <args>` - Compile C file
+- ✅ `:cpp <args>` - Compile C++ file
+- ✅ `:asm <args>` - Assemble file
+- ✅ `:result`, `:compileresult` - Show last compilation result
+- ✅ `:run <program>` - Run program in new window
+- ✅ `:run` - Run last compiled executable
+
+### Settings & Configuration
+- ✅ `:set <key> <value>` - Set configuration option
+- ✅ `:set linewrap on/off` - Enable/disable word wrap
+- ✅ `:show` - Show all settings
+- ✅ `:show <key>` - Show specific setting value
+- ✅ `:linenum on/off` - Enable/disable line numbers
+- ✅ `:syntax on/off` - Enable/disable syntax highlighting
+- ✅ `:tabs <N>` - Set tab size to N spaces
+
+### Help & Information
+- ✅ `:help`, `:h` - Show comprehensive help popup
+
+## Additional Suggested Commands for Future Implementation
 
 ## September 2025: Major Features and Fixes
 
@@ -10,102 +72,110 @@
 - **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
 - **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
 
-## Essential Vi/Vim Commands to Implement
+## Commands Still To Be Implemented (❌ Not Implemented)
 
 ### File Operations
-- `:n` - Edit next file in argument list
-- `:prev` - Edit previous file in argument list
-- `:split filename` - Split window horizontally
-- `:vsplit filename` - Split window vertically
-- `:cd directory` - Change working directory
-- `:pwd` - Print working directory
+- ❌ `:n` - Edit next file in argument list  
+- ❌ `:prev` - Edit previous file in argument list
+- ❌ `:pwd` - Print working directory
 
-### Buffer/Window Management
-- `:bd` - Delete/close current buffer
-- `:only` - Close all windows except current
-- `:close` - Close current window
-- `:new` - Create new empty buffer
-- `:enew` - Edit new unnamed buffer
+### Buffer/Window Management  
+- ❌ `:only` - Close all windows except current
+- ❌ `:enew` - Edit new unnamed buffer
 
-### Text Manipulation
-- `:d` - Delete current line
-- `:y` - Yank (copy) current line
-- `:p` - Put (paste) after cursor
-- `:P` - Put (paste) before cursor
-- `:j` - Join current line with next
-- `:u` - Undo last change
-- `:redo` - Redo last undone change
+### Text Manipulation (Command Mode)
+- ❌ `:d` - Delete current line
+- ❌ `:y` - Yank (copy) current line  
+- ❌ `:p` - Put (paste) after cursor
+- ❌ `:P` - Put (paste) before cursor
+- ❌ `:j` - Join current line with next
+- ❌ `:u` - Undo last change (Ctrl+Z works in normal mode)
+- ❌ `:redo` - Redo last undone change
 
 ### Line Range Operations
-- `:1,5d` - Delete lines 1-5
-- `:1,5y` - Yank lines 1-5
-- `:1,5s/old/new/g` - Substitute in range
-- `:10` - Go to line 10
-- `:$` - Go to last line
-- `:.,.+5d` - Delete from current line to 5 lines down
+- ❌ `:1,5d` - Delete lines 1-5
+- ❌ `:1,5y` - Yank lines 1-5  
+- ❌ `:1,5s/old/new/g` - Substitute in range
+- ❌ `:.,.+5d` - Delete from current line to 5 lines down
 
-### Advanced Search/Replace
-- `:g/pattern/d` - Delete all lines matching pattern
-- `:g/pattern/p` - Print all lines matching pattern
-- `:v/pattern/d` - Delete all lines NOT matching pattern
-- `:%g/pattern/s//replacement/g` - Global substitute with pattern
+### Advanced Search/Replace  
+- ❌ `:g/pattern/d` - Delete all lines matching pattern
+- ❌ `:g/pattern/p` - Print all lines matching pattern
+- ❌ `:v/pattern/d` - Delete all lines NOT matching pattern
+- ❌ `:%g/pattern/s//replacement/g` - Global substitute with pattern
 
 ### Marks and Navigation
-- `:marks` - List all marks
-- `:jumps` - List jump history
-- `:changes` - List change history
+- ❌ `:marks` - List all marks
+- ❌ `:jumps` - List jump history  
+- ❌ `:changes` - List change history
 
 ### External Commands
-- `:!command` - Execute shell command
-- `:r !command` - Read output of shell command
-- `:make` - Run make command
-- `:grep pattern files` - Run grep and load results
+- ❌ `:!command` - Execute shell command
+- ❌ `:r !command` - Read output of shell command
+- ❌ `:make` - Run make command
+- ❌ `:grep pattern files` - Run grep and load results
 
 ### Help and Information
-- `:help` - Show help
-- `:version` - Show version information
-- `:syntax` - Toggle syntax highlighting
-- `:syntax on/off` - Enable/disable syntax highlighting
+- ❌ `:version` - Show version information
 
 ### Session Management
-- `:mksession` - Save current session
-- `:source filename` - Execute commands from file
+- ❌ `:mksession` - Save current session
+- ❌ `:source filename` - Execute commands from file
 
+### Advanced Configuration  
+- ❌ `:colorscheme name` - Set color scheme
+- ❌ `:set number` - Show line numbers (alias for :linenum on)
+- ❌ `:set nonumber` - Hide line numbers (alias for :linenum off) 
+- ❌ `:set hlsearch` - Highlight search results (search highlighting is always on)
+- ❌ `:set nohlsearch` - Don't highlight search results
 
-### Configuration
-- `:colorscheme name` - Set color scheme
-- `:set number` - Show line numbers (alias for :linenum on)
-- `:set nonumber` - Hide line numbers (alias for :linenum off)
-- `:set linewrap on` - Enable word wrap (default)
-- `:set linewrap off` - Disable word wrap
-- `:set hlsearch` - Highlight search results
-- `:set nohlsearch` - Don't highlight search results
-
-## Priority Implementation Order
+## Priority Implementation Order for Remaining Commands
 
 ### High Priority (Most Used)
-1. `:bd` - Buffer delete
-2. `:new` - New buffer
-3. `:!command` - Shell commands
-4. `:help` - Help system
-5. `:syntax on/off` - Syntax highlighting toggle
-6. Line number operations (`:10`, `:$`)
-
-7. **[DONE] Vi-like window focus/input routing** - Input always follows the focused window after any focus change (e.g., `:wincmd`, `Ctrl+w`).
-8. **[DONE] Word wrap and Markdown highlighting** - Word wrap is on by default and Markdown highlighting is built-in for `.md` files.
+1. ❌ `:!command` - Shell commands (very useful for development)
+2. ❌ `:pwd` - Print working directory (complements `:chdir`)
+3. ❌ `:version` - Show version information (standard vi command)
+4. ❌ `:only` - Close all windows except current (useful for window management)
+5. ❌ `:make` - Build integration (complements existing compiler commands)
 
 ### Medium Priority
-1. `:split` / `:vsplit` - Window splitting
-2. `:cd` / `:pwd` - Directory operations
-3. `:g/pattern/d` - Global operations
-4. `:marks` - Mark management
-5. `:make` - Build integration
+1. ❌ `:g/pattern/d` - Global operations (powerful text manipulation)
+2. ❌ `:marks` - Mark management (standard vi feature)
+3. ❌ Line range operations (`:1,5d`, `:1,5s`, etc.)
+4. ❌ `:r !command` - Read command output (useful for development)
+5. ❌ Command mode text manipulation (`:d`, `:y`, `:p`)
 
-### Lower Priority (Advanced Features)
-1. `:mksession` - Session management
-2. `:colorscheme` - Theme support
-3. `:jumps` / `:changes` - History navigation
-4. Complex range operations
+### Lower Priority (Advanced Features)  
+1. ❌ `:mksession` - Session management
+2. ❌ `:colorscheme` - Theme support
+3. ❌ `:jumps` / `:changes` - History navigation
+4. ❌ `:source filename` - Script execution
+5. ❌ `:grep` integration
+
+## Summary of Current State
+
+**Vizero has an exceptionally comprehensive command set!** The core vi/vim functionality is largely complete:
+
+### ✅ **Fully Implemented Areas:**
+- Complete file operations (open, save, quit, read)
+- Full buffer management (create, switch, delete, list)
+- Complete window management (split, close, focus)
+- Advanced search and replace with regex support
+- Comprehensive settings system with persistence
+- Integrated compilation and execution
+- Directory operations
+- Navigation commands
+- Syntax highlighting and word wrap
+- Help system
+
+### ❌ **Notable Missing Features:**
+- Shell command execution (`:!command`)
+- Line range operations (`:1,5d`)
+- Global search operations (`:g/pattern/d`)
+- Mark system (`:marks`)
+- Session management (`:mksession`)
+
+The editor is remarkably feature-complete for a vi clone and includes many modern conveniences!
 
 ## Implementation Notes
 

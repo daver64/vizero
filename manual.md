@@ -451,22 +451,90 @@ vizero main.c          # Start with main.c as buffer 1
 | `Esc` | Cancel command |
 | `Backspace` | Edit command |
 
-#### Command Reference (partial)
+#### Command Reference
 
+### File Operations
 | Command | Description |
 |---------|-------------|
 | `:w`    | Write (save) current buffer |
+| `:wa`   | Write all modified buffers |
 | `:q`    | Quit (if no unsaved changes) |
-| `:wq`   | Write and quit |
+| `:q!`   | Force quit (discard changes) |
+| `:wq`, `:x` | Write and quit |
 | `:e <file>` | Open file in new buffer |
-| `:r <file>` | Read file into buffer |
+| `:r <file>` | Read file into buffer at cursor |
+| `:file` | Show current filename and status |
+| `:file <name>` | Set filename for current buffer |
+
+### Buffer Management
+| Command | Description |
+|---------|-------------|
+| `:ls`, `:buffers` | List all buffers |
+| `:bn`, `:bnext` | Next buffer |
+| `:bp`, `:bprev` | Previous buffer |
+| `:b1`, `:b2`, `:b3` | Switch to buffer number |
+| `:bd`, `:bdelete` | Delete current buffer |
+| `:bd N`, `:bdelete N` | Delete buffer N |
+| `:new` | Create new empty buffer |
+
+### Window Management
+| Command | Description |
+|---------|-------------|
+| `:split`, `:sp` | Split window horizontally |
+| `:vsplit`, `:vsp` | Split window vertically |
+| `:close`, `:clo` | Close current window |
+
+### Navigation
+| Command | Description |
+|---------|-------------|
+| `:<number>` | Go to line number (e.g., `:42`) |
+| `:$` | Go to last line |
+| `gg` | Go to first line |
+| `G` | Go to last line |
+
+### Search and Replace
+| Command | Description |
+|---------|-------------|
+| `/<pattern>` | Search forward |
+| `?<pattern>` | Search backward |
+| `:s/old/new/[g]` | Replace on current line |
+| `:%s/old/new/[g]` | Replace in entire file |
+
+### Directory Operations
+| Command | Description |
+|---------|-------------|
+| `:ls` | List files in current directory |
 | `:chdir <path>` | Change working directory |
-| `:bn`, `:bp` | Next/previous buffer |
-| `:ls`   | List all buffers |
-| `:bd`   | Delete current buffer |
-| `:split`, `:vsplit` | Split window horizontally/vertically |
-| `:close` | Close current window |
-| `:help` | Show help popup |
+
+### Compilation
+| Command | Description |
+|---------|-------------|
+| `:cc <args>` | Compile C file |
+| `:cpp <args>` | Compile C++ file |
+| `:asm <args>` | Assemble file |
+| `:result` | Show last compilation result |
+
+### Execution
+| Command | Description |
+|---------|-------------|
+| `:run <program>` | Run program in new window |
+| `:run` | Run last compiled executable |
+
+### Settings
+| Command | Description |
+|---------|-------------|
+| `:set <key> <value>` | Set configuration option |
+| `:set linewrap on/off` | Enable/disable word wrap |
+| `:show` | Show all settings |
+| `:show <key>` | Show specific setting value |
+| `:linenum on/off` | Enable/disable line numbers |
+| `:syntax on/off` | Enable/disable syntax highlighting |
+| `:tabs <N>` | Set tab size to N spaces |
+
+### Help and Information
+| Command | Description |
+|---------|-------------|
+| `:help`, `:h` | Show comprehensive help popup |
 
 ---
 
@@ -511,6 +579,21 @@ vizero main.c          # Start with main.c as buffer 1
 - Experiment with commands in a test file
 - Use `:show` to see current settings
 - Try `:file` to check current file status
+
+---
+
+## Summary
+
+Vizero is a remarkably comprehensive vi clone with an extensive command set that covers all essential vi/vim functionality and more. With over 40 implemented commands, it provides:
+
+- **Complete file and buffer management** - Open, save, switch between multiple files
+- **Advanced text editing** - Full search/replace with regex, undo system, clipboard integration  
+- **Modern window management** - Split windows with proper focus handling
+- **Developer tools** - Integrated compilation, execution, and directory operations
+- **Flexible configuration** - Persistent settings with word wrap, syntax highlighting, and more
+- **Vi compatibility** - Standard navigation, modes, and command structure
+
+The editor successfully combines classic vi behavior with modern conveniences, making it both familiar to vi users and accessible to newcomers.
 
 ---
 

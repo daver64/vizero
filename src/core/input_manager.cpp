@@ -7,6 +7,7 @@
 #include "vizero/window.h"
 #include "vizero/search.h"
 #include "vizero/editor_window.h" // for window focus helpers
+#include "vizero/mode_manager.h"
 // Forward declare helpers if not in header
 int vizero_window_manager_focus_direction(vizero_window_manager_t* manager, char dir);
 int vizero_window_manager_focus_number(vizero_window_manager_t* manager, int number);
@@ -448,7 +449,22 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 default:
                                     /* Arrow keys work in insert mode too */
                                     switch (event.key.keysym.sym) {
-
+                                        case SDLK_LEFT:
+                                            /* Left arrow - move cursor left */
+                                            vizero_cursor_move_left(cursor);
+                                            break;
+                                        case SDLK_RIGHT:
+                                            /* Right arrow - move cursor right */
+                                            vizero_cursor_move_right(cursor);
+                                            break;
+                                        case SDLK_UP:
+                                            /* Up arrow - move cursor up */
+                                            vizero_cursor_move_up(cursor);
+                                            break;
+                                        case SDLK_DOWN:
+                                            /* Down arrow - move cursor down */
+                                            vizero_cursor_move_down(cursor);
+                                            break;
                                         case SDLK_c:
                                             /* Ctrl+C for copy in insert mode */
                                             if (event.key.keysym.mod & KMOD_CTRL) {
@@ -514,6 +530,9 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 /* Handle text input */
                 if (input->app) {
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        vizero_editor_mode_t mode = vizero_editor_get_mode(editor);
+                    }
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
                         /* Suppress the first SDL_TEXTINPUT event after switching to insert mode (e.g., after 'a') */
                         if (input->mode_changed_this_frame) {
@@ -548,6 +567,22 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         
                         for (const char* c = text; *c; c++) {
                             vizero_editor_append_to_command(editor, *c);
+                        }
+                    } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_NORMAL) {
+                        /* In normal mode, handle vi commands */
+                        const char* text = event.text.text;
+                        
+                        /* Handle single character vi commands */
+                        if (strlen(text) == 1) {
+                            char c = text[0];
+                            /* Convert to key code for mode manager */
+                            uint32_t key = (uint32_t)c;
+                            
+                            /* Use persistent mode manager from editor state */
+                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                            if (mode_manager) {
+                                vizero_mode_manager_handle_key(mode_manager, key, 0);
+                            }
                         }
                     }
                 }

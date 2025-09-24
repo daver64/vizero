@@ -385,32 +385,25 @@ int vizero_application_run(vizero_application_t* app) {
 
         /* Process input events */
         vizero_input_manager_process_events(app->input);
-        printf("DEBUG: After processing events\n");
         
         /* Clear screen */
         vizero_color_t clear_color = {0.1f, 0.1f, 0.2f, 1.0f};
         vizero_renderer_clear(app->renderer, clear_color);
-        printf("DEBUG: After clearing screen\n");
         
         /* Get window dimensions */
         int window_width, window_height;
         vizero_window_get_size(app->window, &window_width, &window_height);
-        printf("DEBUG: Got window dimensions: %dx%d\n", window_width, window_height);
         
         /* Update window manager layout */
         vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(app->editor);
-        printf("DEBUG: Got window manager: %p\n", (void*)window_manager);
         if (window_manager) {
             vizero_window_manager_update_layout(window_manager, window_width, window_height);
-            printf("DEBUG: Updated layout\n");
             
             /* Get all visible windows for rendering */
             vizero_editor_window_t** visible_windows = NULL;
             size_t visible_count = 0;
             
-            printf("DEBUG: About to get visible windows\n");
             int get_windows_result = vizero_window_manager_get_visible_windows(window_manager, &visible_windows, &visible_count);
-            printf("DEBUG: Get visible windows result: %d, count: %zu\n", get_windows_result, visible_count);
             
             if (get_windows_result == 0) {
                 /* Render each visible window */
@@ -582,12 +575,9 @@ int vizero_application_run(vizero_application_t* app) {
         
         /* Cap framerate */
         SDL_Delay(16); /* ~60 FPS */
-        printf("DEBUG: Frame complete\n");
     }
     
     printf("Main loop exited\n");
-    printf("DEBUG: Final exit conditions - should_quit: %d, window_should_close: %d, editor_should_quit: %d\n", 
-           app->should_quit, vizero_window_should_close(app->window), vizero_editor_should_quit(app->editor));
     return 0;
 }
 

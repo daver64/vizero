@@ -87,8 +87,10 @@ cmake --build . --config Release
 :w             # Save current buffer  
 :wa            # Save all buffers
 :q             # Quit (warns if unsaved)
-:wq            # Save and quit
+:q!            # Force quit (discard changes)
+:wq, :x        # Save and quit
 :r filename    # Read file at cursor
+:file          # Show filename and status
 ```
 
 #### Buffer Management  
@@ -97,6 +99,24 @@ cmake --build . --config Release
 :bn            # Next buffer
 :bp            # Previous buffer  
 :b1, :b2, :b3  # Jump to buffer number
+:bd            # Delete current buffer
+:bd N          # Delete buffer N
+:new           # Create new empty buffer
+```
+
+#### Window Management
+```
+:split, :sp    # Split horizontally
+:vsplit, :vsp  # Split vertically
+:close, :clo   # Close current window
+```
+
+#### Navigation
+```
+gg             # Go to first line
+G              # Go to last line
+:42            # Go to line 42
+:$             # Go to last line
 ```
 
 #### Search & Replace
@@ -109,11 +129,30 @@ N              # Previous match
 :%s/old/new/g  # Replace all in file
 ```
 
-#### Compilation
+#### Directory & File Operations
+```
+:ls            # List files in directory
+:chdir <path>  # Change working directory
+```
+
+#### Compilation & Execution
 ```
 :cc main.c -o program.exe    # Compile C
 :cpp main.cpp -o program.exe # Compile C++
 :asm code.asm -o code.o      # Assemble
+:result        # Show compilation result
+:run program   # Run program in new window
+:run           # Run last compiled executable
+```
+
+#### Settings & Configuration
+```
+:set linewrap on/off    # Toggle word wrap
+:linenum on/off         # Toggle line numbers
+:syntax on/off          # Toggle syntax highlighting
+:tabs 4                 # Set tab size
+:show                   # Show all settings
+:help                   # Show comprehensive help
 ```
 
 ## Advanced Features
@@ -207,13 +246,23 @@ static int highlight_syntax(/* ... */) {
 | Command | Action |
 |---------|--------|
 | `:e file` | Open file |
-| `:w` | Save |
+| `:w` | Save current buffer |
+| `:wa` | Save all buffers |
 | `:q` | Quit |
+| `:q!` | Force quit |
+| `:wq, :x` | Save and quit |
 | `:bn/:bp` | Next/previous buffer |
 | `:b[N]` | Switch to buffer N |
-| `:ls` | List buffers |
-| `:cc` | Compile C |
+| `:bd` | Delete current buffer |
+| `:ls` | List buffers/files |
+| `:new` | New empty buffer |
+| `:split/:vsplit` | Split window |
+| `:close` | Close window |
+| `:[N]` | Go to line N |
+| `:cc/:cpp/:asm` | Compile files |
+| `:run` | Execute program |
 | `:set` | Configure settings |
+| `:help` | Show help |
 
 ## Contributing
 

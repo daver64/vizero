@@ -105,6 +105,10 @@ int vizero_editor_execute_current_command(vizero_editor_state_t* state);
 void vizero_editor_set_plugin_manager(vizero_editor_state_t* state, vizero_plugin_manager_t* manager);
 vizero_plugin_manager_t* vizero_editor_get_plugin_manager(vizero_editor_state_t* state);
 
+/* Mode Manager */
+typedef struct vizero_mode_manager_t vizero_mode_manager_t;
+vizero_mode_manager_t* vizero_editor_get_mode_manager(vizero_editor_state_t* state);
+
 /* Settings */
 typedef struct vizero_settings_t vizero_settings_t;
 vizero_settings_t* vizero_editor_get_settings(vizero_editor_state_t* state);
@@ -125,6 +129,10 @@ int vizero_editor_cut_selection(vizero_editor_state_t* state);
 int vizero_editor_cut_current_line(vizero_editor_state_t* state);
 int vizero_editor_paste_at_cursor(vizero_editor_state_t* state);
 const char* vizero_editor_get_clipboard_content(vizero_editor_state_t* state);
+
+/* Navigation operations */
+int vizero_editor_go_to_line(vizero_editor_state_t* state, size_t line_number);
+int vizero_editor_go_to_end(vizero_editor_state_t* state);
 
 /* Undo/Redo operations */
 int vizero_editor_undo(vizero_editor_state_t* state);

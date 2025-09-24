@@ -441,7 +441,6 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
     size_t line_count = vizero_buffer_get_line_count(buffer);
     int row = 0;
     // Pass 1: Build visual map for the entire buffer
-    printf("DEBUG: render_content - starting visual map build\n");
     for (size_t i = 0; i < line_count; ++i) {
         const char* line = vizero_buffer_get_line_text(buffer, i);
         size_t len = line ? strlen(line) : 0;
