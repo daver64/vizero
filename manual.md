@@ -191,6 +191,77 @@ Vizero supports full C++ std::regex (ECMAScript syntax):
 | `.*\.cpp$` | Lines ending with .cpp |
 | `^#include` | Lines starting with #include |
 
+### Advanced Line Range Operations
+
+#### Line Range Syntax
+Line ranges use vi-style addressing:
+- `.` - Current line
+- `$` - Last line  
+- `1,5` - Lines 1 through 5
+- `.,+3` - Current line plus 3 more
+- `1,$` - All lines (equivalent to `%`)
+
+#### Line Range Commands
+
+**Delete Lines**
+```
+:1,5d          # Delete lines 1-5
+:.,+3d         # Delete current line + 3 more  
+:.,$d          # Delete from current line to end
+```
+
+**Yank (Copy) Lines**
+```
+:1,5y          # Copy lines 1-5 to clipboard
+:.,+2y         # Copy current line + 2 more
+```
+
+**Substitute in Range**
+```
+:1,5s/old/new/g      # Replace in lines 1-5
+:.,+10s/printf/cout/g # Replace in current + 10 lines
+```
+
+### Global Commands
+
+Global commands operate on all lines matching (or not matching) a pattern.
+
+#### Global Delete/Print
+```
+:g/pattern/d         # Delete all lines containing pattern
+:g/pattern/p         # Print all lines containing pattern
+:v/pattern/d         # Delete all lines NOT containing pattern
+```
+
+**Examples:**
+```
+:g/TODO/d            # Delete all lines with "TODO"
+:g/printf/p          # Show all lines with "printf"
+:v/^$/d              # Delete all non-empty lines
+:g/function.*{/p     # Show all function definitions
+```
+
+#### Global Substitute
+```
+:%g/pattern/s//replacement/g   # Global substitute with pattern
+```
+
+**Example:**
+```
+:%g/printf/s//cout/g     # Replace printf with cout on matching lines
+```
+
+### Marks and Navigation Information
+
+#### View Navigation History
+```
+:marks           # Show marks information popup
+:jumps           # Show jump history information
+:changes         # Show change history information
+```
+
+These commands show informational popups about navigation features that are planned for future implementation, including mark setting/jumping and history navigation.
+
 ---
 
 ## Selection and Clipboard
@@ -235,6 +306,8 @@ Vizero supports multiple file buffers and windows, allowing you to work with sev
 |---------|--------|
 | `:e filename` | Open file in new buffer (or switch if already open) |
 | `:edit filename` | Same as `:e` |
+| `:new` | Create new empty buffer |
+| `:enew` | Create new unnamed buffer |
 
 ### Buffer Navigation
 | Command | Action |
@@ -245,6 +318,8 @@ Vizero supports multiple file buffers and windows, allowing you to work with sev
 | `:ls`, `:buffers` | List all open buffers with numbers |
 | `:bd`, `:bdelete` | Delete/close current buffer |
 | `:bd N`, `:bdelete N` | Delete buffer number N |
+| `:n`, `:next` | Edit next file (same as `:bn`) |
+| `:prev`, `:previous` | Edit previous file (same as `:bp`) |
 ### Buffer Deletion
 | Command | Action |
 |---------|--------|
@@ -260,6 +335,7 @@ Vizero supports horizontal and vertical window splits, as well as closing splits
 | `:split`, `:sp` | Split window horizontally |
 | `:vsplit`, `:vsp` | Split window vertically |
 | `:close`, `:clo` | Close current window (only in split mode) |
+| `:only` | Close all windows except current |
 | `:new` | Create new empty buffer in current window |
 | `:help`, `:h` | Show help popup |
 | `Ctrl+W` then `h/j/k/l` or arrow key | Switch focus to left/down/up/right window |
@@ -315,6 +391,7 @@ vizero main.c          # Start with main.c as buffer 1
 | Command | Action |
 |---------|--------|
 | `:file` | Show current filename and status |
+| `:pwd` | Print working directory |
 
 ---
 
@@ -326,6 +403,13 @@ vizero main.c          # Start with main.c as buffer 1
 | `:cc [args]` | Compile with GCC |
 | `:cpp [args]` | Compile with G++ |
 | `:asm [args]` | Assemble with NASM/FASM |
+| `:make` | Run make command in new window |
+
+### External Commands
+| Command | Action |
+|---------|--------|
+| `:!command` | Execute shell command in new window |
+| `:r !command` | Read command output into buffer at cursor |
 
 ### Compiler Features
 - **Automatic Detection**: Detects available compilers (GCC, MSVC, NASM, FASM)
@@ -350,6 +434,7 @@ vizero main.c          # Start with main.c as buffer 1
 | `:set name=value` | Set configuration option |
 | `:show` | Display all current settings |
 | `:show name` | Display specific setting |
+| `:version` | Show version information popup |
 
 
 ### Available Settings

@@ -75,48 +75,48 @@
 ## Commands Still To Be Implemented (❌ Not Implemented)
 
 ### File Operations
-- ❌ `:n` - Edit next file in argument list  
-- ❌ `:prev` - Edit previous file in argument list
-- ❌ `:pwd` - Print working directory
+- ✅ `:n` - Edit next file in argument list (same as :bn)
+- ✅ `:prev` - Edit previous file in argument list (same as :bp)
+- ✅ `:pwd` - Print working directory
 
 ### Buffer/Window Management  
-- ❌ `:only` - Close all windows except current
-- ❌ `:enew` - Edit new unnamed buffer
+- ✅ `:only` - Close all windows except current
+- ✅ `:enew` - Edit new unnamed buffer
 
 ### Text Manipulation (Command Mode)
-- ❌ `:d` - Delete current line
-- ❌ `:y` - Yank (copy) current line  
-- ❌ `:p` - Put (paste) after cursor
-- ❌ `:P` - Put (paste) before cursor
-- ❌ `:j` - Join current line with next
-- ❌ `:u` - Undo last change (Ctrl+Z works in normal mode)
-- ❌ `:redo` - Redo last undone change
+- ✅ `:d` - Delete current line
+- ✅ `:y` - Yank (copy) current line  
+- ✅ `:p` - Put (paste) after cursor
+- ✅ `:P` - Put (paste) before cursor
+- ✅ `:j` - Join current line with next
+- ✅ `:u` - Undo last change (Ctrl+Z works in normal mode)
+- ✅ `:redo` - Redo last undone change
 
 ### Line Range Operations
-- ❌ `:1,5d` - Delete lines 1-5
-- ❌ `:1,5y` - Yank lines 1-5  
-- ❌ `:1,5s/old/new/g` - Substitute in range
-- ❌ `:.,.+5d` - Delete from current line to 5 lines down
+- ✅ `:1,5d` - Delete lines 1-5
+- ✅ `:1,5y` - Yank lines 1-5  
+- ✅ `:1,5s/old/new/g` - Substitute in range
+- ✅ `:.,.+5d` - Delete from current line to 5 lines down
 
 ### Advanced Search/Replace  
-- ❌ `:g/pattern/d` - Delete all lines matching pattern
-- ❌ `:g/pattern/p` - Print all lines matching pattern
-- ❌ `:v/pattern/d` - Delete all lines NOT matching pattern
-- ❌ `:%g/pattern/s//replacement/g` - Global substitute with pattern
+- ✅ `:g/pattern/d` - Delete all lines matching pattern
+- ✅ `:g/pattern/p` - Print all lines matching pattern
+- ✅ `:v/pattern/d` - Delete all lines NOT matching pattern
+- ✅ `:%g/pattern/s//replacement/g` - Global substitute with pattern
 
 ### Marks and Navigation
-- ❌ `:marks` - List all marks
-- ❌ `:jumps` - List jump history  
-- ❌ `:changes` - List change history
+- ✅ `:marks` - List all marks (shows info popup)
+- ✅ `:jumps` - List jump history (shows info popup)
+- ✅ `:changes` - List change history (shows info popup)
 
 ### External Commands
-- ❌ `:!command` - Execute shell command
-- ❌ `:r !command` - Read output of shell command
-- ❌ `:make` - Run make command
+- ✅ `:!command` - Execute shell command
+- ✅ `:r !command` - Read output of shell command
+- ✅ `:make` - Run make command
 - ❌ `:grep pattern files` - Run grep and load results
 
 ### Help and Information
-- ❌ `:version` - Show version information
+- ✅ `:version` - Show version information
 
 ### Session Management
 - ❌ `:mksession` - Save current session
@@ -132,18 +132,7 @@
 ## Priority Implementation Order for Remaining Commands
 
 ### High Priority (Most Used)
-1. ❌ `:!command` - Shell commands (very useful for development)
-2. ❌ `:pwd` - Print working directory (complements `:chdir`)
-3. ❌ `:version` - Show version information (standard vi command)
-4. ❌ `:only` - Close all windows except current (useful for window management)
-5. ❌ `:make` - Build integration (complements existing compiler commands)
-
-### Medium Priority
-1. ❌ `:g/pattern/d` - Global operations (powerful text manipulation)
-2. ❌ `:marks` - Mark management (standard vi feature)
-3. ❌ Line range operations (`:1,5d`, `:1,5s`, etc.)
-4. ❌ `:r !command` - Read command output (useful for development)
-5. ❌ Command mode text manipulation (`:d`, `:y`, `:p`)
+1. ❌ `:grep pattern files` - Search integration (cross-platform solution needed)
 
 ### Lower Priority (Advanced Features)  
 1. ❌ `:mksession` - Session management
@@ -170,10 +159,9 @@
 
 ### ❌ **Notable Missing Features:**
 - Shell command execution (`:!command`)
-- Line range operations (`:1,5d`)
-- Global search operations (`:g/pattern/d`)
-- Mark system (`:marks`)
 - Session management (`:mksession`)
+- Full mark navigation system (mark setting/jumping in normal mode)
+- Jump/change history navigation (Ctrl+O, Ctrl+I, g;, g,)
 
 The editor is remarkably feature-complete for a vi clone and includes many modern conveniences!
 

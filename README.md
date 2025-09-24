@@ -91,6 +91,9 @@ cmake --build . --config Release
 :wq, :x        # Save and quit
 :r filename    # Read file at cursor
 :file          # Show filename and status
+:n, :next      # Edit next file (same as :bn)
+:prev          # Edit previous file (same as :bp)
+:pwd           # Print working directory
 ```
 
 #### Buffer Management  
@@ -102,6 +105,7 @@ cmake --build . --config Release
 :bd            # Delete current buffer
 :bd N          # Delete buffer N
 :new           # Create new empty buffer
+:enew          # Create new unnamed buffer
 ```
 
 #### Window Management
@@ -109,6 +113,7 @@ cmake --build . --config Release
 :split, :sp    # Split horizontally
 :vsplit, :vsp  # Split vertically
 :close, :clo   # Close current window
+:only          # Close all windows except current
 ```
 
 #### Navigation
@@ -129,6 +134,30 @@ N              # Previous match
 :%s/old/new/g  # Replace all in file
 ```
 
+#### Advanced Line Operations
+```
+:1,5d          # Delete lines 1-5
+:1,5y          # Yank (copy) lines 1-5
+:1,5s/old/new/g# Substitute in line range
+:.,+3d         # Delete current line + 3 more
+:g/pattern/d   # Delete all lines matching pattern
+:g/pattern/p   # Show all lines matching pattern
+:v/pattern/d   # Delete lines NOT matching pattern
+```
+
+#### Marks & Navigation
+```
+:marks         # Show marks information
+:jumps         # Show jump history information  
+:changes       # Show change history information
+```
+
+#### External Commands
+```
+:!command      # Execute shell command in new window
+:r !command    # Read command output into buffer
+```
+
 #### Directory & File Operations
 ```
 :ls            # List files in directory
@@ -143,6 +172,7 @@ N              # Previous match
 :result        # Show compilation result
 :run program   # Run program in new window
 :run           # Run last compiled executable
+:make          # Run make command in new window
 ```
 
 #### Settings & Configuration
@@ -153,6 +183,7 @@ N              # Previous match
 :tabs 4                 # Set tab size
 :show                   # Show all settings
 :help                   # Show comprehensive help
+:version                # Show version information
 ```
 
 ## Advanced Features

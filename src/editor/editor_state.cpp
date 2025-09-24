@@ -1113,6 +1113,794 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
     return result;
 }
 
+/* Helper functions for line range operations */
+static int vizero_parse_line_range(vizero_editor_state_t* state, const char* range_str, size_t* start_line, size_t* end_line) {
+    if (!state || !range_str || !start_line || !end_line) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    if (!buffer || !cursor) return -1;
+    
+    size_t line_count = vizero_buffer_get_line_count(buffer);
+    size_t current_line = vizero_cursor_get_line(cursor) + 1; /* Convert to 1-based */
+    
+    char* range_copy = strdup(range_str);
+    char* comma = strchr(range_copy, ',');
+    if (!comma) {
+        free(range_copy);
+        return -1;
+    }
+    
+    *comma = '\0';
+    char* start_str = range_copy;
+    char* end_str = comma + 1;
+    
+    /* Parse start line */
+    if (strcmp(start_str, ".") == 0) {
+        *start_line = current_line;
+    } else if (strcmp(start_str, "$") == 0) {
+        *start_line = line_count;
+    } else {
+        *start_line = strtoul(start_str, NULL, 10);
+    }
+    
+    /* Parse end line */
+    if (strcmp(end_str, ".") == 0) {
+        *end_line = current_line;
+    } else if (strcmp(end_str, "$") == 0) {
+        *end_line = line_count;
+    } else if (end_str[0] == '+') {
+        *end_line = current_line + strtoul(end_str + 1, NULL, 10);
+    } else if (end_str[0] == '-') {
+        *end_line = current_line - strtoul(end_str + 1, NULL, 10);
+    } else {
+        *end_line = strtoul(end_str, NULL, 10);
+    }
+    
+    /* Clamp to valid range */
+    if (*start_line < 1) *start_line = 1;
+    if (*start_line > line_count) *start_line = line_count;
+    if (*end_line < 1) *end_line = 1;
+    if (*end_line > line_count) *end_line = line_count;
+    
+    /* Ensure start <= end */
+    if (*start_line > *end_line) {
+        size_t temp = *start_line;
+        *start_line = *end_line;
+        *end_line = temp;
+    }
+    
+    free(range_copy);
+    return 0;
+}
+
+static int vizero_execute_line_range_command(vizero_editor_state_t* state, const char* command) {
+    if (!state || !command) return -1;
+    
+    /* Find the command part (after range) */
+    char* cmd_copy = strdup(command);
+    char* cmd_part = NULL;
+    
+    if (strstr(cmd_copy, "d")) {
+        cmd_part = strstr(cmd_copy, "d");
+    } else if (strstr(cmd_copy, "y")) {
+        cmd_part = strstr(cmd_copy, "y");
+    } else if (strstr(cmd_copy, "s/")) {
+        cmd_part = strstr(cmd_copy, "s/");
+    }
+    
+    if (!cmd_part) {
+        free(cmd_copy);
+        return -1;
+    }
+    
+    /* Extract range part */
+    *cmd_part = '\0';
+    char* range_str = cmd_copy;
+    
+    size_t start_line, end_line;
+    if (vizero_parse_line_range(state, range_str, &start_line, &end_line) != 0) {
+        free(cmd_copy);
+        vizero_editor_set_status_message(state, "Invalid line range");
+        return -1;
+    }
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    if (!buffer || !cursor) {
+        free(cmd_copy);
+        return -1;
+    }
+    
+    /* Execute the command */
+    if (*cmd_part == 'd') {
+        /* Delete lines in range */
+        char lines_text[8192] = "";
+        for (size_t line = start_line; line <= end_line; line++) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line - 1);
+            if (line_text) {
+                strcat(lines_text, line_text);
+                strcat(lines_text, "\n");
+            }
+        }
+        
+        /* Store in clipboard for potential paste */
+        if (state->clipboard_content) free(state->clipboard_content);
+        state->clipboard_content = strdup(lines_text);
+        
+        /* Delete lines from end to start to maintain line numbers */
+        for (size_t line = end_line; line >= start_line; line--) {
+            vizero_buffer_delete_line(buffer, line - 1);
+        }
+        
+        /* Position cursor at start of range */
+        size_t new_line = (start_line > 1) ? start_line - 1 : 0;
+        if (new_line >= vizero_buffer_get_line_count(buffer)) {
+            new_line = vizero_buffer_get_line_count(buffer) - 1;
+        }
+        vizero_cursor_set_position(cursor, new_line, 0);
+        
+        char msg[64];
+        sprintf(msg, "%zu lines deleted", end_line - start_line + 1);
+        vizero_editor_set_status_message(state, msg);
+        
+    } else if (*cmd_part == 'y') {
+        /* Yank (copy) lines in range */
+        char lines_text[8192] = "";
+        for (size_t line = start_line; line <= end_line; line++) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line - 1);
+            if (line_text) {
+                strcat(lines_text, line_text);
+                strcat(lines_text, "\n");
+            }
+        }
+        
+        if (state->clipboard_content) free(state->clipboard_content);
+        state->clipboard_content = strdup(lines_text);
+        
+        char msg[64];
+        sprintf(msg, "%zu lines yanked", end_line - start_line + 1);
+        vizero_editor_set_status_message(state, msg);
+        
+    } else if (strncmp(cmd_part, "s/", 2) == 0) {
+        /* Substitute in range */
+        char pattern[512] = {0};
+        char replacement[512] = {0};
+        char flags[16] = {0};
+        
+        const char* ptr = cmd_part + 2; /* Skip 's/' */
+        char* dest = pattern;
+        size_t dest_size = sizeof(pattern) - 1;
+        
+        /* Extract pattern */
+        while (*ptr && *ptr != '/' && dest_size > 0) {
+            *dest++ = *ptr++;
+            dest_size--;
+        }
+        *dest = '\0';
+        
+        if (*ptr == '/') ptr++;
+        
+        /* Extract replacement */
+        dest = replacement;
+        dest_size = sizeof(replacement) - 1;
+        while (*ptr && *ptr != '/' && dest_size > 0) {
+            *dest++ = *ptr++;
+            dest_size--;
+        }
+        *dest = '\0';
+        
+        if (*ptr == '/') ptr++;
+        
+        /* Extract flags */
+        dest = flags;
+        dest_size = sizeof(flags) - 1;
+        while (*ptr && dest_size > 0) {
+            *dest++ = *ptr++;
+            dest_size--;
+        }
+        *dest = '\0';
+        
+        int global = (strchr(flags, 'g') != NULL);
+        
+        /* Apply substitution to each line in range */
+        int substitutions = 0;
+        for (size_t line = start_line; line <= end_line; line++) {
+            int result = vizero_substitute_line(state, pattern, replacement, (int)(line - 1), global);
+            if (result > 0) substitutions += result;
+        }
+        
+        char msg[128];
+        sprintf(msg, "%d substitutions on %zu lines", substitutions, end_line - start_line + 1);
+        vizero_editor_set_status_message(state, msg);
+    }
+    
+    free(cmd_copy);
+    return 0;
+}
+
+static int vizero_execute_global_command(vizero_editor_state_t* state, const char* command) {
+    if (!state || !command) return -1;
+    
+    /* Parse g/pattern/command */
+    const char* cmd = command + 2; /* Skip 'g/' */
+    char pattern[512] = {0};
+    char action[64] = {0};
+    
+    const char* ptr = cmd;
+    char* dest = pattern;
+    size_t dest_size = sizeof(pattern) - 1;
+    
+    /* Extract pattern */
+    while (*ptr && *ptr != '/' && dest_size > 0) {
+        *dest++ = *ptr++;
+        dest_size--;
+    }
+    *dest = '\0';
+    
+    if (*ptr == '/') ptr++;
+    
+    /* Extract action */
+    dest = action;
+    dest_size = sizeof(action) - 1;
+    while (*ptr && dest_size > 0) {
+        *dest++ = *ptr++;
+        dest_size--;
+    }
+    *dest = '\0';
+    
+    if (strlen(pattern) == 0) {
+        vizero_editor_set_status_message(state, "Empty pattern in global command");
+        return -1;
+    }
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    size_t line_count = vizero_buffer_get_line_count(buffer);
+    int operations = 0;
+    
+    if (strcmp(action, "d") == 0) {
+        /* Delete all lines matching pattern */
+        for (size_t line = line_count; line > 0; line--) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line - 1);
+            if (line_text && strstr(line_text, pattern)) {
+                vizero_buffer_delete_line(buffer, line - 1);
+                operations++;
+            }
+        }
+        char msg[64];
+        sprintf(msg, "%d lines deleted", operations);
+        vizero_editor_set_status_message(state, msg);
+        
+    } else if (strcmp(action, "p") == 0) {
+        /* Print (show in popup) all lines matching pattern */
+        char popup[8192] = "";
+        snprintf(popup, sizeof(popup), "Lines matching '%s':\n\n", pattern);
+        
+        for (size_t line = 1; line <= line_count; line++) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line - 1);
+            if (line_text && strstr(line_text, pattern)) {
+                char line_info[512];
+                snprintf(line_info, sizeof(line_info), "%zu: %s\n", line, line_text);
+                strcat(popup, line_info);
+                operations++;
+            }
+        }
+        
+        if (operations > 0) {
+            vizero_editor_show_popup(state, popup, 0); /* No timeout */
+        } else {
+            vizero_editor_set_status_message(state, "No matches found");
+        }
+        
+    } else if (strncmp(action, "s//", 3) == 0) {
+        /* Global substitute with pattern */
+        char replacement[256];
+        strncpy(replacement, action + 3, sizeof(replacement) - 1);
+        replacement[sizeof(replacement) - 1] = '\0';
+        char* end_marker = strstr(replacement, "/g");
+        if (end_marker) *end_marker = '\0';
+        
+        for (size_t line = 0; line < line_count; line++) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line);
+            if (line_text && strstr(line_text, pattern)) {
+                int result = vizero_substitute_line(state, pattern, replacement, (int)line, 1);
+                if (result > 0) operations += result;
+            }
+        }
+        
+        char msg[64];
+        sprintf(msg, "%d substitutions", operations);
+        vizero_editor_set_status_message(state, msg);
+        
+    } else {
+        vizero_editor_set_status_message(state, "Unknown global command action");
+        return -1;
+    }
+    
+    return 0;
+}
+
+static int vizero_execute_inverse_global_command(vizero_editor_state_t* state, const char* command) {
+    if (!state || !command) return -1;
+    
+    /* Parse v/pattern/command (inverse of g/pattern/command) */
+    const char* cmd = command + 2; /* Skip 'v/' */
+    char pattern[512] = {0};
+    char action[64] = {0};
+    
+    const char* ptr = cmd;
+    char* dest = pattern;
+    size_t dest_size = sizeof(pattern) - 1;
+    
+    /* Extract pattern */
+    while (*ptr && *ptr != '/' && dest_size > 0) {
+        *dest++ = *ptr++;
+        dest_size--;
+    }
+    *dest = '\0';
+    
+    if (*ptr == '/') ptr++;
+    
+    /* Extract action */
+    dest = action;
+    dest_size = sizeof(action) - 1;
+    while (*ptr && dest_size > 0) {
+        *dest++ = *ptr++;
+        dest_size--;
+    }
+    *dest = '\0';
+    
+    if (strlen(pattern) == 0) {
+        vizero_editor_set_status_message(state, "Empty pattern in inverse global command");
+        return -1;
+    }
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    size_t line_count = vizero_buffer_get_line_count(buffer);
+    int operations = 0;
+    
+    if (strcmp(action, "d") == 0) {
+        /* Delete all lines NOT matching pattern */
+        for (size_t line = line_count; line > 0; line--) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line - 1);
+            if (line_text && !strstr(line_text, pattern)) {
+                vizero_buffer_delete_line(buffer, line - 1);
+                operations++;
+            }
+        }
+        char msg[64];
+        sprintf(msg, "%d lines deleted", operations);
+        vizero_editor_set_status_message(state, msg);
+        
+    } else {
+        vizero_editor_set_status_message(state, "Only 'd' action supported for inverse global");
+        return -1;
+    }
+    
+    return 0;
+}
+
+/* Placeholder marks and navigation functions */
+static int vizero_show_marks(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* For now, show a simple message since marks aren't fully implemented */
+    const char* marks_info = 
+        "Marks:\n\n"
+        "Marks system not yet fully implemented.\n"
+        "In vi, marks allow you to:\n"
+        "- Set marks with 'm<letter>' in normal mode\n"
+        "- Jump to marks with '`<letter>' or ''<letter>'\n"
+        "- Use automatic marks like '.' (last change), ''' (last jump)\n\n"
+        "This feature is planned for future implementation.";
+    
+    vizero_editor_show_popup(state, marks_info, 0);
+    return 0;
+}
+
+static int vizero_show_jumps(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* For now, show a simple message since jump history isn't fully implemented */
+    const char* jumps_info = 
+        "Jump History:\n\n"
+        "Jump history not yet fully implemented.\n"
+        "In vi, jump history tracks:\n"
+        "- Line jumps with G, gg, :line\n"
+        "- Search jumps with /, ?, n, N\n"
+        "- File jumps between buffers\n\n"
+        "Use Ctrl+O (older) and Ctrl+I (newer) to navigate.\n"
+        "This feature is planned for future implementation.";
+    
+    vizero_editor_show_popup(state, jumps_info, 0);
+    return 0;
+}
+
+static int vizero_show_changes(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* For now, show a simple message since change history isn't fully implemented */
+    const char* changes_info = 
+        "Change History:\n\n"
+        "Change history not yet fully implemented.\n"
+        "In vi, change history tracks:\n"
+        "- Text insertions, deletions, modifications\n"
+        "- Position of each change\n"
+        "- Timestamp of changes\n\n"
+        "Use g; (older change) and g, (newer change) to navigate.\n"
+        "This feature is planned for future implementation.";
+    
+    vizero_editor_show_popup(state, changes_info, 0);
+    return 0;
+}
+
+/* Helper functions for file operations and window management */
+static int vizero_edit_next_file(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* For now, treat as next buffer since we don't maintain separate argument list */
+    return vizero_editor_next_buffer(state);
+}
+
+static int vizero_edit_previous_file(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* For now, treat as previous buffer since we don't maintain separate argument list */
+    return vizero_editor_previous_buffer(state);
+}
+
+static int vizero_print_working_directory(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    char cwd[1024];
+    
+#ifdef _WIN32
+    DWORD result = GetCurrentDirectoryA(sizeof(cwd), cwd);
+    if (result > 0 && result < sizeof(cwd)) {
+        char msg[1200];
+        snprintf(msg, sizeof(msg), "Current directory: %s", cwd);
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+    } else {
+        vizero_editor_set_status_message(state, "Failed to get current directory");
+        return -1;
+    }
+#else
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        char msg[1200];
+        snprintf(msg, sizeof(msg), "Current directory: %s", cwd);
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+    } else {
+        vizero_editor_set_status_message(state, "Failed to get current directory");
+        return -1;
+    }
+#endif
+}
+
+static int vizero_close_all_except_current_window(vizero_editor_state_t* state) {
+    if (!state || !state->window_manager) {
+        vizero_editor_set_status_message(state, "No window manager available");
+        return -1;
+    }
+    
+    /* Get the currently focused window */
+    vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+    if (!focused_window) {
+        vizero_editor_set_status_message(state, "No focused window");
+        return -1;
+    }
+    
+    /* Get window count before closing */
+    int window_count = vizero_window_manager_get_window_count(state->window_manager);
+    if (window_count <= 1) {
+        vizero_editor_set_status_message(state, "Only one window open");
+        return 0;
+    }
+    
+    /* Close all windows except the focused one */
+    int closed_count = 0;
+    for (int i = 0; i < window_count; i++) {
+        vizero_editor_window_t* window = vizero_window_manager_get_window(state->window_manager, (size_t)i);
+        if (window && window != focused_window) {
+            if (vizero_window_manager_close_window(state->window_manager, window->window_id, state) == 0) {
+                closed_count++;
+            }
+        }
+    }
+    
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Closed %d windows", closed_count);
+    vizero_editor_set_status_message(state, msg);
+    
+    return 0;
+}
+
+static int vizero_edit_new_unnamed_buffer(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* Create a new unnamed buffer */
+    int result = vizero_editor_create_new_buffer(state, NULL);
+    if (result == 0) {
+        /* Switch to the new buffer */
+        size_t new_buffer_index = vizero_editor_get_buffer_count(state) - 1;
+        vizero_editor_switch_buffer(state, new_buffer_index);
+        
+        vizero_editor_set_status_message(state, "New unnamed buffer created");
+        return 0;
+    } else {
+        vizero_editor_set_status_message(state, "Failed to create new buffer");
+        return -1;
+    }
+}
+
+/* External command execution functions */
+static int vizero_execute_shell_command(vizero_editor_state_t* state, const char* command) {
+    if (!state || !command || strlen(command) == 0) {
+        vizero_editor_set_status_message(state, "Empty command");
+        return -1;
+    }
+    
+    /* Trim leading whitespace */
+    while (*command && (*command == ' ' || *command == '\t')) command++;
+    
+    if (strlen(command) == 0) {
+        vizero_editor_set_status_message(state, "Empty command");
+        return -1;
+    }
+    
+#ifdef _WIN32
+    /* Windows: Execute command in new console window */
+    char cmd_line[1024];
+    snprintf(cmd_line, sizeof(cmd_line), "cmd.exe /c start \"Vizero Shell Command\" cmd.exe /k \"%s & echo. & echo Command completed. Press any key to close... & pause >nul\"", command);
+    
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+    si.cb = sizeof(si);
+    
+    if (CreateProcessA(NULL, cmd_line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Executed: %s", command);
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+    } else {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Failed to execute: %s", command);
+        vizero_editor_set_status_message(state, msg);
+        return -1;
+    }
+#else
+    /* Unix: Execute command in new terminal */
+    char cmd_line[1024];
+    
+    /* Try gnome-terminal first, then xterm */
+    snprintf(cmd_line, sizeof(cmd_line), "gnome-terminal -- bash -c '%s; echo; echo \"Command completed. Press any key to close...\"; read -n 1'", command);
+    int result = system(cmd_line);
+    
+    if (result != 0) {
+        /* Try xterm if gnome-terminal failed */
+        snprintf(cmd_line, sizeof(cmd_line), "xterm -e bash -c '%s; echo; echo \"Command completed. Press any key to close...\"; read -n 1'", command);
+        result = system(cmd_line);
+    }
+    
+    if (result == 0) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Executed: %s", command);
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+    } else {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Failed to execute: %s", command);
+        vizero_editor_set_status_message(state, msg);
+        return -1;
+    }
+#endif
+}
+
+static int vizero_read_shell_command_output(vizero_editor_state_t* state, const char* command) {
+    if (!state || !command || strlen(command) == 0) {
+        vizero_editor_set_status_message(state, "Empty command");
+        return -1;
+    }
+    
+    /* Trim leading whitespace */
+    while (*command && (*command == ' ' || *command == '\t')) command++;
+    
+    if (strlen(command) == 0) {
+        vizero_editor_set_status_message(state, "Empty command");
+        return -1;
+    }
+    
+    /* Execute command and capture output */
+    FILE* pipe = popen(command, "r");
+    if (!pipe) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Failed to execute: %s", command);
+        vizero_editor_set_status_message(state, msg);
+        return -1;
+    }
+    
+    /* Read command output */
+    char buffer[8192] = "";
+    char line[512];
+    
+    while (fgets(line, sizeof(line), pipe) != NULL) {
+        if (strlen(buffer) + strlen(line) < sizeof(buffer) - 1) {
+            strcat(buffer, line);
+        } else {
+            /* Buffer getting full, stop reading */
+            strcat(buffer, "... (output truncated)\n");
+            break;
+        }
+    }
+    
+    int exit_code = pclose(pipe);
+    
+    if (strlen(buffer) > 0) {
+        /* Insert the output at cursor position */
+        vizero_buffer_t* buf = vizero_editor_get_current_buffer(state);
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        
+        if (buf && cursor) {
+            size_t cursor_line = vizero_cursor_get_line(cursor);
+            size_t cursor_col = vizero_cursor_get_column(cursor);
+            
+            /* Split output into lines and insert */
+            char* output_copy = strdup(buffer);
+            char* line_start = output_copy;
+            char* line_end;
+            size_t insert_line = cursor_line;
+            
+            while ((line_end = strchr(line_start, '\n')) != NULL) {
+                *line_end = '\0';
+                
+                if (insert_line == cursor_line && cursor_col > 0) {
+                    /* Insert into current line at cursor position */
+                    vizero_buffer_insert_text(buf, cursor_line, cursor_col, line_start);
+                    insert_line++;
+                } else {
+                    /* Insert as new line */
+                    vizero_buffer_insert_line(buf, insert_line, line_start);
+                    insert_line++;
+                }
+                
+                line_start = line_end + 1;
+            }
+            
+            /* Handle last line if it doesn't end with newline */
+            if (*line_start) {
+                if (insert_line == cursor_line && cursor_col > 0) {
+                    vizero_buffer_insert_text(buf, cursor_line, cursor_col, line_start);
+                } else {
+                    vizero_buffer_insert_line(buf, insert_line, line_start);
+                }
+            }
+            
+            free(output_copy);
+            
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Read output from: %s (exit code: %d)", command, exit_code);
+            vizero_editor_set_status_message(state, msg);
+            return 0;
+        }
+    } else {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "No output from: %s (exit code: %d)", command, exit_code);
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+    }
+    
+    return -1;
+}
+
+static int vizero_run_make_command(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* Check if Makefile exists */
+    FILE* makefile = fopen("Makefile", "r");
+    if (!makefile) {
+        makefile = fopen("makefile", "r");
+    }
+    
+    if (!makefile) {
+        vizero_editor_set_status_message(state, "No Makefile found in current directory");
+        return -1;
+    }
+    
+    fclose(makefile);
+    
+    /* Execute make command */
+#ifdef _WIN32
+    /* On Windows, try different make commands */
+    const char* make_commands[] = {"make", "mingw32-make", "nmake", NULL};
+    
+    for (int i = 0; make_commands[i]; i++) {
+        char test_cmd[64];
+        snprintf(test_cmd, sizeof(test_cmd), "%s --version >nul 2>&1", make_commands[i]);
+        
+        if (system(test_cmd) == 0) {
+            /* This make command exists, use it */
+            char cmd_line[256];
+            snprintf(cmd_line, sizeof(cmd_line), "cmd.exe /c start \"Vizero Make\" cmd.exe /k \"%s & echo. & echo Build completed. Press any key to close... & pause >nul\"", make_commands[i]);
+            
+            STARTUPINFOA si;
+            PROCESS_INFORMATION pi;
+            memset(&si, 0, sizeof(si));
+            memset(&pi, 0, sizeof(pi));
+            si.cb = sizeof(si);
+            
+            if (CreateProcessA(NULL, cmd_line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                
+                char msg[128];
+                snprintf(msg, sizeof(msg), "Running %s in new window", make_commands[i]);
+                vizero_editor_set_status_message(state, msg);
+                return 0;
+            }
+        }
+    }
+    
+    vizero_editor_set_status_message(state, "No make command found (tried: make, mingw32-make, nmake)");
+    return -1;
+#else
+    /* Unix: Use make directly */
+    char cmd_line[256];
+    snprintf(cmd_line, sizeof(cmd_line), "gnome-terminal -- bash -c 'make; echo; echo \"Build completed. Press any key to close...\"; read -n 1'");
+    int result = system(cmd_line);
+    
+    if (result != 0) {
+        /* Try xterm if gnome-terminal failed */
+        snprintf(cmd_line, sizeof(cmd_line), "xterm -e bash -c 'make; echo; echo \"Build completed. Press any key to close...\"; read -n 1'");
+        result = system(cmd_line);
+    }
+    
+    if (result == 0) {
+        vizero_editor_set_status_message(state, "Running make in new terminal");
+        return 0;
+    } else {
+        vizero_editor_set_status_message(state, "Failed to run make command");
+        return -1;
+    }
+#endif
+}
+
+static int vizero_show_version_info(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    const char* version_info = 
+        "Vizero - Vi Clone v1.0.0\n\n"
+        "Build Information:\n"
+        "- Built with SDL2 and OpenGL\n"
+        "- Cross-platform plugin support\n"
+        "- Hardware-accelerated rendering\n"
+        "- Comprehensive vi command compatibility\n\n"
+        "Features:\n"
+        "- 60+ vi commands implemented\n"
+        "- Multi-buffer and multi-window support\n"
+        "- Advanced search/replace with regex\n"
+        "- Line range and global operations\n"
+        "- Integrated C/C++/Assembly compilation\n"
+        "- Syntax highlighting and word wrap\n"
+        "- Persistent settings system\n"
+        "- Plugin architecture\n\n"
+        "Copyright (c) 2025 Vizero Team\n"
+        "Licensed under the MIT License\n\n"
+        "For help, use :help or visit the project documentation.";
+    
+    vizero_editor_show_popup(state, version_info, 0); /* No timeout */
+    return 0;
+}
+
 int vizero_editor_execute_command(vizero_editor_state_t* state, const char* command) {
  
     if (!state || !command) return -1;
@@ -2115,9 +2903,148 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         vizero_editor_set_status_message(state, "Usage: :file filename");
         return -1;
         
+    } else if (strcmp(command, "d") == 0) {
+        /* Delete current line */
+        return vizero_editor_cut_current_line(state);
+        
+    } else if (strcmp(command, "y") == 0) {
+        /* Yank (copy) current line */
+        return vizero_editor_copy_current_line(state);
+        
+    } else if (strcmp(command, "p") == 0) {
+        /* Put (paste) after cursor */
+        return vizero_editor_paste_at_cursor(state);
+        
+    } else if (strcmp(command, "P") == 0) {
+        /* Put (paste) before cursor */
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        if (cursor) {
+            /* Move cursor to beginning of line, paste, then adjust position */
+            size_t original_line = vizero_cursor_get_line(cursor);
+            size_t original_col = vizero_cursor_get_column(cursor);
+            
+            /* Move to beginning of line */
+            vizero_cursor_set_position(cursor, original_line, 0);
+            
+            /* Paste */
+            int result = vizero_editor_paste_at_cursor(state);
+            
+            /* If paste was successful and added a line, move cursor to original position + 1 line */
+            if (result == 0) {
+                const char* clipboard = vizero_editor_get_clipboard_content(state);
+                if (clipboard && strchr(clipboard, '\n')) {
+                    /* Pasted content has newlines, cursor should be on next line */
+                    vizero_cursor_set_position(cursor, original_line + 1, original_col);
+                } else {
+                    /* Pasted content is on same line, adjust column */
+                    size_t clipboard_len = clipboard ? strlen(clipboard) : 0;
+                    vizero_cursor_set_position(cursor, original_line, original_col + clipboard_len);
+                }
+            }
+            
+            return result;
+        }
+        return -1;
+        
+    } else if (strcmp(command, "j") == 0) {
+        /* Join current line with next */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        if (buffer && cursor) {
+            size_t current_line = vizero_cursor_get_line(cursor);
+            size_t line_count = vizero_buffer_get_line_count(buffer);
+            
+            if (current_line + 1 < line_count) {
+                /* Get current line length before joining */
+                size_t current_line_len = vizero_buffer_get_line_length(buffer, current_line);
+                
+                if (vizero_buffer_join_lines(buffer, current_line) == 0) {
+                    /* Position cursor at the join point */
+                    vizero_cursor_set_position(cursor, current_line, current_line_len);
+                    vizero_editor_set_status_message_with_timeout(state, "Lines joined", 2000);
+                    return 0;
+                } else {
+                    vizero_editor_set_status_message(state, "Error joining lines");
+                    return -1;
+                }
+            } else {
+                vizero_editor_set_status_message(state, "No next line to join");
+                return -1;
+            }
+        }
+        return -1;
+        
+    } else if (strcmp(command, "u") == 0) {
+        /* Undo last change */
+        return vizero_editor_undo(state);
+        
+    } else if (strcmp(command, "redo") == 0) {
+        /* Redo last undone change */
+        return vizero_editor_redo(state);
+        
+    } else if (strcmp(command, "n") == 0 || strcmp(command, "next") == 0) {
+        /* Edit next file in argument list */
+        return vizero_edit_next_file(state);
+        
+    } else if (strcmp(command, "prev") == 0 || strcmp(command, "previous") == 0) {
+        /* Edit previous file in argument list */
+        return vizero_edit_previous_file(state);
+        
+    } else if (strcmp(command, "pwd") == 0) {
+        /* Print working directory */
+        return vizero_print_working_directory(state);
+        
+    } else if (strcmp(command, "only") == 0) {
+        /* Close all windows except current */
+        return vizero_close_all_except_current_window(state);
+        
+    } else if (strcmp(command, "enew") == 0) {
+        /* Edit new unnamed buffer */
+        return vizero_edit_new_unnamed_buffer(state);
+        
+    } else if (command[0] == '!' && command[1] != '\0') {
+        /* Execute shell command */
+        return vizero_execute_shell_command(state, command + 1);
+        
+    } else if (strncmp(command, "r !", 3) == 0) {
+        /* Read output of shell command */
+        return vizero_read_shell_command_output(state, command + 3);
+        
+    } else if (strcmp(command, "make") == 0) {
+        /* Run make command */
+        return vizero_run_make_command(state);
+        
+    } else if (strcmp(command, "version") == 0) {
+        /* Show version information */
+        return vizero_show_version_info(state);
+        
     } else {
         /* Check if command is a line number */
         char* endptr;
+        /* Check for line range operations like 1,5d or .,+5d */
+        if (strchr(command, ',') && (strstr(command, "d") || strstr(command, "y") || strstr(command, "s/"))) {
+            return vizero_execute_line_range_command(state, command);
+        }
+        
+        /* Check for global commands like g/pattern/d */
+        if (command[0] == 'g' && command[1] == '/') {
+            return vizero_execute_global_command(state, command);
+        }
+        
+        /* Check for inverse global commands like v/pattern/d */
+        if (command[0] == 'v' && command[1] == '/') {
+            return vizero_execute_inverse_global_command(state, command);
+        }
+        
+        /* Handle marks and navigation commands */
+        if (strcmp(command, "marks") == 0) {
+            return vizero_show_marks(state);
+        } else if (strcmp(command, "jumps") == 0) {
+            return vizero_show_jumps(state);
+        } else if (strcmp(command, "changes") == 0) {
+            return vizero_show_changes(state);
+        }
+        
         long line_num = strtol(command, &endptr, 10);
         
         if (*endptr == '\0' && line_num > 0) {
