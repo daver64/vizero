@@ -1262,7 +1262,7 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
         sprintf(msg, "%zu lines yanked", end_line - start_line + 1);
         vizero_editor_set_status_message(state, msg);
         
-    } else if (strncmp(cmd_part, "s/", 2) == 0) {
+    } else if (cmd_part && cmd_part[0] == 's' && cmd_part[1] == '/') {
         /* Substitute in range */
         char pattern[512] = {0};
         char replacement[512] = {0};
@@ -3560,7 +3560,7 @@ char* vizero_editor_get_selected_text(vizero_editor_state_t* state) {
     vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
     if (!buffer) return NULL;
     
-    vizero_position_t start, end;
+    vizero_position_t start = {0, 0}, end = {0, 0};
     vizero_editor_get_selection_range(state, &start, &end);
     
     /* Handle single line selection */

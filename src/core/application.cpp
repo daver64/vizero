@@ -43,10 +43,12 @@ struct vizero_application_t {
     /* Temporary settings during initialization */
     vizero_settings_t* settings;
 };
-/* Forward declaration for syntax line rendering */
+/* Forward declaration for syntax line rendering - currently unused */
+#if 0
 static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
                                    float base_x, float y, int scroll_x,
                                    vizero_syntax_token_t* tokens, size_t token_count);
+#endif
 vizero_application_t* vizero_application_create(const vizero_app_config_t* config) {
     vizero_application_t* app = (vizero_application_t*)calloc(1, sizeof(vizero_application_t));
     if (!app) {
@@ -265,7 +267,8 @@ static void render_editor_window(vizero_application_t* app, vizero_editor_window
     vizero_editor_window_render_content(window, app->editor, app->renderer);
 }
 
-/* Helper function to render a line with syntax highlighting */
+/* Helper function to render a line with syntax highlighting - currently unused */
+#if 0
 static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
                                    float base_x, float y, int scroll_x,
                                    vizero_syntax_token_t* tokens, size_t token_count) {
@@ -324,6 +327,7 @@ static void render_line_with_syntax(vizero_application_t* app, const char* line_
     
     free(char_colors);
 }
+#endif
 
 /* Helper function to draw window borders */
 static void draw_window_borders(vizero_application_t* app, vizero_editor_window_t** windows, size_t count) {
@@ -354,7 +358,8 @@ static void render_single_window_fallback(vizero_application_t* app, int window_
     }
     
     /* Create a temporary window structure for rendering */
-    vizero_editor_window_t temp_window = {0};
+    vizero_editor_window_t temp_window;
+    memset(&temp_window, 0, sizeof(temp_window));
     temp_window.x = 0;
     temp_window.y = 0;
     temp_window.width = window_width;
@@ -377,8 +382,10 @@ int vizero_application_run(vizero_application_t* app) {
     }
     printf("Starting main loop...\n");
 
-    uint32_t last_poll_time = SDL_GetTicks();
-    const uint32_t poll_interval_ms = 2000; // 2 seconds
+    /* File polling variables - currently disabled for debugging */
+    (void)SDL_GetTicks(); /* Suppress warning about unused function call */
+    /* uint32_t last_poll_time = SDL_GetTicks();
+    const uint32_t poll_interval_ms = 2000; // 2 seconds */
 
     // Debug: Check initial conditions
     while (!app->should_quit && !vizero_window_should_close(app->window) && !vizero_editor_should_quit(app->editor)) {

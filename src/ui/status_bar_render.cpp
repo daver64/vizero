@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t *renderer, int x, int y, vizero_color_t bg_color, vizero_color_t text_color) {
+    (void)bg_color; /* Use a fixed color for now */
     if (!status_bar || !renderer) return;
 
     // Draw a slightly lighter blue background for the status bar

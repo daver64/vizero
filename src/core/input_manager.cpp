@@ -539,9 +539,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 /* Handle text input */
                 if (input->app) {
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
-                    if (editor) {
-                        vizero_editor_mode_t mode = vizero_editor_get_mode(editor);
-                    }
+                    /* Mode handling moved inline below */
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
                         /* Suppress the first SDL_TEXTINPUT event after switching to insert mode (e.g., after 'a') */
                         if (input->mode_changed_this_frame) {

@@ -20,18 +20,11 @@ typedef struct vizero_buffer_t vizero_buffer_t;
 typedef struct vizero_cursor_t vizero_cursor_t;
 typedef struct vizero_editor_window_t vizero_editor_window_t;
 typedef struct vizero_window_manager_t vizero_window_manager_t;
+typedef struct vizero_editor_state_t vizero_editor_state_t;
+typedef struct vizero_renderer_t vizero_renderer_t;
 
 // Move the cursor up/down one visual row, using preferred_column
 int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction);
-
-#include <stddef.h>
-#include <stdint.h>
-
-/* Forward declarations */
-typedef struct vizero_buffer_t vizero_buffer_t;
-typedef struct vizero_cursor_t vizero_cursor_t;
-typedef struct vizero_editor_window_t vizero_editor_window_t;
-typedef struct vizero_window_manager_t vizero_window_manager_t;
 
 /* Layout types for window splits */
 typedef enum {

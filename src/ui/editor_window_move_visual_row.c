@@ -6,7 +6,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-int vizero_editor_window_move_visual_row(struct vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction) {
+// Forward declaration for compatibility
+struct vizero_editor_state_t;
+
+int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction) {
     if (!window || !state) return -1;
     
     /* Get buffer and cursor using new architecture */

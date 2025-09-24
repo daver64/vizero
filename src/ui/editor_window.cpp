@@ -31,7 +31,11 @@ void vizero_draw_status_bar_with_cwd(vizero_editor_state_t* state, vizero_render
     // Right: current working directory
     const char* cwd = vizero_get_cwd();
     char cwd_buf[512];
-    snprintf(cwd_buf, sizeof(cwd_buf), "CWD: %s", cwd);
+    int ret = snprintf(cwd_buf, sizeof(cwd_buf), "CWD: %s", cwd);
+    if (ret >= (int)sizeof(cwd_buf)) {
+        // Truncated, add ellipsis
+        strcpy(cwd_buf + sizeof(cwd_buf) - 4, "...");
+    }
     int text_width = (int)strlen(cwd_buf) * 8;
     vizero_text_info_t info2 = {(float)(screen_width - text_width - 8), (float)(screen_height - 18), {0.7f, 0.7f, 1.0f, 1.0f}, NULL};
     vizero_renderer_draw_text(renderer, cwd_buf, &info2);
@@ -114,7 +118,7 @@ int vizero_window_manager_focus_direction(vizero_window_manager_t* manager, char
     if (!focused) return -1;
     vizero_editor_window_t* other = NULL;
     // Find the other window
-    for (int i = 0; i < manager->window_count; ++i) {
+    for (size_t i = 0; i < manager->window_count; ++i) {
         if (manager->windows[i] && manager->windows[i]->window_id != focused->window_id) {
             other = manager->windows[i];
             break;
@@ -446,6 +450,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         size_t len = line ? strlen(line) : 0;
         size_t start = 0;
         int first_visual_row = 1;
+        (void)first_visual_row; // Suppress unused variable warning
         int indent_len = 0;
         if (line) {
             while (line[indent_len] == ' ' || line[indent_len] == '\t') indent_len++;
@@ -531,7 +536,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         int i = visual_map[v].line;
         int start = visual_map[v].start_col;
         const char* line = vizero_buffer_get_line_text(buffer, i);
-        size_t len = line ? strlen(line) : 0;
+        /* size_t len = line ? strlen(line) : 0; */ /* Currently unused */
         int first_visual_row = (visual_map[v].visual_col_start == 0);
         int indent_len = 0;
         if (line) {
@@ -576,7 +581,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 vizero_color_t color = {1.0f, 1.0f, 1.0f, 1.0f};
                 for (size_t t = 0; t < token_count; t++) {
                     vizero_syntax_token_t* token = &tokens[t];
-                    if (token->range.start.line == i && logical_col >= token->range.start.column && logical_col < token->range.end.column) {
+                    if (token->range.start.line == (size_t)i && logical_col >= token->range.start.column && logical_col < token->range.end.column) {
                         color.r = token->color.r / 255.0f;
                         color.g = token->color.g / 255.0f;
                         color.b = token->color.b / 255.0f;
@@ -596,9 +601,9 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
     }
 
     // If cursor was not mapped, try to clamp it to the last visual segment of its logical line
-    if (window->is_focused && !found_cursor && cursor_pos.line < (int)line_count) {
+    if (window->is_focused && !found_cursor && (int)cursor_pos.line < (int)line_count) {
         for (int v = visual_map_count - 1; v >= 0; --v) {
-            if (visual_map[v].line == cursor_pos.line) {
+            if (visual_map[v].line == (int)cursor_pos.line) {
                 visual_cursor_row = visual_map[v].visual_row;
                 visual_cursor_col = visual_map[v].visual_col_end;
                 found_cursor = 1;
@@ -607,7 +612,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         }
     }
     // If cursor is on an empty line, show it at the start of the line
-    if (window->is_focused && !found_cursor && cursor_pos.line < (int)line_count) {
+    if (window->is_focused && !found_cursor && (int)cursor_pos.line < (int)line_count) {
         size_t len = vizero_buffer_get_line_length(buffer, cursor_pos.line);
         if (len == 0) {
             visual_cursor_row = 0;

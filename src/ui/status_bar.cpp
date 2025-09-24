@@ -82,9 +82,6 @@ int vizero_status_bar_remove_panel(vizero_status_bar_t *status_bar, size_t panel
     if (!status_bar || panel_index >= status_bar->panel_count)
         return -1;
 
-            int x = 0; // Default to left edge
-            int y = 0; // Default to top edge
-            // Default to white
     /* Free custom text if any */
     if (status_bar->panels[panel_index].custom_text)
     {

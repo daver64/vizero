@@ -198,4 +198,4 @@ int vizero_plugin_interface_check_version(const vizero_plugin_info_t* info);
 }
 #endif
 
-#endif /* VIZERO_PLUGIN_INTERFACE_H */#endif /* VIZERO_PLUGIN_INTERFACE_H */
+#endif /* VIZERO_PLUGIN_INTERFACE_H */
