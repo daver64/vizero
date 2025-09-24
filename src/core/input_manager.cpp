@@ -148,16 +148,16 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     case SDLK_DOWN:
                                     {
                                         /* Do NOT update preferred_column on vertical movement */
-                                        extern int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, int direction); // direction: +1 down, -1 up
+                                        extern int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction); // direction: +1 down, -1 up
                                         if (event.key.keysym.mod & KMOD_SHIFT) {
                                             if (!vizero_editor_has_selection(editor)) {
                                                 vizero_editor_start_selection(editor);
                                             }
-                                            vizero_editor_window_move_visual_row(focused_window, +1);
+                                            vizero_editor_window_move_visual_row(focused_window, editor, +1);
                                             vizero_editor_update_selection(editor);
                                         } else {
                                             vizero_editor_clear_selection(editor);
-                                            vizero_editor_window_move_visual_row(focused_window, +1);
+                                            vizero_editor_window_move_visual_row(focused_window, editor, +1);
                                         }
                                         break;
                                     }
@@ -165,16 +165,16 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     case SDLK_UP:
                                     {
                                         /* Do NOT update preferred_column on vertical movement */
-                                        extern int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, int direction); // direction: +1 down, -1 up
+                                        extern int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction); // direction: +1 down, -1 up
                                         if (event.key.keysym.mod & KMOD_SHIFT) {
                                             if (!vizero_editor_has_selection(editor)) {
                                                 vizero_editor_start_selection(editor);
                                             }
-                                            vizero_editor_window_move_visual_row(focused_window, -1);
+                                            vizero_editor_window_move_visual_row(focused_window, editor, -1);
                                             vizero_editor_update_selection(editor);
                                         } else {
                                             vizero_editor_clear_selection(editor);
-                                            vizero_editor_window_move_visual_row(focused_window, -1);
+                                            vizero_editor_window_move_visual_row(focused_window, editor, -1);
                                         }
                                         break;
                                     }

@@ -22,7 +22,7 @@ typedef struct vizero_editor_window_t vizero_editor_window_t;
 typedef struct vizero_window_manager_t vizero_window_manager_t;
 
 // Move the cursor up/down one visual row, using preferred_column
-int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, int direction);
+int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct vizero_editor_state_t* state, int direction);
 
 #include <stddef.h>
 #include <stdint.h>

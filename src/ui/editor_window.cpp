@@ -633,15 +633,63 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
 
 /* Split window functionality */
 int vizero_window_manager_split_horizontal(vizero_window_manager_t* manager, uint32_t window_id) {
-    /* TODO: Implement split functionality with new buffer index architecture */
-    (void)manager; (void)window_id; /* Suppress unused parameter warnings */
-    return -1; /* Not implemented yet */
+    if (!manager || manager->window_count >= MAX_WINDOWS) return -1;
+    
+    /* Find the window to split */
+    vizero_editor_window_t* original_window = vizero_window_manager_get_window_by_id(manager, window_id);
+    if (!original_window) return -1;
+    
+    /* If already in split mode, don't allow further splits for now */
+    if (manager->layout_type != VIZERO_LAYOUT_SINGLE) return -1;
+    
+    /* Create new window with same buffer index */
+    vizero_editor_window_t* new_window = vizero_window_manager_create_window(
+        manager, original_window->buffer_index, 0, 0, 100, 100);
+    if (!new_window) return -1;
+    
+    /* Configure horizontal split layout */
+    manager->layout_type = VIZERO_LAYOUT_HORIZONTAL;
+    manager->primary_window_id = window_id;          /* Original window goes to top */
+    manager->secondary_window_id = new_window->window_id; /* New window goes to bottom */
+    manager->split_ratio = 0.5f;                     /* 50/50 split */
+    
+    /* Focus the new window */
+    vizero_window_manager_set_focus(manager, new_window->window_id);
+    
+    /* Update layout to apply new dimensions */
+    vizero_window_manager_update_layout(manager, manager->screen_width, manager->screen_height);
+    
+    return 0;
 }
 
 int vizero_window_manager_split_vertical(vizero_window_manager_t* manager, uint32_t window_id) {
-    /* TODO: Implement split functionality with new buffer index architecture */
-    (void)manager; (void)window_id; /* Suppress unused parameter warnings */
-    return -1; /* Not implemented yet */
+    if (!manager || manager->window_count >= MAX_WINDOWS) return -1;
+    
+    /* Find the window to split */
+    vizero_editor_window_t* original_window = vizero_window_manager_get_window_by_id(manager, window_id);
+    if (!original_window) return -1;
+    
+    /* If already in split mode, don't allow further splits for now */
+    if (manager->layout_type != VIZERO_LAYOUT_SINGLE) return -1;
+    
+    /* Create new window with same buffer index */
+    vizero_editor_window_t* new_window = vizero_window_manager_create_window(
+        manager, original_window->buffer_index, 0, 0, 100, 100);
+    if (!new_window) return -1;
+    
+    /* Configure vertical split layout */
+    manager->layout_type = VIZERO_LAYOUT_VERTICAL;
+    manager->primary_window_id = window_id;          /* Original window goes to left */
+    manager->secondary_window_id = new_window->window_id; /* New window goes to right */
+    manager->split_ratio = 0.5f;                     /* 50/50 split */
+    
+    /* Focus the new window */
+    vizero_window_manager_set_focus(manager, new_window->window_id);
+    
+    /* Update layout to apply new dimensions */
+    vizero_window_manager_update_layout(manager, manager->screen_width, manager->screen_height);
+    
+    return 0;
 }
 
 int vizero_window_manager_close_split(vizero_window_manager_t* manager, uint32_t window_id) {
