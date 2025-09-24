@@ -377,7 +377,7 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
     int file_type = get_file_type(filename);
     if (file_type == 3) {
         /* Markdown file - use markdown_highlight */
-        int result = markdown_highlight(buffer, start_line, end_line, &tokens, &max_tokens, editor_api);
+        int result = markdown_highlight(buffer, start_line, end_line, tokens, max_tokens, editor_api);
         return result;
     }
     size_t token_count = 0;

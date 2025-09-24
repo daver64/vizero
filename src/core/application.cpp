@@ -173,6 +173,7 @@ int vizero_application_initialize(vizero_application_t* app) {
     /* Setup default status bar panels */
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_FILENAME, VIZERO_ALIGN_LEFT, 100);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_MODE, VIZERO_ALIGN_LEFT, 80);
+    vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_READONLY_STATUS, VIZERO_ALIGN_LEFT, 40);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_BUFFER_INFO, VIZERO_ALIGN_CENTER, 60);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_CURSOR_POSITION, VIZERO_ALIGN_RIGHT, 80);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_TIME_DATE, VIZERO_ALIGN_RIGHT, 120);

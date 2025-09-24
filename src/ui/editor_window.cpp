@@ -21,7 +21,7 @@ static const char* vizero_get_cwd(void) {
 void vizero_draw_status_bar_with_cwd(vizero_editor_state_t* state, vizero_renderer_t* renderer, int screen_width, int screen_height) {
     // Draw background bar
     vizero_color_t bar_color = {0.15f, 0.15f, 0.18f, 1.0f};
-    vizero_renderer_fill_rect(renderer, 0, screen_height - 24, screen_width, 24, bar_color);
+    vizero_renderer_fill_rect(renderer, 0.0f, (float)(screen_height - 24), (float)screen_width, 24.0f, bar_color);
 
     // Left: status message
     const char* status = vizero_editor_get_status_message(state);
@@ -622,11 +622,11 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
     }
     // Scroll vertically to keep the cursor visible
     if (window->is_focused && found_cursor) {
-        int max_rows = content_height / 16;
+        int visible_rows = content_height / 16;
         if (visual_cursor_row < window->scroll_y) {
             window->scroll_y = visual_cursor_row;
-        } else if (visual_cursor_row >= window->scroll_y + max_rows) {
-            window->scroll_y = visual_cursor_row - max_rows + 1;
+        } else if (visual_cursor_row >= window->scroll_y + visible_rows) {
+            window->scroll_y = visual_cursor_row - visible_rows + 1;
         }
         float cursor_x = (float)(content_x + line_number_width + (float)visual_cursor_col * 8.0f);
         float cursor_y = (float)(content_y + (float)(visual_cursor_row - window->scroll_y) * 16.0f);

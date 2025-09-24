@@ -283,9 +283,13 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                 if (col < (int)len) {
                                                     vizero_cursor_set_position(cursor, vizero_cursor_get_line(cursor), col + 1);
                                                 }
+                                                /* Enter insert mode via mode manager */
+                                                vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                                                if (mode_manager) {
+                                                    vizero_mode_manager_enter_insert_mode(mode_manager);
+                                                    input->mode_changed_this_frame = 1;
+                                                }
                                             }
-                                            vizero_editor_set_mode(editor, VIZERO_MODE_INSERT);
-                                            input->mode_changed_this_frame = 1;
                                         }
                                         break;
                                     case SDLK_n:
@@ -311,19 +315,27 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         }
                                         break;
                                     case SDLK_i:
-                                        /* Enter insert mode */
-                                        vizero_editor_set_mode(editor, VIZERO_MODE_INSERT);
-                                        input->mode_changed_this_frame = 1;
+                                        /* Enter insert mode via mode manager */
+                                        {
+                                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                                            if (mode_manager) {
+                                                vizero_mode_manager_enter_insert_mode(mode_manager);
+                                                input->mode_changed_this_frame = 1;
+                                            }
+                                        }
                                         break;
 
                                     case SDLK_SEMICOLON:
                                         /* Check if shift is held for colon */
                                         if (event.key.keysym.mod & KMOD_SHIFT) {
-                                            /* Enter command mode */
-                                            vizero_editor_set_mode(editor, VIZERO_MODE_COMMAND);
-                                            vizero_editor_clear_command_buffer(editor);
-                                            vizero_editor_append_to_command(editor, ':');
-                                            input->mode_changed_this_frame = 1;
+                                            /* Enter command mode via mode manager */
+                                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                                            if (mode_manager) {
+                                                vizero_mode_manager_enter_command_mode(mode_manager);
+                                                vizero_editor_clear_command_buffer(editor);
+                                                vizero_editor_append_to_command(editor, ':');
+                                                input->mode_changed_this_frame = 1;
+                                            }
                                         }
                                         break;
                                     case SDLK_ESCAPE:
@@ -331,10 +343,10 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         break;
                                     case SDLK_TAB: {
                                         /* Smart tab behavior in normal mode */
-                                        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
-                                        if (buffer) {
+                                        vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(editor);
+                                        if (current_buffer) {
                                             vizero_position_t cursor_pos = vizero_cursor_get_position(cursor);
-                                            const char* line_text = vizero_buffer_get_line_text(buffer, cursor_pos.line);
+                                            const char* line_text = vizero_buffer_get_line_text(current_buffer, cursor_pos.line);
                                             
                                             if (line_text) {
                                                 /* Find first non-space character */
@@ -370,15 +382,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                        // } /* End of normal mode handling */
                     }
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
-                        /* In insert mode, handle special keys */
+                        /* In insert mode, handle special keys (ESC handled by mode manager) */
                         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
                         
-                        if (event.key.keysym.sym == SDLK_ESCAPE) {
-                            /* ESC returns to normal mode */
-                            vizero_editor_set_mode(editor, VIZERO_MODE_NORMAL);
-                            input->mode_changed_this_frame = 1;
-                        } else if (buffer && cursor) {
+                        if (buffer && cursor) {
                             size_t line = vizero_cursor_get_line(cursor);
                             size_t col = vizero_cursor_get_column(cursor);
                             
@@ -508,16 +516,19 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_COMMAND) {
                         /* In command mode, handle command input */
                         if (event.key.keysym.sym == SDLK_ESCAPE) {
-                            /* ESC cancels command mode */
-                            vizero_editor_set_mode(editor, VIZERO_MODE_NORMAL);
-                            input->mode_changed_this_frame = 1;
+                            /* ESC cancels command mode - use mode manager */
+                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                            if (mode_manager) {
+                                vizero_mode_manager_enter_normal_mode(mode_manager);
+                            }
                             vizero_editor_clear_command_buffer(editor);
-                            vizero_editor_set_status_message(editor, "");
                         } else if (event.key.keysym.sym == SDLK_RETURN) {
                             /* Enter executes command */
                             vizero_editor_execute_current_command(editor);
-                            vizero_editor_set_mode(editor, VIZERO_MODE_NORMAL);
-                            input->mode_changed_this_frame = 1;
+                            vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                            if (mode_manager) {
+                                vizero_mode_manager_enter_normal_mode(mode_manager);
+                            }
                         } else if (event.key.keysym.sym == SDLK_BACKSPACE) {
                             /* Backspace removes last character */
                             if (vizero_editor_backspace_command(editor) == 0) {
@@ -528,8 +539,10 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 vizero_editor_set_status_message(editor, msg);
                             } else {
                                 /* If command buffer is empty, cancel command mode */
-                                vizero_editor_set_mode(editor, VIZERO_MODE_NORMAL);
-                                vizero_editor_set_status_message(editor, "");
+                                vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
+                                if (mode_manager) {
+                                    vizero_mode_manager_enter_normal_mode(mode_manager);
+                                }
                             }
                         }
                     }

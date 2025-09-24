@@ -52,6 +52,12 @@ struct vizero_editor_state_t {
     vizero_undo_stack_t* undo_stack;
     /* Application control */
     int should_quit;
+    
+    /* Help system - temporary buffer restoration */
+    int help_mode_active;
+    vizero_buffer_t* help_original_buffer;
+    vizero_cursor_t* help_original_cursor;
+    size_t help_original_buffer_index;
 };
 
 #ifdef __cplusplus

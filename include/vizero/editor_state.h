@@ -154,6 +154,11 @@ uint32_t vizero_editor_get_popup_duration(vizero_editor_state_t* state);
 void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines);
 int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state);
 
+/* Help system */
+int vizero_editor_enter_help_mode(vizero_editor_state_t* state);
+int vizero_editor_exit_help_mode(vizero_editor_state_t* state);
+int vizero_editor_is_help_mode_active(vizero_editor_state_t* state);
+
 /* Application control */
 int vizero_editor_should_quit(vizero_editor_state_t* state);
 void vizero_editor_set_quit_flag(vizero_editor_state_t* state);

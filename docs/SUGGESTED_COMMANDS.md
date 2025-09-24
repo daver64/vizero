@@ -59,14 +59,20 @@
 ### Settings & Configuration
 - ✅ `:set <key> <value>` - Set configuration option
 - ✅ `:set linewrap on/off` - Enable/disable word wrap
+- ✅ `:set readonly on/off` - Set buffer read-only status
 - ✅ `:show` - Show all settings
 - ✅ `:show <key>` - Show specific setting value
 - ✅ `:linenum on/off` - Enable/disable line numbers
 - ✅ `:syntax on/off` - Enable/disable syntax highlighting
 - ✅ `:tabs <N>` - Set tab size to N spaces
 
+### Buffer Properties
+- ✅ `:ro`, `:readonly` - Make current buffer read-only
+- ✅ `:noro`, `:noreadonly` - Make current buffer writable
+- ✅ Read-only status displayed in status bar (pale green 'rw' / pale red 'ro')
+
 ### Help & Information
-- ✅ `:help`, `:h` - Show comprehensive help popup
+- ✅ `:help`, `:h` - Load manual.md in current buffer (close with :q or :bd to return)
 
 ## Additional Suggested Commands for Future Implementation
 
@@ -74,7 +80,7 @@
 
 - **Word Wrap (linewrap) by Default**: Lines wrap at word boundaries, with hanging indent for wrapped lines. Toggle with `:set linewrap on|off`.
 - **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved color contrast for headings, code, and emphasis.
-- **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, and clear error/info popups.
+- **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, clear error/info popups, and read-only status indicator (pale green 'rw' / pale red 'ro').
 - **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
 - **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
 - **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
@@ -124,6 +130,7 @@
 
 ### Help and Information
 - ✅ `:version` - Show version information
+- ✅ `:help`, `:h` - Load manual.md in current buffer
 
 ### Session Management
 - ❌ `:mksession` - Save current session

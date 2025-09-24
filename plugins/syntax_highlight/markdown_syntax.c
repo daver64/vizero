@@ -16,25 +16,21 @@ static vizero_plugin_color_t italic_color = { 220, 220, 255, 255 };   // Pale bl
 static vizero_plugin_color_t code_color   = { 255, 240, 200, 255 };   // Pale cream
 static vizero_plugin_color_t link_color   = { 200, 240, 255, 255 };   // Pale cyan
 
-static void add_token(vizero_syntax_token_t** tokens, size_t* count, size_t* cap, vizero_range_t range, vizero_plugin_color_t color, uint32_t flags) {
-    if (*count + 1 > *cap) {
-        *cap = (*cap == 0) ? 8 : (*cap * 2);
-        *tokens = (vizero_syntax_token_t*)realloc(*tokens, *cap * sizeof(vizero_syntax_token_t));
+static void add_token(vizero_syntax_token_t* tokens, size_t* count, size_t max_tokens, vizero_range_t range, vizero_plugin_color_t color, uint32_t flags) {
+    if (*count < max_tokens) {
+        tokens[*count].range = range;
+        tokens[*count].color = color;
+        tokens[*count].flags = flags;
+        (*count)++;
     }
-    (*tokens)[*count].range = range;
-    (*tokens)[*count].color = color;
-    (*tokens)[*count].flags = flags;
-    (*count)++;
 }
 
 int markdown_highlight(
     vizero_buffer_t* buffer, size_t start_line, size_t end_line,
-    vizero_syntax_token_t** tokens, size_t* token_count,
+    vizero_syntax_token_t* tokens, size_t max_tokens,
     const vizero_editor_api_t* api)
 {
-    *tokens = NULL;
-    *token_count = 0;
-    size_t cap = 0;
+    size_t token_count = 0;
     // int debug_token_count = 0;
     for (size_t line = start_line; line < end_line; ++line) {
         const char* text = NULL;
@@ -49,7 +45,7 @@ int markdown_highlight(
             while (text[i] == '#') ++i;
             while (text[i] == ' ') ++i;
             vizero_range_t r = { {line, 0}, {line, len} };
-            add_token(tokens, token_count, &cap, r, header_color, 0);
+            add_token(tokens, &token_count, max_tokens, r, header_color, 0);
             // debug_token_count++;
             continue;
         }
@@ -61,7 +57,7 @@ int markdown_highlight(
                 while (i+1 < len && !(text[i] == delim && text[i+1] == delim)) ++i;
                 if (i+1 < len) {
                     vizero_range_t r = { {line, start}, {line, i+2} };
-                    add_token(tokens, token_count, &cap, r, bold_color, 1);
+                    add_token(tokens, &token_count, max_tokens, r, bold_color, 1);
                     // debug_token_count++;
                     i += 2;
                     continue;
@@ -74,7 +70,7 @@ int markdown_highlight(
                 while (i < len && text[i] != delim) ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, token_count, &cap, r, italic_color, 2);
+                    add_token(tokens, &token_count, max_tokens, r, italic_color, 2);
                     // debug_token_count++;
                     i++;
                     continue;
@@ -86,7 +82,7 @@ int markdown_highlight(
                 while (i < len && text[i] != '`') ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, token_count, &cap, r, code_color, 3);
+                    add_token(tokens, &token_count, max_tokens, r, code_color, 3);
                     // debug_token_count++;
                     i++;
                     continue;
@@ -102,7 +98,7 @@ int markdown_highlight(
                     if (i < len && text[i] == ')') {
                         link_end = i+1;
                         vizero_range_t r = { {line, start}, {line, link_end} };
-                        add_token(tokens, token_count, &cap, r, link_color, 4);
+                        add_token(tokens, &token_count, max_tokens, r, link_color, 4);
                         // debug_token_count++;
                         i++;
                         continue;
@@ -113,5 +109,5 @@ int markdown_highlight(
         }
     }
     // printf("[markdown_highlight] produced %d tokens\n", debug_token_count);
-    return (*token_count > 0) ? 1 : 0;
+    return (int)token_count;
 }

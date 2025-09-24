@@ -339,7 +339,7 @@ Vizero supports horizontal and vertical window splits, as well as closing splits
 | `:close`, `:clo` | Close current window (only in split mode) |
 | `:only` | Close all windows except current |
 | `:new` | Create new empty buffer in current window |
-| `:help`, `:h` | Show help popup |
+| `:help`, `:h` | Load manual in current buffer |
 | `Ctrl+W` then `h/j/k/l` or arrow key | Switch focus to left/down/up/right window |
 | `Ctrl+W` then `1`-`9` | Switch focus to window number |
 
@@ -434,9 +434,14 @@ vizero main.c          # Start with main.c as buffer 1
 | Command | Action |
 |---------|--------|
 | `:set name=value` | Set configuration option |
+| `:set readonly on/off` | Set buffer read-only status |
+| `:ro`, `:readonly` | Make current buffer read-only |
+| `:noro`, `:noreadonly` | Make current buffer writable |
 | `:show` | Display all current settings |
 | `:show name` | Display specific setting |
 | `:version` | Show version information popup |
+
+**Read-Only Status:** The status bar displays the current buffer's read-only status with pale green 'rw' for read-write buffers and pale red 'ro' for read-only buffers.
 
 
 ### Available Settings
@@ -623,7 +628,7 @@ vizero main.c          # Start with main.c as buffer 1
 ### Help and Information
 | Command | Description |
 |---------|-------------|
-| `:help`, `:h` | Show comprehensive help popup |
+| `:help`, `:h` | Load this manual in current buffer (close with :q or :bd to return) |
 
 ---
 

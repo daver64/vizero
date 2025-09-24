@@ -1,5 +1,6 @@
 #include "vizero/status_bar.h"
 #include "vizero/renderer.h"
+#include "vizero/editor_state.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -22,19 +23,30 @@ void vizero_status_bar_render(vizero_status_bar_t *status_bar, vizero_renderer_t
         NULL
     };
     vizero_renderer_draw_text(renderer, status_bar->rendered_text, &info);
-
-    // Draw time/date panel, right-aligned if present
-    if (status_bar->timedate_text[0] != '\0') {
-        int timedate_len = (int)strlen(status_bar->timedate_text);
-        int text_width = timedate_len * 8; // Approximate width, adjust if needed
-        int right_x = x + status_bar->width - text_width - 4; // 4px right padding
-        vizero_text_info_t td_info = {
-            (float)right_x,
-            (float)(y + 2),
-            text_color,
-            NULL
-        };
-        vizero_renderer_draw_text(renderer, status_bar->timedate_text, &td_info);
+    
+    // Special handling for colored panels - find and re-render them
+    for (size_t i = 0; i < status_bar->panel_count; i++) {
+        vizero_status_panel_t *panel = &status_bar->panels[i];
+        if (panel->enabled && panel->has_custom_color && panel->type == VIZERO_PANEL_READONLY_STATUS) {
+            // Find the position of this panel in the rendered text
+            // For simplicity, look for " ro " or " rw " patterns
+            const char *panel_text = (panel->custom_color.r > panel->custom_color.g) ? " ro " : " rw ";
+            char *pos = strstr(status_bar->rendered_text, panel_text);
+            if (pos) {
+                // Calculate the x position of this text
+                int offset = (int)(pos - status_bar->rendered_text);
+                float panel_x = (float)x + (offset * 8.0f); // Approximate 8px per character
+                
+                // Re-render this text with the custom color
+                vizero_text_info_t colored_info = {
+                    panel_x,
+                    (float)y,
+                    panel->custom_color,
+                    NULL
+                };
+                vizero_renderer_draw_text(renderer, panel_text, &colored_info);
+            }
+        }
     }
 
     // Draw time/date panel, right-aligned if present

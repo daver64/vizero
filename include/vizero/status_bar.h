@@ -18,6 +18,7 @@ typedef enum {
     VIZERO_PANEL_MODE,
     VIZERO_PANEL_TIME_DATE,
     VIZERO_PANEL_BUFFER_INFO,
+    VIZERO_PANEL_READONLY_STATUS,
     VIZERO_PANEL_CUSTOM
 } vizero_panel_type_t;
 
@@ -33,6 +34,8 @@ typedef struct {
     int enabled;
     int min_width;
     char* custom_text;
+    vizero_color_t custom_color;
+    int has_custom_color;
 } vizero_status_panel_t;
 
 struct vizero_status_bar_t {

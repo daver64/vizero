@@ -309,6 +309,9 @@ size_t vizero_buffer_get_line_length(vizero_buffer_t* buffer, size_t line_num) {
 int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, char c) {
     if (!buffer || line >= buffer->line_count) return -1;
     
+    /* Check if buffer is read-only */
+    if (buffer->readonly) return -1;
+    
     char* current_line = buffer->lines[line];
     size_t line_len = strlen(current_line);
     
@@ -353,6 +356,9 @@ int vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, 
 int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) {
     if (!buffer || line >= buffer->line_count) return -1;
     
+    /* Check if buffer is read-only */
+    if (buffer->readonly) return -1;
+    
     char* current_line = buffer->lines[line];
     size_t line_len = strlen(current_line);
     
@@ -381,6 +387,9 @@ int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) 
 
 int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_t start_col, size_t end_line, size_t end_col) {
     if (!buffer || start_line >= buffer->line_count || end_line >= buffer->line_count) return -1;
+    
+    /* Check if buffer is read-only */
+    if (buffer->readonly) return -1;
     
     /* Handle single line deletion */
     if (start_line == end_line) {
@@ -449,6 +458,9 @@ int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_
 int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text) {
     if (!buffer || line_num > buffer->line_count) return -1;
     
+    /* Check if buffer is read-only */
+    if (buffer->readonly) return -1;
+    
     /* Record undo operation (delete line at insertion point) */
     buffer_push_undo(buffer, UNDO_OP_DELETE_LINE, line_num, NULL, text, 0);
     
@@ -473,6 +485,9 @@ int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const ch
 
 int vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num) {
     if (!buffer || line_num >= buffer->line_count || buffer->line_count <= 1) return -1;
+    
+    /* Check if buffer is read-only */
+    if (buffer->readonly) return -1;
     
     /* Record undo operation (insert the deleted line back) */
     buffer_push_undo(buffer, UNDO_OP_INSERT_LINE, line_num, buffer->lines[line_num], NULL, 0);

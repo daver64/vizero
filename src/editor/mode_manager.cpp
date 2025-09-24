@@ -1,6 +1,7 @@
 /* Complete mode manager implementation */
 #include "vizero/mode_manager.h"
 #include "vizero/editor_state.h"
+#include "vizero/buffer.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <SDL.h>
@@ -44,11 +45,18 @@ void vizero_mode_manager_enter_normal_mode(vizero_mode_manager_t* manager) {
     
     /* Update editor state mode */
     vizero_editor_set_mode(manager->state, VIZERO_MODE_NORMAL);
-    vizero_editor_set_status_message(manager->state, "-- NORMAL --");
+    /* Don't clear status message - let existing messages remain visible */
 }
 
 void vizero_mode_manager_enter_insert_mode(vizero_mode_manager_t* manager) {
     if (!manager) return;
+    
+    /* Check if current buffer is read-only */
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(manager->state);
+    if (buffer && vizero_buffer_is_readonly(buffer)) {
+        vizero_editor_set_status_message(manager->state, "Cannot enter insert mode: Buffer is read-only");
+        return;
+    }
     
     manager->current_mode = VIZERO_MODE_INSERT;
     

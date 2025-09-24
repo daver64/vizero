@@ -94,6 +94,12 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
         state->popup_start_time = 0;
         state->popup_duration_ms = 5000; /* 5 seconds default */
         
+        /* Initialize help system */
+        state->help_mode_active = 0;
+        state->help_original_buffer = NULL;
+        state->help_original_cursor = NULL;
+        state->help_original_buffer_index = 0;
+        
         /* Create initial empty buffer */
         state->buffers[0] = vizero_buffer_create();
         state->cursors[0] = vizero_cursor_create(state->buffers[0]);
@@ -408,14 +414,14 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     // so window will automatically see the new buffer/cursor
                     vizero_editor_window_set_title(existing_window, filename);
                     // Make sure buffer/cursor are in the global list
-                    int found = 0;
+                    int buffer_found = 0;
                     for (size_t i = 0; i < state->buffer_count; ++i) {
                         if (state->buffers[i] == buffer) {
-                            found = 1;
+                            buffer_found = 1;
                             break;
                         }
                     }
-                    if (!found && state->buffer_count < MAX_BUFFERS) {
+                    if (!buffer_found && state->buffer_count < MAX_BUFFERS) {
                         state->buffers[state->buffer_count] = buffer;
                         state->cursors[state->buffer_count] = cursor;
                         state->current_buffer_index = state->buffer_count;
@@ -552,6 +558,12 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
     }
     
     if (buffer_index == SIZE_MAX) return -1;
+    
+    /* Check if we're closing a help buffer */
+    if (state->help_mode_active && buffer_index == state->current_buffer_index) {
+        /* This is a help buffer being closed, exit help mode instead */
+        return vizero_editor_exit_help_mode(state);
+    }
     
     /* Don't close the last buffer */
     if (state->buffer_count == 1) return -1;
@@ -2017,6 +2029,12 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
 #endif
     } else if (strcmp(command, "q") == 0 || strcmp(command, "quit") == 0) {
+        /* Check if we're in help mode first */
+        if (state->help_mode_active) {
+            /* Exit help mode instead of quitting */
+            return vizero_editor_exit_help_mode(state);
+        }
+        
         /* Quit command - check for unsaved changes */
         int has_unsaved = 0;
         
@@ -2036,7 +2054,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
         
         if (has_unsaved) {
-            vizero_editor_set_status_message(state, "No write since last change (add ! to override)");
+            vizero_editor_set_status_message_with_timeout(state, "No write since last change (add ! to override)", 3000);
             return -1;
         }
         
@@ -2150,6 +2168,29 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                         vizero_editor_set_status_message(state, "Usage: :set linewrap on|off");
                         return -1;
                     }
+                } else if (strcmp(key, "readonly") == 0 || strcmp(key, "ro") == 0) {
+                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+                    if (buffer) {
+                        if (strcmp(value, "on") == 0) {
+                            vizero_buffer_set_readonly(buffer, 1);
+                            /* If currently in insert mode, switch to normal mode */
+                            if (vizero_editor_get_mode(state) == VIZERO_MODE_INSERT) {
+                                vizero_editor_set_mode(state, VIZERO_MODE_NORMAL);
+                            }
+                            vizero_editor_set_status_message(state, "Buffer is now read-only");
+                            return 0;
+                        } else if (strcmp(value, "off") == 0) {
+                            vizero_buffer_set_readonly(buffer, 0);
+                            vizero_editor_set_status_message(state, "Buffer is now writable");
+                            return 0;
+                        } else {
+                            vizero_editor_set_status_message(state, "Usage: :set readonly on|off");
+                            return -1;
+                        }
+                    } else {
+                        vizero_editor_set_status_message(state, "No current buffer");
+                        return -1;
+                    }
                 }
                 /* Set the setting (fallback for other keys) */
                 vizero_settings_set_string(state->settings, key, value);
@@ -2157,6 +2198,32 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 snprintf(msg, sizeof(msg), "Set %s = %s", key, value);
                 vizero_editor_set_status_message(state, msg);
                 return 0;
+            }
+        }
+        /* Handle single-word set commands (like :set readonly, :set noreadonly) */
+        if (strcmp(args, "readonly") == 0 || strcmp(args, "ro") == 0) {
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            if (buffer) {
+                vizero_buffer_set_readonly(buffer, 1);
+                /* If currently in insert mode, switch to normal mode */
+                if (vizero_editor_get_mode(state) == VIZERO_MODE_INSERT) {
+                    vizero_editor_set_mode(state, VIZERO_MODE_NORMAL);
+                }
+                vizero_editor_set_status_message(state, "Buffer is now read-only");
+                return 0;
+            } else {
+                vizero_editor_set_status_message(state, "No current buffer");
+                return -1;
+            }
+        } else if (strcmp(args, "noreadonly") == 0 || strcmp(args, "noro") == 0) {
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            if (buffer) {
+                vizero_buffer_set_readonly(buffer, 0);
+                vizero_editor_set_status_message(state, "Buffer is now writable");
+                return 0;
+            } else {
+                vizero_editor_set_status_message(state, "No current buffer");
+                return -1;
             }
         }
         vizero_editor_set_status_message(state, "Usage: :set key value");
@@ -2197,6 +2264,34 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
         vizero_editor_set_status_message(state, msg);
         return 0;
+        
+    } else if (strcmp(command, "ro") == 0 || strcmp(command, "readonly") == 0) {
+        /* Set buffer read-only */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        if (buffer) {
+            vizero_buffer_set_readonly(buffer, 1);
+            /* If currently in insert mode, switch to normal mode */
+            if (vizero_editor_get_mode(state) == VIZERO_MODE_INSERT) {
+                vizero_editor_set_mode(state, VIZERO_MODE_NORMAL);
+            }
+            vizero_editor_set_status_message(state, "Buffer is now read-only");
+            return 0;
+        } else {
+            vizero_editor_set_status_message(state, "No current buffer");
+            return -1;
+        }
+        
+    } else if (strcmp(command, "noro") == 0 || strcmp(command, "noreadonly") == 0) {
+        /* Set buffer writable */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        if (buffer) {
+            vizero_buffer_set_readonly(buffer, 0);
+            vizero_editor_set_status_message(state, "Buffer is now writable");
+            return 0;
+        } else {
+            vizero_editor_set_status_message(state, "No current buffer");
+            return -1;
+        }
         
     } else if (strcmp(command, "bd") == 0 || strcmp(command, "bdelete") == 0) {
         /* Delete/close current buffer */
@@ -2312,48 +2407,53 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
         
     } else if (strcmp(command, "help") == 0 || strcmp(command, "h") == 0) {
-        /* Show comprehensive help in popup */
-        const char* help_content = 
-            "VIZERO EDITOR - HELP\n"
-            "====================\n\n"
-            "MOVEMENT COMMANDS:\n"
-            "  h, j, k, l        - Left, Down, Up, Right\n"
-            "  w, b              - Next/Previous word\n"
-            "  0, $              - Start/End of line\n"
-            "  gg, G             - First/Last line\n"
-            "  Ctrl+U, Ctrl+D    - Page Up/Down\n\n"
-            "EDITING COMMANDS:\n"
-            "  i, a              - Insert before/after cursor\n"
-            "  I, A              - Insert at start/end of line\n"
-            "  o, O              - Open line below/above\n"
-            "  x, X              - Delete char after/before cursor\n"
-            "  dd                - Delete current line\n"
-            "  yy                - Copy current line\n"
-            "  p, P              - Paste after/before cursor\n"
-            "  u, Ctrl+R         - Undo/Redo\n\n"
-            "BUFFER COMMANDS:\n"
-            "  :e filename       - Open file in new buffer\n"
-            "  :w                - Write (save) current buffer\n"
-            "  :q                - Quit (if no unsaved changes)\n"
-            "  :wq               - Write and quit\n"
-            "  :bn, :bp          - Next/Previous buffer\n"
-            "  :b1, :b2, :b3     - Switch to buffer number\n"
-            "  :ls               - List all buffers\n"
-            "  :bd               - Delete current buffer\n"
-            "  :new              - Create new empty buffer\n\n"
-            "WINDOW COMMANDS:\n"
-            "  :split (:sp)      - Split window horizontally\n"
-            "  :vsplit (:vsp)    - Split window vertically\n"
-            "  :close (:clo)     - Close current window\n\n"
-            "OTHER COMMANDS:\n"
-            "  :10               - Go to line 10\n"
-            "  :syntax           - Toggle syntax highlighting\n"
-            "  :compile          - Compile current file\n"
-            "  :help             - Show this help\n\n"
-            "Press ESC to close this help window.";
-        
-        vizero_editor_show_popup(state, help_content, 0); /* No timeout - stays until ESC */
-        return 0;
+        /* Load manual.md into current buffer */
+        if (vizero_editor_enter_help_mode(state) == 0) {
+            return 0;
+        } else {
+            /* Fallback to popup if help mode fails */
+            const char* help_content = 
+                "VIZERO EDITOR - HELP\n"
+                "====================\n\n"
+                "MOVEMENT COMMANDS:\n"
+                "  h, j, k, l        - Left, Down, Up, Right\n"
+                "  w, b              - Next/Previous word\n"
+                "  0, $              - Start/End of line\n"
+                "  gg, G             - First/Last line\n"
+                "  Ctrl+U, Ctrl+D    - Page Up/Down\n\n"
+                "EDITING COMMANDS:\n"
+                "  i, a              - Insert before/after cursor\n"
+                "  I, A              - Insert at start/end of line\n"
+                "  o, O              - Open line below/above\n"
+                "  x, X              - Delete char after/before cursor\n"
+                "  dd                - Delete current line\n"
+                "  yy                - Copy current line\n"
+                "  p, P              - Paste after/before cursor\n"
+                "  u, Ctrl+R         - Undo/Redo\n\n"
+                "BUFFER COMMANDS:\n"
+                "  :e filename       - Open file in new buffer\n"
+                "  :w                - Write (save) current buffer\n"
+                "  :q                - Quit (if no unsaved changes)\n"
+                "  :wq               - Write and quit\n"
+                "  :bn, :bp          - Next/Previous buffer\n"
+                "  :b1, :b2, :b3     - Switch to buffer number\n"
+                "  :ls               - List all buffers\n"
+                "  :bd               - Delete current buffer\n"
+                "  :new              - Create new empty buffer\n\n"
+                "WINDOW COMMANDS:\n"
+                "  :split (:sp)      - Split window horizontally\n"
+                "  :vsplit (:vsp)    - Split window vertically\n"
+                "  :close (:clo)     - Close current window\n\n"
+                "OTHER COMMANDS:\n"
+                "  :10               - Go to line 10\n"
+                "  :syntax           - Toggle syntax highlighting\n"
+                "  :compile          - Compile current file\n"
+                "  :help             - Show this help\n\n"
+                "Press ESC to close this help window.";
+            
+            vizero_editor_show_popup(state, help_content, 0); /* No timeout - stays until ESC */
+            return 0;
+        }
         
     } else if (strcmp(command, "$") == 0) {
         /* Go to last line */
@@ -3864,4 +3964,141 @@ int vizero_editor_open_line_above(vizero_editor_state_t* state) {
     }
     
     return -1;
+}
+
+/* Help system functions */
+int vizero_editor_enter_help_mode(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    /* If already in help mode, don't enter again */
+    if (state->help_mode_active) {
+        return 0;
+    }
+    
+    /* Check if we have space for another buffer */
+    if (state->buffer_count >= MAX_BUFFERS) {
+        vizero_editor_set_status_message(state, "Error: Cannot open help - too many buffers");
+        return -1;
+    }
+    
+    /* Store the current buffer index for restoration */
+    state->help_original_buffer_index = state->current_buffer_index;
+    
+    /* Create help buffer and load manual.md */
+    vizero_buffer_t* help_buffer = vizero_buffer_create_from_file("manual.md");
+    if (!help_buffer) {
+        vizero_editor_set_status_message(state, "Error: Could not load manual.md");
+        return -1;
+    }
+    
+    /* Ensure the filename is set for syntax highlighting */
+    if (vizero_buffer_set_filename(help_buffer, "manual.md") != 0) {
+        vizero_editor_set_status_message(state, "Warning: Could not set filename for help buffer");
+    }
+    
+    /* Make help buffer read-only */
+    vizero_buffer_set_readonly(help_buffer, 1);
+    
+    /* Create cursor for help buffer */
+    vizero_cursor_t* help_cursor = vizero_cursor_create(help_buffer);
+    if (!help_cursor) {
+        vizero_buffer_destroy(help_buffer);
+        vizero_editor_set_status_message(state, "Error: Could not create help cursor");
+        return -1;
+    }
+    
+    /* Add help buffer to the buffer array at the end */
+    size_t help_buffer_index = state->buffer_count;
+    state->buffers[help_buffer_index] = help_buffer;
+    state->cursors[help_buffer_index] = help_cursor;
+    state->buffer_count++;
+    
+    /* Switch to the help buffer */
+    state->current_buffer_index = help_buffer_index;
+    
+    /* Notify plugins of buffer open (for syntax highlighting, etc.) */
+    if (state->plugin_manager) {
+        vizero_plugin_manager_on_buffer_open(state->plugin_manager, help_buffer, "manual.md");
+        
+        /* Force syntax highlighting update for the help buffer */
+        vizero_syntax_token_t tokens[256];
+        size_t token_count = 0;
+        size_t line_count = vizero_buffer_get_line_count(help_buffer);
+        if (line_count > 0) {
+            vizero_plugin_manager_highlight_syntax(state->plugin_manager, help_buffer, 0, 
+                                                 (line_count > 10) ? 10 : line_count, 
+                                                 tokens, 256, &token_count);
+        }
+    }
+    
+    /* Update focused window to use the help buffer */
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(state->window_manager);
+    if (window) {
+        vizero_editor_window_set_buffer_index(window, help_buffer_index);
+    }
+    
+    /* Mark help mode as active */
+    state->help_mode_active = 1;
+    
+    vizero_editor_set_status_message(state, "Help loaded - Close buffer (:bd or :q) to return to previous buffer");
+    return 0;
+}
+
+int vizero_editor_exit_help_mode(vizero_editor_state_t* state) {
+    if (!state || !state->help_mode_active) return -1;
+    
+    /* Get the help buffer index (should be the current one) */
+    size_t help_buffer_index = state->current_buffer_index;
+    
+    /* Clean up help buffer and cursor */
+    if (state->buffers[help_buffer_index]) {
+        vizero_buffer_destroy(state->buffers[help_buffer_index]);
+        state->buffers[help_buffer_index] = NULL;
+    }
+    if (state->cursors[help_buffer_index]) {
+        vizero_cursor_destroy(state->cursors[help_buffer_index]);
+        state->cursors[help_buffer_index] = NULL;
+    }
+    
+    /* Remove the help buffer from the array by shifting remaining buffers */
+    for (size_t i = help_buffer_index; i < state->buffer_count - 1; i++) {
+        state->buffers[i] = state->buffers[i + 1];
+        state->cursors[i] = state->cursors[i + 1];
+    }
+    state->buffer_count--;
+    
+    /* Restore the original buffer index, adjusting if necessary */
+    if (state->help_original_buffer_index >= help_buffer_index) {
+        /* Original buffer was after help buffer, so its index shifted down */
+        if (state->help_original_buffer_index > 0) {
+            state->current_buffer_index = state->help_original_buffer_index - 1;
+        } else {
+            state->current_buffer_index = 0;
+        }
+    } else {
+        /* Original buffer was before help buffer, index unchanged */
+        state->current_buffer_index = state->help_original_buffer_index;
+    }
+    
+    /* Ensure we don't go out of bounds */
+    if (state->current_buffer_index >= state->buffer_count && state->buffer_count > 0) {
+        state->current_buffer_index = state->buffer_count - 1;
+    }
+    
+    /* Update focused window to use the restored buffer */
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(state->window_manager);
+    if (window) {
+        vizero_editor_window_set_buffer_index(window, state->current_buffer_index);
+    }
+    
+    /* Clear help mode */
+    state->help_mode_active = 0;
+    state->help_original_buffer_index = 0;
+    
+    vizero_editor_set_status_message(state, "Returned to previous buffer");
+    return 0;
+}
+
+int vizero_editor_is_help_mode_active(vizero_editor_state_t* state) {
+    return state ? state->help_mode_active : 0;
 }
