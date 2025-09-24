@@ -27,7 +27,9 @@
 #include <sys/types.h>
 #endif
 
-
+/* Forward declarations for MRU helper functions */
+static void vizero_editor_update_buffer_mru(vizero_editor_state_t* state, size_t buffer_index);
+static size_t vizero_editor_get_previous_buffer(vizero_editor_state_t* state, size_t avoid_buffer_index);
 
 vizero_editor_state_t* vizero_editor_state_create(void) {
     vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
@@ -99,6 +101,12 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
         state->help_original_buffer = NULL;
         state->help_original_cursor = NULL;
         state->help_original_buffer_index = 0;
+        
+        /* Initialize MRU buffer tracking */
+        state->buffer_mru_count = 0;
+        for (size_t i = 0; i < MAX_BUFFERS; i++) {
+            state->buffer_mru[i] = SIZE_MAX;  /* Invalid index marker */
+        }
         
         /* Create initial empty buffer */
         state->buffers[0] = vizero_buffer_create();
@@ -568,18 +576,17 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
     /* Don't close the last buffer */
     if (state->buffer_count == 1) return -1;
 
-    /* --- PATCH: Update windows referencing this buffer index --- */
+    /* Update windows referencing this buffer index using MRU */
     if (state->window_manager) {
         size_t win_count = vizero_window_manager_get_window_count_raw(state->window_manager);
         for (size_t w = 0; w < win_count; ++w) {
             vizero_editor_window_t* win = vizero_window_manager_get_window_raw(state->window_manager, w);
             if (win && win->buffer_index == buffer_index) {
-                /* Point window to another buffer index (fallback to 0) */
-                win->buffer_index = (buffer_index > 0) ? 0 : ((state->buffer_count > 1) ? 1 : 0);
+                /* Switch to most recently used buffer (vi-like behavior) */
+                win->buffer_index = vizero_editor_get_previous_buffer(state, buffer_index);
             }
         }
     }
-    /* --- END PATCH --- */
     
     /* Clean up buffer and cursor */
     /* Notify plugins of buffer close */
@@ -605,6 +612,24 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
     
     state->buffer_count--;
     
+    /* Update MRU list: remove deleted buffer, adjust indices for shifted buffers */
+    for (size_t i = 0; i < state->buffer_mru_count; ) {
+        if (state->buffer_mru[i] == buffer_index) {
+            /* Remove this entry by shifting remaining entries down */
+            for (size_t j = i; j < state->buffer_mru_count - 1; j++) {
+                state->buffer_mru[j] = state->buffer_mru[j + 1];
+            }
+            state->buffer_mru_count--;
+            /* Don't increment i since we shifted entries down */
+        } else {
+            /* Adjust indices for buffers that were shifted down */
+            if (state->buffer_mru[i] > buffer_index) {
+                state->buffer_mru[i]--;
+            }
+            i++;
+        }
+    }
+    
     /* Adjust current buffer index if necessary */
     if (state->current_buffer_index >= buffer_index) {
         if (state->current_buffer_index > 0) {
@@ -619,12 +644,69 @@ int vizero_editor_switch_buffer(vizero_editor_state_t* state, size_t buffer_inde
     if (!state || buffer_index >= state->buffer_count) return -1;
     size_t old_index = state->current_buffer_index;
     state->current_buffer_index = buffer_index;
+    
+    /* Update MRU tracking */
+    vizero_editor_update_buffer_mru(state, buffer_index);
+    
     /* Notify plugins of cursor moved if buffer/cursor changed */
     if (state->plugin_manager && state->cursors[old_index] && state->cursors[buffer_index] && old_index != buffer_index) {
         vizero_position_t old_pos = vizero_cursor_get_position(state->cursors[old_index]);
         vizero_position_t new_pos = vizero_cursor_get_position(state->cursors[buffer_index]);
         vizero_plugin_manager_on_cursor_moved(state->plugin_manager, state->cursors[buffer_index], old_pos, new_pos);
     }
+    return 0;
+}
+
+/* MRU (Most Recently Used) buffer tracking helpers */
+static void vizero_editor_update_buffer_mru(vizero_editor_state_t* state, size_t buffer_index) {
+    if (!state || buffer_index >= state->buffer_count) return;
+    
+    /* Check if buffer is already in MRU list */
+    size_t existing_pos = SIZE_MAX;
+    for (size_t i = 0; i < state->buffer_mru_count; i++) {
+        if (state->buffer_mru[i] == buffer_index) {
+            existing_pos = i;
+            break;
+        }
+    }
+    
+    if (existing_pos != SIZE_MAX) {
+        /* Move existing entry to front */
+        for (size_t i = existing_pos; i > 0; i--) {
+            state->buffer_mru[i] = state->buffer_mru[i - 1];
+        }
+        state->buffer_mru[0] = buffer_index;
+    } else {
+        /* Add new entry at front, shift others down */
+        if (state->buffer_mru_count < MAX_BUFFERS) {
+            state->buffer_mru_count++;
+        }
+        for (size_t i = state->buffer_mru_count - 1; i > 0; i--) {
+            state->buffer_mru[i] = state->buffer_mru[i - 1];
+        }
+        state->buffer_mru[0] = buffer_index;
+    }
+}
+
+static size_t vizero_editor_get_previous_buffer(vizero_editor_state_t* state, size_t avoid_buffer_index) {
+    if (!state || state->buffer_count <= 1) return 0;
+    
+    /* Look through MRU list for a valid buffer that's not the one we're avoiding */
+    for (size_t i = 0; i < state->buffer_mru_count; i++) {
+        size_t mru_buffer = state->buffer_mru[i];
+        if (mru_buffer != avoid_buffer_index && mru_buffer < state->buffer_count) {
+            return mru_buffer;
+        }
+    }
+    
+    /* Fallback: find any buffer that's not the one we're avoiding */
+    for (size_t i = 0; i < state->buffer_count; i++) {
+        if (i != avoid_buffer_index) {
+            return i;
+        }
+    }
+    
+    /* Ultimate fallback */
     return 0;
 }
 
@@ -665,6 +747,9 @@ int vizero_editor_create_new_buffer(vizero_editor_state_t* state, const char* na
     state->cursors[state->buffer_count] = cursor;
     state->current_buffer_index = state->buffer_count;
     state->buffer_count++;
+    
+    /* Update MRU tracking for the new buffer */
+    vizero_editor_update_buffer_mru(state, state->current_buffer_index);
     
     return 0;
 }
@@ -4095,7 +4180,7 @@ int vizero_editor_exit_help_mode(vizero_editor_state_t* state) {
     state->help_mode_active = 0;
     state->help_original_buffer_index = 0;
     
-    vizero_editor_set_status_message(state, "Returned to previous buffer");
+    vizero_editor_set_status_message_with_timeout(state, "Returned to previous buffer", 3000);
     return 0;
 }
 

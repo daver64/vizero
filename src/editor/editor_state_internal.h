@@ -58,6 +58,10 @@ struct vizero_editor_state_t {
     vizero_buffer_t* help_original_buffer;
     vizero_cursor_t* help_original_cursor;
     size_t help_original_buffer_index;
+    
+    /* Most Recently Used buffer tracking */
+    size_t buffer_mru[MAX_BUFFERS];  /* MRU buffer indices (most recent first) */
+    size_t buffer_mru_count;         /* Number of entries in MRU list */
 };
 
 #ifdef __cplusplus
