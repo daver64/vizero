@@ -1,5 +1,6 @@
 # Vizero
 
+![Vizero Editor Screenshot](images/screen1.png)
 
 A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, multi-buffer and multi-window support, and integrated compiler tools.
 
