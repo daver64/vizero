@@ -6,6 +6,7 @@
 #include "vizero/editor_window.h"
 #include "vizero/plugin_manager.h"
 #include "vizero/colour_theme.h"
+#include "vizero/session.h"
 #include "vizero/status_bar.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
@@ -28,6 +29,7 @@ struct vizero_application_t {
     vizero_editor_state_t* editor;
     vizero_plugin_manager_t* plugin_manager;
     vizero_theme_manager_t* theme_manager;
+    void* session_manager; /* vizero_session_manager_t* - void* to avoid circular dependency */
     vizero_status_bar_t* status_bar;
     int should_quit;
     vizero_app_config_t config;
@@ -217,6 +219,23 @@ int vizero_application_initialize(vizero_application_t* app) {
         vizero_theme_manager_set_current_theme(app->theme_manager, "Default");
     }
     
+    /* Create session manager */
+    app->session_manager = (void*)vizero_session_manager_create();
+    if (!app->session_manager) {
+        vizero_theme_manager_destroy(app->theme_manager);
+        vizero_plugin_manager_destroy(app->plugin_manager);
+        vizero_status_bar_destroy(app->status_bar);
+        vizero_editor_state_destroy(app->editor);
+        vizero_input_manager_destroy(app->input);
+        vizero_renderer_destroy(app->renderer);
+        vizero_window_destroy(app->window);
+        SDL_Quit();
+        return -1;
+    }
+    
+    /* Set up editor-session manager connection */
+    vizero_editor_set_session_manager(app->editor, app->session_manager);
+    
     /* Load plugins from plugin directory */
     if (app->config.plugin_dir) {
         int loaded = vizero_plugin_manager_scan_directory(app->plugin_manager, app->config.plugin_dir);
@@ -255,6 +274,11 @@ void vizero_application_shutdown(vizero_application_t* app) {
     if (app->theme_manager) {
         vizero_theme_manager_destroy(app->theme_manager);
         app->theme_manager = NULL;
+    }
+    
+    if (app->session_manager) {
+        vizero_session_manager_destroy((vizero_session_manager_t*)app->session_manager);
+        app->session_manager = NULL;
     }
     
     if (app->status_bar) {

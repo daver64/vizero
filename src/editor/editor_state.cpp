@@ -3293,9 +3293,69 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Show version information */
         return vizero_show_version_info(state);
         
+    /* Session management commands */
+    } else if (strncmp(command, "mksession", 9) == 0) {
+        /* Create/save session */
+        const char* session_name = command + 9;
+        while (*session_name == ' ') session_name++; /* Skip spaces */
+        
+        if (*session_name == '\0') {
+            vizero_editor_set_status_message_with_timeout(state, "Usage: :mksession <name>", 3000);
+            return -1;
+        }
+        
+        if (state->session_manager) {
+            // TODO: Implement session creation
+            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
+            return 0;
+        } else {
+            vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
+            return -1;
+        }
+        
+    } else if (strncmp(command, "session ", 8) == 0) {
+        /* Load session */
+        const char* session_name = command + 8;
+        while (*session_name == ' ') session_name++; /* Skip spaces */
+        
+        if (*session_name == '\0') {
+            vizero_editor_set_status_message_with_timeout(state, "Usage: :session <name>", 3000);
+            return -1;
+        }
+        
+        if (state->session_manager) {
+            // TODO: Implement session loading
+            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
+            return 0;
+        } else {
+            vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
+            return -1;
+        }
+        
+    } else if (strcmp(command, "sessions") == 0) {
+        /* List available sessions */
+        if (state->session_manager) {
+            // TODO: Implement session listing
+            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
+            return 0;
+        } else {
+            vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
+            return -1;
+        }
+        
+    } else if (strcmp(command, "session-save") == 0) {
+        /* Save current session */
+        if (state->session_manager) {
+            // TODO: Implement session saving
+            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
+            return 0;
+        } else {
+            vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
+            return -1;
+        }
+        
     } else {
         /* Check if command is a line number */
-        char* endptr;
         /* Check for line range operations like 1,5d or .,+5d */
         if (strchr(command, ',') && (strstr(command, "d") || strstr(command, "y") || strstr(command, "s/"))) {
             return vizero_execute_line_range_command(state, command);
@@ -3318,32 +3378,34 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return vizero_show_jumps(state);
         } else if (strcmp(command, "changes") == 0) {
             return vizero_show_changes(state);
-        }
-        
-        long line_num = strtol(command, &endptr, 10);
-        
-        if (*endptr == '\0' && line_num > 0) {
-            /* Pure numeric command - go to line */
-            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-            vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-            if (buffer && cursor) {
-                size_t line_count = vizero_buffer_get_line_count(buffer);
-                size_t target_line = (size_t)(line_num - 1); /* Convert to 0-based */
-                
-                if (target_line < line_count) {
-                    vizero_cursor_set_position(cursor, target_line, 0);
-                    char msg[64];
-                    sprintf(msg, "Line %ld", line_num);
-                    vizero_editor_set_status_message(state, msg);
-                    return 0;
-                } else {
-                    char msg[128];
-                    sprintf(msg, "Line %ld out of range (1-%zu)", line_num, line_count);
-                    vizero_editor_set_status_message(state, msg);
-                    return -1;
+        } else {
+            /* Check for numeric line commands */
+            char* endptr;
+            long line_num = strtol(command, &endptr, 10);
+            
+            if (*endptr == '\0' && line_num > 0) {
+                /* Pure numeric command - go to line */
+                vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+                vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+                if (buffer && cursor) {
+                    size_t line_count = vizero_buffer_get_line_count(buffer);
+                    size_t target_line = (size_t)(line_num - 1); /* Convert to 0-based */
+                    
+                    if (target_line < line_count) {
+                        vizero_cursor_set_position(cursor, target_line, 0);
+                        char msg[64];
+                        sprintf(msg, "Line %ld", line_num);
+                        vizero_editor_set_status_message(state, msg);
+                        return 0;
+                    } else {
+                        char msg[128];
+                        sprintf(msg, "Line %ld out of range (1-%zu)", line_num, line_count);
+                        vizero_editor_set_status_message(state, msg);
+                        return -1;
+                    }
                 }
+                return -1;
             }
-            return -1;
         }
         
         /* Unknown command */
@@ -3396,6 +3458,14 @@ void vizero_editor_set_theme_manager(vizero_editor_state_t* state, void* manager
 
 void* vizero_editor_get_theme_manager(vizero_editor_state_t* state) {
     return state ? (void*)state->theme_manager : NULL;
+}
+
+void vizero_editor_set_session_manager(vizero_editor_state_t* state, void* manager) {
+    if (state) state->session_manager = manager;
+}
+
+void* vizero_editor_get_session_manager(vizero_editor_state_t* state) {
+    return state ? state->session_manager : NULL;
 }
 
 /* Mode Manager */

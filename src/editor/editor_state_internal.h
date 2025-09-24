@@ -32,6 +32,7 @@ struct vizero_editor_state_t {
     size_t command_length;
     vizero_plugin_manager_t* plugin_manager;
     vizero_theme_manager_t* theme_manager;
+    void* session_manager; /* vizero_session_manager_t* - void* to avoid circular dependency */
     char* status_message;
     unsigned int status_message_set_time;
     unsigned int status_message_timeout_ms;

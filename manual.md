@@ -440,6 +440,15 @@ vizero main.c          # Start with main.c as buffer 1
 | `:show` | Display all current settings |
 | `:show name` | Display specific setting |
 | `:version` | Show version information popup |
+| `:colourscheme <theme>` | Switch colour theme (Default/Monokai/Solarized Dark) |
+
+### Session Management Commands
+| Command | Action |
+|---------|--------|
+| `:mksession <name>` | Create/save session with specified name |
+| `:session <name>` | Load session with specified name |
+| `:sessions` | List all available sessions |
+| `:session-save` | Save current session state |
 
 **Read-Only Status:** The status bar displays the current buffer's read-only status with pale green 'rw' for read-write buffers and pale red 'ro' for read-only buffers.
 
@@ -451,6 +460,7 @@ vizero main.c          # Start with main.c as buffer 1
 | `auto_indent` | true | Automatic indentation |
 | `show_line_numbers` | false | Display line numbers |
 | `linewrap` | true | Word wrap at word boundaries |
+| `colour_theme` | "Default" | Current colour theme (Default/Monokai/Solarized Dark) |
 
 
 ### Persistence
@@ -624,6 +634,15 @@ vizero main.c          # Start with main.c as buffer 1
 | `:linenum on/off` | Enable/disable line numbers |
 | `:syntax on/off` | Enable/disable syntax highlighting |
 | `:tabs <N>` | Set tab size to N spaces |
+| `:colourscheme <theme>` | Switch colour theme (Default/Monokai/Solarized Dark) |
+
+### Session Management
+| Command | Description |
+|---------|-------------|
+| `:mksession <name>` | Create/save session with specified name |
+| `:session <name>` | Load session with specified name |
+| `:sessions` | List all available sessions |
+| `:session-save` | Save current session state |
 
 ### Help and Information
 | Command | Description |
@@ -678,13 +697,14 @@ vizero main.c          # Start with main.c as buffer 1
 
 ## Summary
 
-Vizero is a remarkably comprehensive vi clone with an extensive command set that covers all essential vi/vim functionality and more. With over 40 implemented commands, it provides:
+Vizero is a remarkably comprehensive vi clone with an extensive command set that covers all essential vi/vim functionality and more. With over 45 implemented commands, it provides:
 
 - **Complete file and buffer management** - Open, save, switch between multiple files
 - **Advanced text editing** - Full search/replace with regex, undo system, clipboard integration  
 - **Modern window management** - Split windows with proper focus handling
 - **Developer tools** - Integrated compilation, execution, and directory operations
-- **Flexible configuration** - Persistent settings with word wrap, syntax highlighting, and more
+- **Flexible configuration** - Persistent settings with word wrap, syntax highlighting, and colour themes
+- **Session management** - Save and restore workspace sessions for project continuity
 - **Vi compatibility** - Standard navigation, modes, and command structure
 
 The editor successfully combines classic vi behavior with modern conveniences, making it both familiar to vi users and accessible to newcomers.

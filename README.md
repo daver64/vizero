@@ -17,6 +17,12 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 
 ## September 2025 Update: Major Features and Fixes
 
+- **Colour Theme System**: Complete theming with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command.
+- **Buffer Navigation in Split Windows**: Fixed `:bn` and `:bp` commands to work correctly with split windows and focused window management.
+- **Session Management Infrastructure**: Added comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands (implementation in progress).
+- **Status Message Timeouts**: Status messages now auto-dismiss after 3 seconds for better user experience.
+- **Clean Build System**: Eliminated all compilation warnings for a professional development experience.
+
 ## Usage Notes
 
 For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
@@ -184,6 +190,15 @@ N              # Previous match
 :show                   # Show all settings
 :help                   # Show comprehensive help
 :version                # Show version information
+:colourscheme <theme>   # Switch colour theme (Default/Monokai/Solarized Dark)
+```
+
+#### Session Management
+```
+:mksession <name>       # Create/save session
+:session <name>         # Load session
+:sessions               # List available sessions
+:session-save           # Save current session
 ```
 
 ## Advanced Features
@@ -296,6 +311,10 @@ static int highlight_syntax(/* ... */) {
 | `:run` | Execute program |
 | `:set` | Configure settings |
 | `:help` | Show help |
+| `:colourscheme <theme>` | Switch colour theme |
+| `:mksession <name>` | Create session |
+| `:session <name>` | Load session |
+| `:sessions` | List sessions |
 
 ## Contributing
 

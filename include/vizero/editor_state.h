@@ -109,6 +109,10 @@ vizero_plugin_manager_t* vizero_editor_get_plugin_manager(vizero_editor_state_t*
 void vizero_editor_set_theme_manager(vizero_editor_state_t* state, void* manager);
 void* vizero_editor_get_theme_manager(vizero_editor_state_t* state);
 
+/* Session manager integration */
+void vizero_editor_set_session_manager(vizero_editor_state_t* state, void* manager);
+void* vizero_editor_get_session_manager(vizero_editor_state_t* state);
+
 /* Mode Manager */
 typedef struct vizero_mode_manager_t vizero_mode_manager_t;
 vizero_mode_manager_t* vizero_editor_get_mode_manager(vizero_editor_state_t* state);

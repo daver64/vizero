@@ -12,6 +12,9 @@
 - **Merged Rendering Logic**: Word wrap, syntax highlighting, and cursor/scrolling are now unified in the renderer for consistent behavior.
 - **Settings System**: All settings (including word wrap, line numbers, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`.
 - **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
+- **Colour Theme System**: Complete theming infrastructure with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command for immediate visual feedback.
+- **Session Management Infrastructure**: Comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands for workspace persistence (implementation framework complete).
+- **Buffer Navigation Fixes**: Fixed `:bn` and `:bp` commands to work correctly with split windows and focused window management.
 
 ## Quick Start
 
