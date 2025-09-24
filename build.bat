@@ -88,5 +88,6 @@ REM Return to project root
 cd ..
 
 echo Build completed successfully!
-echo Executable: vizero.exe
+echo Console executable: vizero.exe
+echo GUI executable: vizero-gui.exe
 echo Plugins: plugins\

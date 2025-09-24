@@ -5,7 +5,7 @@ cmake-build-*/
 # Executables
 /vizero
 vizero.exe
-
+vizero-gui.exe
 # Plugin binaries in root plugins folder
 plugins/*.dll
 plugins/*.so

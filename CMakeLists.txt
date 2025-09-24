@@ -268,7 +268,7 @@ target_link_libraries(vizero_core PUBLIC
     ${PLATFORM_LIBS}
 )
 
-# Main executable
+# Main executable (console version)
 if(WIN32)
     add_executable(vizero
         src/main.cpp
@@ -291,11 +291,34 @@ set_target_properties(vizero PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}
 )
 
-# Copy DLLs on Windows
+# GUI executable (Windows only - no console window)
+if(WIN32)
+    add_executable(vizero-gui WIN32
+        src/main.cpp
+        vizero.rc
+    )
+    
+    target_link_libraries(vizero-gui PRIVATE vizero_core)
+    
+    # Set executable output directory to project root
+    set_target_properties(vizero-gui PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}
+    )
+endif()
+
+# Copy DLLs on Windows (for both console and GUI versions)
 if(WIN32)
     if(SDL2_DLLS)
         foreach(dll ${SDL2_DLLS})
             add_custom_command(TARGET vizero POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${dll} ${CMAKE_SOURCE_DIR}
+            )
+            add_custom_command(TARGET vizero-gui POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${dll} ${CMAKE_SOURCE_DIR}
             )
@@ -308,6 +331,10 @@ if(WIN32)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${dll} ${CMAKE_SOURCE_DIR}
             )
+            add_custom_command(TARGET vizero-gui POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${dll} ${CMAKE_SOURCE_DIR}
+            )
         endforeach()
     endif()
 endif()
@@ -316,7 +343,11 @@ endif()
 add_subdirectory(plugins)
 
 # Installation
-install(TARGETS vizero DESTINATION bin)
+if(WIN32)
+    install(TARGETS vizero vizero-gui DESTINATION bin)
+else()
+    install(TARGETS vizero DESTINATION bin)
+endif()
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/plugins/ DESTINATION plugins
         FILES_MATCHING PATTERN "*${PLUGIN_EXT}")
 

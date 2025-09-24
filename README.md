@@ -23,6 +23,15 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Status Message Timeouts**: Status messages now auto-dismiss after 3 seconds for better user experience.
 - **Clean Build System**: Eliminated all compilation warnings for a professional development experience.
 
+## Executables
+
+Vizero provides two Windows executables:
+
+- **`vizero.exe`**: Console version with command-line output and debugging information
+- **`vizero-gui.exe`**: GUI version without console window for cleaner desktop integration
+
+Both versions share identical functionality and command-line arguments. Use the GUI version for regular editing and the console version for debugging or when you need to see command-line output.
+
 ## Usage Notes
 
 For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
