@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <SDL_keycode.h>
 #include "plugin_interface.h"  /* For vizero_position_t */
 #include "settings.h"  /* For vizero_settings_t */
 
@@ -207,6 +208,22 @@ vizero_window_manager_t* vizero_editor_get_window_manager(vizero_editor_state_t*
 vizero_editor_window_t* vizero_editor_get_active_window(vizero_editor_state_t* state);
 int vizero_editor_create_window_for_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer, 
                                          int window_width, int window_height);
+
+/* LSP Completion UI */
+void vizero_editor_show_completion(vizero_editor_state_t* state, 
+                                   vizero_completion_item_t* items, 
+                                   size_t count, 
+                                   vizero_position_t trigger_position);
+void vizero_editor_hide_completion(vizero_editor_state_t* state);
+int vizero_editor_is_completion_visible(vizero_editor_state_t* state);
+int vizero_editor_handle_completion_key(vizero_editor_state_t* state, SDL_Keycode key);
+void vizero_editor_accept_completion(vizero_editor_state_t* state);
+
+/* Completion UI getters for rendering */
+vizero_completion_item_t* vizero_editor_get_completion_items(vizero_editor_state_t* state);
+size_t vizero_editor_get_completion_count(vizero_editor_state_t* state);
+size_t vizero_editor_get_completion_selected_index(vizero_editor_state_t* state);
+vizero_position_t vizero_editor_get_completion_trigger_position(vizero_editor_state_t* state);
 
 #ifdef __cplusplus
 }

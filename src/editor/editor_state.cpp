@@ -119,6 +119,14 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
             state->buffer_mru[i] = SIZE_MAX;  /* Invalid index marker */
         }
         
+        /* Initialize LSP completion UI */
+        state->completion_visible = 0;
+        state->completion_items = NULL;
+        state->completion_count = 0;
+        state->completion_selected_index = 0;
+        state->completion_trigger_position.line = 0;
+        state->completion_trigger_position.column = 0;
+        
         /* Store startup directory for resource loading */
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -195,6 +203,29 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         state->popup_content = NULL;
         state->popup_start_time = 0;
         state->popup_duration_ms = 5000; /* 5 seconds default */
+        state->popup_scroll_offset = 0;
+        state->popup_is_buffer_list = 0;
+        state->popup_selected_buffer = 0;
+        
+        /* Initialize help system */
+        state->help_mode_active = 0;
+        state->help_original_buffer = NULL;
+        state->help_original_cursor = NULL;
+        state->help_original_buffer_index = 0;
+        
+        /* Initialize MRU buffer tracking */
+        state->buffer_mru_count = 0;
+        for (size_t i = 0; i < MAX_BUFFERS; i++) {
+            state->buffer_mru[i] = SIZE_MAX;  /* Invalid index marker */
+        }
+        
+        /* Initialize LSP completion UI */
+        state->completion_visible = 0;
+        state->completion_items = NULL;
+        state->completion_count = 0;
+        state->completion_selected_index = 0;
+        state->completion_trigger_position.line = 0;
+        state->completion_trigger_position.column = 0;
         
         /* Store startup directory for resource loading */
         char cwd[1024];
@@ -301,6 +332,9 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
         }
         free(state->undo_stack);
     }
+    
+    /* Clean up completion UI */
+    vizero_editor_hide_completion(state);
     
     free(state);
 }
@@ -4604,4 +4638,257 @@ int vizero_editor_exit_help_mode(vizero_editor_state_t* state) {
 
 int vizero_editor_is_help_mode_active(vizero_editor_state_t* state) {
     return state ? state->help_mode_active : 0;
+}
+
+/* LSP Completion UI functions */
+void vizero_editor_show_completion(vizero_editor_state_t* state, 
+                                   vizero_completion_item_t* items, 
+                                   size_t count, 
+                                   vizero_position_t trigger_position) {
+    if (!state || !items || count == 0) {
+        return;
+    }
+    
+    /* Clear any existing completion */
+    vizero_editor_hide_completion(state);
+    
+    /* Copy completion items */
+    state->completion_items = (vizero_completion_item_t*)malloc(count * sizeof(vizero_completion_item_t));
+    if (!state->completion_items) {
+        return;
+    }
+    
+    for (size_t i = 0; i < count; i++) {
+        state->completion_items[i].label = items[i].label ? strdup(items[i].label) : NULL;
+        state->completion_items[i].detail = items[i].detail ? strdup(items[i].detail) : NULL;
+        state->completion_items[i].documentation = items[i].documentation ? strdup(items[i].documentation) : NULL;
+        state->completion_items[i].insert_text = items[i].insert_text ? strdup(items[i].insert_text) : NULL;
+        state->completion_items[i].filter_text = items[i].filter_text ? strdup(items[i].filter_text) : NULL;
+        state->completion_items[i].sort_text = items[i].sort_text ? strdup(items[i].sort_text) : NULL;
+        state->completion_items[i].kind = items[i].kind;
+        state->completion_items[i].deprecated = items[i].deprecated;
+    }
+    
+    state->completion_count = count;
+    state->completion_selected_index = 0;
+    state->completion_trigger_position = trigger_position;
+    state->completion_visible = 1;
+}
+
+void vizero_editor_hide_completion(vizero_editor_state_t* state) {
+    if (!state) {
+        return;
+    }
+    
+    if (state->completion_items) {
+        for (size_t i = 0; i < state->completion_count; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].documentation);
+            free(state->completion_items[i].insert_text);
+            free(state->completion_items[i].filter_text);
+            free(state->completion_items[i].sort_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
+    }
+    
+    state->completion_count = 0;
+    state->completion_selected_index = 0;
+    state->completion_visible = 0;
+}
+
+int vizero_editor_is_completion_visible(vizero_editor_state_t* state) {
+    return state ? state->completion_visible : 0;
+}
+
+int vizero_editor_handle_completion_key(vizero_editor_state_t* state, SDL_Keycode key) {
+    if (!state || !state->completion_visible || state->completion_count == 0) {
+        return 0;  /* Not handled */
+    }
+    
+    switch (key) {
+        case SDLK_ESCAPE:
+            vizero_editor_hide_completion(state);
+            return 1;  /* Handled */
+            
+        case SDLK_UP:
+            if (state->completion_selected_index > 0) {
+                state->completion_selected_index--;
+            } else {
+                state->completion_selected_index = state->completion_count - 1;  /* Wrap to bottom */
+            }
+            return 1;  /* Handled */
+            
+        case SDLK_DOWN:
+            if (state->completion_selected_index < state->completion_count - 1) {
+                state->completion_selected_index++;
+            } else {
+                state->completion_selected_index = 0;  /* Wrap to top */
+            }
+            return 1;  /* Handled */
+            
+        case SDLK_RETURN:
+        case SDLK_TAB:
+            vizero_editor_accept_completion(state);
+            return 1;  /* Handled */
+            
+        default:
+            return 0;  /* Not handled */
+    }
+}
+
+void vizero_editor_accept_completion(vizero_editor_state_t* state) {
+    if (!state || !state->completion_visible || state->completion_count == 0) {
+        return;
+    }
+    
+    if (state->completion_selected_index >= state->completion_count) {
+        return;
+    }
+    
+    vizero_completion_item_t* item = &state->completion_items[state->completion_selected_index];
+    const char* text_to_insert = item->insert_text ? item->insert_text : item->label;
+    
+    /* Extract just the function name if the text contains parentheses */
+    char* clean_text = NULL;
+    if (text_to_insert && strchr(text_to_insert, '(')) {
+        const char* paren = strchr(text_to_insert, '(');
+        size_t name_len = paren - text_to_insert;
+        clean_text = (char*)malloc(name_len + 1);
+        if (clean_text) {
+            memcpy(clean_text, text_to_insert, name_len);
+            clean_text[name_len] = '\0';
+            text_to_insert = clean_text;
+        }
+    }
+    
+    if (!text_to_insert) {
+        vizero_editor_hide_completion(state);
+        return;
+    }
+    
+    /* Get current buffer and cursor */
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    
+    if (!buffer || !cursor) {
+        vizero_editor_hide_completion(state);
+        return;
+    }
+    
+    /* Replace partial word with completion text */
+    size_t insert_len = strlen(text_to_insert);
+    size_t cursor_line = vizero_cursor_get_line(cursor);
+    size_t cursor_col = vizero_cursor_get_column(cursor);
+    
+    /* Calculate partial word to replace */
+    size_t trigger_col = state->completion_trigger_position.column;
+    size_t trigger_line = state->completion_trigger_position.line;
+    
+    printf("[DEBUG] Completion replacement: cursor(%zu,%zu) trigger(%zu,%zu) text='%s'\n", 
+           cursor_line, cursor_col, trigger_line, trigger_col, text_to_insert);
+    
+    if (cursor_col >= trigger_col && cursor_line == trigger_line) {
+        size_t partial_len = cursor_col - trigger_col;
+        
+        printf("[DEBUG] Replacing partial word of length %zu\n", partial_len);
+        
+        /* Safety check: don't try to delete more characters than exist */
+        if (partial_len > cursor_col) {
+            printf("[DEBUG] Safety: partial_len %zu > cursor_col %zu, using fallback\n", partial_len, cursor_col);
+            partial_len = 0; /* Fall back to simple insertion */
+        }
+        
+        /* Get line text to validate deletion bounds */
+        const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
+        size_t line_len = line_text ? strlen(line_text) : 0;
+        
+        printf("[DEBUG] Line %zu has length %zu, cursor at column %zu\n", cursor_line, line_len, cursor_col);
+        
+        /* Additional safety: ensure cursor position is valid */
+        if (cursor_col > line_len) {
+            printf("[DEBUG] Safety: cursor_col %zu > line_len %zu, using fallback\n", cursor_col, line_len);
+            goto fallback_insertion;
+        }
+        
+        /* Validate deletion bounds */
+        if (partial_len > 0 && cursor_col >= partial_len) {
+            /* Delete the partial word backwards from current cursor position */
+            for (size_t i = 0; i < partial_len; i++) {
+                if (cursor_col == 0) {
+                    printf("[DEBUG] Safety: reached column 0, stopping deletion\n");
+                    break;
+                }
+                
+                /* Double-check bounds before each deletion */
+                const char* current_line = vizero_buffer_get_line_text(buffer, cursor_line);
+                size_t current_len = current_line ? strlen(current_line) : 0;
+                if (cursor_col - 1 >= current_len) {
+                    printf("[DEBUG] Safety: deletion position %zu >= line length %zu, stopping\n", cursor_col - 1, current_len);
+                    break;
+                }
+                
+                vizero_buffer_delete_char(buffer, cursor_line, cursor_col - 1);
+                cursor_col--; /* Update cursor position after each deletion */
+                printf("[DEBUG] Deleted char at (%zu,%zu), new cursor_col=%zu\n", cursor_line, cursor_col, cursor_col);
+            }
+        }
+        
+        /* Insert the completion text at the now-cleared position */
+        for (size_t i = 0; i < insert_len; i++) {
+            vizero_buffer_insert_char(buffer, cursor_line, cursor_col + i, text_to_insert[i]);
+        }
+        
+        /* Move cursor to end of inserted text */
+        vizero_cursor_set_position(cursor, cursor_line, cursor_col + insert_len);
+        
+        printf("[DEBUG] Replacement complete, cursor at (%zu,%zu)\n", cursor_line, cursor_col + insert_len);
+    } else {
+        printf("[DEBUG] Using fallback insertion\n");
+        goto fallback_insertion;
+    }
+    
+    goto cleanup;
+    
+fallback_insertion:
+    printf("[DEBUG] Fallback: inserting '%s' at position (%zu,%zu)\n", text_to_insert, cursor_line, cursor_col);
+    /* Fallback: just insert at current position */
+    for (size_t i = 0; i < insert_len; i++) {
+        vizero_buffer_insert_char(buffer, cursor_line, cursor_col + i, text_to_insert[i]);
+    }
+    vizero_cursor_set_position(cursor, cursor_line, cursor_col + insert_len);
+
+cleanup:
+    
+    /* Clean up allocated memory */
+    if (clean_text) {
+        free(clean_text);
+    }
+    
+    /* Hide completion */
+    vizero_editor_hide_completion(state);
+    
+    /* Set status message */
+    char status_msg[256];
+    snprintf(status_msg, sizeof(status_msg), "Inserted completion: %s", text_to_insert);
+    vizero_editor_set_status_message_with_timeout(state, status_msg, 2000);
+}
+
+/* Completion UI getters for rendering */
+vizero_completion_item_t* vizero_editor_get_completion_items(vizero_editor_state_t* state) {
+    return state ? state->completion_items : NULL;
+}
+
+size_t vizero_editor_get_completion_count(vizero_editor_state_t* state) {
+    return state ? state->completion_count : 0;
+}
+
+size_t vizero_editor_get_completion_selected_index(vizero_editor_state_t* state) {
+    return state ? state->completion_selected_index : 0;
+}
+
+vizero_position_t vizero_editor_get_completion_trigger_position(vizero_editor_state_t* state) {
+    vizero_position_t invalid_pos = {0, 0};
+    return state ? state->completion_trigger_position : invalid_pos;
 }

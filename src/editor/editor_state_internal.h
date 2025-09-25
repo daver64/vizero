@@ -71,6 +71,13 @@ struct vizero_editor_state_t {
     /* Most Recently Used buffer tracking */
     size_t buffer_mru[MAX_BUFFERS];  /* MRU buffer indices (most recent first) */
     size_t buffer_mru_count;         /* Number of entries in MRU list */
+    
+    /* LSP Completion UI state */
+    int completion_visible;
+    vizero_completion_item_t* completion_items;
+    size_t completion_count;
+    size_t completion_selected_index;
+    vizero_position_t completion_trigger_position;
 };
 
 #ifdef __cplusplus

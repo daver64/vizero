@@ -22,6 +22,9 @@ struct vizero_input_manager_t {
     vizero_application_t* app;
     int mode_changed_this_frame;
     int awaiting_window_cmd; // 1 if Ctrl+w was pressed
+    int suppress_next_textinput; // 1 if next SDL_TEXTINPUT should be ignored (e.g., after Ctrl+Space)
+    int pending_completion_frames; // Countdown for checking async completion results
+    vizero_position_t pending_completion_position; // Position where completion was requested
 };
 
 vizero_input_manager_t* vizero_input_manager_create(vizero_application_t* app) {
@@ -30,6 +33,8 @@ vizero_input_manager_t* vizero_input_manager_create(vizero_application_t* app) {
         input->app = app;
         input->mode_changed_this_frame = 0;
         input->awaiting_window_cmd = 0;
+        input->suppress_next_textinput = 0;
+        input->pending_completion_frames = 0;
     }
     return input;
 }
@@ -44,26 +49,49 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     /* Reset mode change flag at start of frame */
     input->mode_changed_this_frame = 0;
     
-    /* Process LSP messages non-blocking to handle async completion results */
-    vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
-    if (plugin_manager) {
-        vizero_plugin_manager_process_lsp_messages(plugin_manager);
-        
-        /* Check for pending completion results */
-        vizero_completion_list_t* completion_result = NULL;
-        if (vizero_plugin_manager_check_completion_results(plugin_manager, &completion_result) == 0) {
-            printf("[DEBUG] Async completion result arrived with %zu items\n", 
-                   completion_result ? completion_result->item_count : 0);
+    /* Async completion checking disabled - caused infinite loops */
+    
+    /* CAUTIOUS: Only process LSP messages and check for results if we're actually using completion */
+    static int frames_since_startup = 0;
+    frames_since_startup++;
+    
+    /* Skip LSP processing for the first 60 frames to let things stabilize */
+    if (frames_since_startup > 60) {
+        vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
+        if (plugin_manager) {
+            /* Only check for completion results, don't force LSP processing every frame */
+            vizero_completion_list_t* completion_result = NULL;
+            int completion_check_result = vizero_plugin_manager_check_completion_results(plugin_manager, &completion_result);
             
-            // TODO: Show completion UI here
-            
-            // Clean up for now
-            if (completion_result) {
+            if (completion_check_result == 0 && completion_result) {
+                printf("[DEBUG] Async completion result arrived with %zu items\n", 
+                       completion_result->item_count);
+                
+                /* Show completion UI if we have results */
+                if (completion_result->item_count > 0) {
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        /* Get current cursor position as trigger position */
+                        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
+                        vizero_position_t trigger_pos = {0, 0};
+                        if (cursor) {
+                            trigger_pos.line = vizero_cursor_get_line(cursor);
+                            trigger_pos.column = vizero_cursor_get_column(cursor);
+                        }
+                        
+                        /* Show completion dropdown */
+                        vizero_editor_show_completion(editor, completion_result->items, 
+                                                    completion_result->item_count, trigger_pos);
+                        printf("[DEBUG] Completion UI shown with %zu items\n", completion_result->item_count);
+                    }
+                }
+                
+                /* Clean up completion result (editor copied the data it needs) */
                 if (completion_result->items) {
                     for (size_t i = 0; i < completion_result->item_count; i++) {
                         free(completion_result->items[i].label);
                         free(completion_result->items[i].detail);
-                        free(completion_result->items[i].documentation);
+                        free(completion_result->items[i].documentation);  
                         free(completion_result->items[i].insert_text);
                         free(completion_result->items[i].filter_text);
                         free(completion_result->items[i].sort_text);
@@ -98,6 +126,120 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     if (editor) {
                         /* Hide welcome message on any key press */
                         vizero_application_on_user_input(input->app);
+                        
+                        /* Check for completion UI key handling first */
+                        if (vizero_editor_is_completion_visible(editor)) {
+                            if (vizero_editor_handle_completion_key(editor, event.key.keysym.sym)) {
+                                break; /* Completion UI consumed the key */
+                            }
+                        }
+                        
+                        /* Check for Ctrl+Space to trigger LSP completion (must be early to avoid being consumed) */
+                        if ((event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym == SDLK_SPACE)) {
+                            vizero_editor_mode_t current_mode = vizero_editor_get_mode(editor);
+                            if (current_mode == VIZERO_MODE_INSERT) {
+                                vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
+                                if (cursor) {
+                                    size_t cursor_line = vizero_cursor_get_line(cursor);
+                                    size_t cursor_col = vizero_cursor_get_column(cursor);
+                                    
+                                    /* Find the start of the current word for proper replacement */
+                                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                                    size_t word_start_col = cursor_col;
+                                    if (buffer && cursor_col > 0) {
+                                        const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
+                                        if (line_text) {
+                                            size_t line_len = strlen(line_text);
+                                            /* Look backwards to find start of identifier */
+                                            for (size_t i = cursor_col; i > 0; i--) {
+                                                if (i - 1 >= line_len) {
+                                                    /* Safety check: don't go beyond line length */
+                                                    word_start_col = cursor_col;
+                                                    break;
+                                                }
+                                                char ch = line_text[i - 1];
+                                                if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || 
+                                                      (ch >= '0' && ch <= '9') || ch == '_')) {
+                                                    word_start_col = i;
+                                                    break;
+                                                }
+                                                word_start_col = i - 1;
+                                            }
+                                        }
+                                    }
+                                    
+                                    vizero_position_t position = { cursor_line, cursor_col };
+                                    vizero_position_t trigger_position = { cursor_line, word_start_col };
+                                    
+                                    printf("[DEBUG] Word boundaries: cursor=%zu, word_start=%zu\n", cursor_col, word_start_col);
+                                    
+                                    printf("[DEBUG] Triggering LSP completion at line %zu, column %zu\n", 
+                                           position.line, position.column);
+                                    
+                                    vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
+                                    if (plugin_manager) {
+                                        printf("[DEBUG] Plugin manager found, requesting LSP completion\n");
+                                        
+                                        vizero_completion_list_t* completion_list = NULL;
+                                        printf("[DEBUG] Calling vizero_plugin_manager_lsp_completion...\n");
+                                        
+                                        int result = vizero_plugin_manager_lsp_completion(plugin_manager, 
+                                                    vizero_editor_get_current_buffer(editor), position, &completion_list);
+                                        
+                                        printf("[DEBUG] LSP completion returned result=%d, completion_list=%p\n", 
+                                               result, (void*)completion_list);
+                                        
+                                        if (result == 0 && completion_list && completion_list->item_count > 0) {
+                                            printf("[DEBUG] Got completion with %zu items, showing UI\n", completion_list->item_count);
+                                            
+                                            /* Show completion UI immediately */
+                                            vizero_editor_show_completion(editor, completion_list->items, 
+                                                                        completion_list->item_count, trigger_position);
+                                            
+                                            /* Clean up completion list (editor copied the data) */
+                                            printf("[DEBUG] Cleaning up completion list with %zu items\n", completion_list->item_count);
+                                            if (completion_list->items) {
+                                                for (size_t i = 0; i < completion_list->item_count; i++) {
+                                                    printf("[DEBUG] Cleaning up completion item %zu\n", i);
+                                                    if (completion_list->items[i].label) {
+                                                        free(completion_list->items[i].label);
+                                                    }
+                                                    if (completion_list->items[i].detail) {
+                                                        free(completion_list->items[i].detail);
+                                                    }
+                                                    if (completion_list->items[i].documentation) {
+                                                        free(completion_list->items[i].documentation);
+                                                    }
+                                                    if (completion_list->items[i].insert_text) {
+                                                        free(completion_list->items[i].insert_text);
+                                                    }
+                                                    if (completion_list->items[i].filter_text) {
+                                                        free(completion_list->items[i].filter_text);
+                                                    }
+                                                    if (completion_list->items[i].sort_text) {
+                                                        free(completion_list->items[i].sort_text);
+                                                    }
+                                                }
+                                                printf("[DEBUG] Freeing completion items array\n");
+                                                free(completion_list->items);
+                                            }
+                                            printf("[DEBUG] Freeing completion list\n");
+                                            free(completion_list);
+                                        } else {
+                                            printf("[DEBUG] No immediate LSP completion results, result=%d\n", result);
+                                            if (completion_list) {
+                                                printf("[DEBUG] Freeing empty completion list\n");
+                                                free(completion_list);
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                printf("[DEBUG] LSP completion only available in insert mode (current: %d)\n", current_mode);
+                            }
+                            input->suppress_next_textinput = 1; /* Prevent space insertion from SDL_TEXTINPUT */
+                            goto keydown_handled; /* Always consume Ctrl+Space and skip all other processing */
+                        }
                         
                         /* Check for ESC key to dismiss popup */
                         if (event.key.keysym.sym == SDLK_ESCAPE && vizero_editor_is_popup_visible(editor)) {
@@ -179,58 +321,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 input->awaiting_window_cmd = 1;
                                 break; // Wait for next key
                             }
-                            // Detect Ctrl+Space for LSP completion
-                            if ((event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym == SDLK_SPACE)) {
-                                if (cursor && focused_window) {
-                                    // Trigger LSP completion
-                                    vizero_buffer_t* completion_buffer = vizero_editor_window_get_buffer(focused_window, editor);
-                                    if (completion_buffer) {
-                                        vizero_position_t position = {
-                                            vizero_cursor_get_line(cursor),
-                                            vizero_cursor_get_column(cursor)
-                                        };
-                                        
-                                        printf("[DEBUG] Triggering LSP completion at line %zu, column %zu\n", 
-                                               position.line, position.column);
-                                        
-                                        vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
-                                        if (plugin_manager) {
-                                            vizero_completion_list_t* completion_list = NULL;
-                                            int result = vizero_plugin_manager_lsp_completion(plugin_manager, completion_buffer, position, &completion_list);
-                                            
-                                            if (result == 0 && completion_list) {
-                                                printf("[DEBUG] Got immediate completion with %zu items\n", completion_list->item_count);
-                                                
-                                                // Print first few completions for now
-                                                for (size_t i = 0; i < completion_list->item_count && i < 5; i++) {
-                                                    printf("[DEBUG] Completion %zu: %s (%s)\n", i, 
-                                                           completion_list->items[i].label ? completion_list->items[i].label : "null",
-                                                           completion_list->items[i].detail ? completion_list->items[i].detail : "no detail");
-                                                }
-                                                
-                                                // TODO: Show completion UI
-                                                
-                                                // Clean up completion list
-                                                if (completion_list->items) {
-                                                    for (size_t i = 0; i < completion_list->item_count; i++) {
-                                                        free(completion_list->items[i].label);
-                                                        free(completion_list->items[i].detail);
-                                                        free(completion_list->items[i].documentation);
-                                                        free(completion_list->items[i].insert_text);
-                                                        free(completion_list->items[i].filter_text);
-                                                        free(completion_list->items[i].sort_text);
-                                                    }
-                                                    free(completion_list->items);
-                                                }
-                                                free(completion_list);
-                                            } else {
-                                                printf("[DEBUG] Completion request sent (non-blocking), will check for results later\n");
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
+
                             if (cursor && focused_window) {
                                 int col = (int)vizero_cursor_get_column(cursor);
                                 switch (event.key.keysym.sym) {
@@ -641,10 +732,17 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         }
                     }
                 }
+            keydown_handled:
                 break;
             case SDL_TEXTINPUT:
                 /* Handle text input */
                 if (input->app) {
+                    /* Check if we should suppress this text input (e.g., after Ctrl+Space) */
+                    if (input->suppress_next_textinput) {
+                        input->suppress_next_textinput = 0; /* Reset flag */
+                        break; /* Ignore this text input event */
+                    }
+                    
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
                     /* Mode handling moved inline below */
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {

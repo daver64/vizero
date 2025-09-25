@@ -29,6 +29,15 @@ typedef struct {
     char* error;               /* JSON error (error responses only) */
 } lsp_message_t;
 
+/* LSP completion item */
+typedef struct {
+    char* label;               /* Text shown in completion list */
+    char* detail;              /* Additional detail (optional) */
+    char* documentation;       /* Documentation string (optional) */
+    char* insert_text;         /* Text to insert (defaults to label) */
+    int kind;                  /* CompletionItemKind (1=Text, 2=Method, 3=Function, etc.) */
+} vizero_lsp_completion_item_t;
+
 /* LSP client callbacks */
 typedef struct {
     void (*on_response)(int request_id, const char* result, const char* error, void* user_data);

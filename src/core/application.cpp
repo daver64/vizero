@@ -466,6 +466,152 @@ static void render_single_window_fallback(vizero_application_t* app, int window_
     app->scroll_y = temp_window.scroll_y;
 }
 
+static void render_completion_dropdown(vizero_application_t* app, int window_width, int window_height) {
+    if (!app || !app->editor) return;
+    
+    /* Get completion state */
+    vizero_editor_state_t* editor = app->editor;
+    
+    /* Position dropdown near cursor */
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
+    if (!cursor) return;
+    
+    size_t cursor_line = vizero_cursor_get_line(cursor);
+    size_t cursor_col = vizero_cursor_get_column(cursor);
+    
+    /* Calculate dropdown position */
+    int dropdown_x = (int)(cursor_col * 8 + 50); /* 8px per char + left margin */
+    int dropdown_y = (int)(cursor_line * 16 + 80); /* 16px per line + top margin */
+    
+    /* Ensure dropdown fits on screen */
+    const int max_visible_items = 10;
+    const int item_height = 18;
+    const int dropdown_width = 300;
+    int dropdown_height = max_visible_items * item_height + 10; /* +10 for padding */
+    
+    if (dropdown_x + dropdown_width > window_width) {
+        dropdown_x = window_width - dropdown_width - 10;
+    }
+    if (dropdown_y + dropdown_height > window_height - 50) { /* Leave space for status bar */
+        dropdown_y = (int)(cursor_line * 16 - dropdown_height);
+        if (dropdown_y < 10) dropdown_y = 10;
+    }
+    
+    /* Draw dropdown background */
+    vizero_colour_t bg_colour = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
+    vizero_renderer_fill_rect(app->renderer, (float)dropdown_x, (float)dropdown_y, 
+                             (float)dropdown_width, (float)dropdown_height, bg_colour);
+    
+    /* Draw dropdown border */
+    vizero_colour_t border_colour = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
+    vizero_renderer_draw_rect(app->renderer, (float)dropdown_x, (float)dropdown_y,
+                             (float)dropdown_width, (float)dropdown_height, border_colour);
+    
+    /* Get completion items via API */
+    vizero_completion_item_t* completion_items = vizero_editor_get_completion_items(editor);
+    size_t completion_count = vizero_editor_get_completion_count(editor);
+    size_t selected_index = vizero_editor_get_completion_selected_index(editor);
+    
+    if (!completion_items || completion_count == 0) return;
+    
+    /* Draw completion items */
+    int start_item = 0;
+    int visible_items = (int)completion_count;
+    if (visible_items > max_visible_items) {
+        visible_items = max_visible_items;
+        /* Center selected item in view */
+        start_item = (int)selected_index - max_visible_items / 2;
+        if (start_item < 0) start_item = 0;
+        if (start_item + visible_items > (int)completion_count) {
+            start_item = (int)completion_count - visible_items;
+        }
+    }
+    
+    for (int i = 0; i < visible_items; i++) {
+        int item_index = start_item + i;
+        if (item_index >= (int)completion_count) break;
+        
+        vizero_completion_item_t* item = &completion_items[item_index];
+        if (!item->label) continue;
+        
+        float item_y = (float)(dropdown_y + 5 + i * item_height);
+        
+        /* Draw selection highlight */
+        if (item_index == (int)selected_index) {
+            vizero_colour_t selection_colour = {0.3f, 0.3f, 0.5f, 0.8f}; /* Blue highlight */
+            vizero_renderer_fill_rect(app->renderer, (float)(dropdown_x + 2), item_y - 1,
+                                     (float)(dropdown_width - 4), (float)item_height, selection_colour);
+        }
+        
+        /* Draw completion kind icon */
+        vizero_colour_t icon_colour = {0.8f, 0.8f, 0.8f, 1.0f}; /* Light gray */
+        const char* icon = "F"; /* Default to Function */
+        switch (item->kind) {
+            case VIZERO_COMPLETION_TEXT: icon = "T"; icon_colour.r = 0.7f; icon_colour.g = 1.0f; icon_colour.b = 0.7f; break; /* Text - light green */
+            case VIZERO_COMPLETION_METHOD: icon = "M"; icon_colour.r = 1.0f; icon_colour.g = 0.8f; icon_colour.b = 0.4f; break; /* Method - orange */
+            case VIZERO_COMPLETION_FUNCTION: icon = "F"; icon_colour.r = 0.8f; icon_colour.g = 0.8f; icon_colour.b = 1.0f; break; /* Function - light blue */
+            case VIZERO_COMPLETION_VARIABLE: icon = "V"; icon_colour.r = 1.0f; icon_colour.g = 1.0f; icon_colour.b = 0.8f; break; /* Variable - light yellow */
+            case VIZERO_COMPLETION_CLASS: icon = "C"; icon_colour.r = 1.0f; icon_colour.g = 0.9f; icon_colour.b = 0.7f; break; /* Class - light orange */
+            case VIZERO_COMPLETION_KEYWORD: icon = "K"; icon_colour.r = 0.9f; icon_colour.g = 0.7f; icon_colour.b = 1.0f; break; /* Keyword - light purple */
+            case VIZERO_COMPLETION_CONSTRUCTOR: icon = "C"; icon_colour.r = 0.8f; icon_colour.g = 1.0f; icon_colour.b = 0.8f; break; /* Constructor - light green */
+            case VIZERO_COMPLETION_FIELD: icon = "F"; icon_colour.r = 1.0f; icon_colour.g = 1.0f; icon_colour.b = 0.6f; break; /* Field - yellow */
+            default: break;
+        }
+        
+        vizero_text_info_t icon_info;
+        icon_info.x = (float)(dropdown_x + 8);
+        icon_info.y = item_y + 2;
+        icon_info.colour = icon_colour;
+        icon_info.font = NULL;
+        vizero_renderer_draw_text(app->renderer, icon, &icon_info);
+        
+        /* Draw completion label */
+        vizero_colour_t text_colour = {1.0f, 1.0f, 1.0f, 1.0f}; /* White text */
+        vizero_text_info_t text_info;
+        text_info.x = (float)(dropdown_x + 25);
+        text_info.y = item_y + 2;
+        text_info.colour = text_colour;
+        text_info.font = NULL;
+        vizero_renderer_draw_text(app->renderer, item->label, &text_info);
+        
+        /* Draw detail if available and fits */
+        if (item->detail && strlen(item->detail) > 0) {
+            vizero_colour_t detail_colour = {0.7f, 0.7f, 0.8f, 1.0f}; /* Light gray */
+            vizero_text_info_t detail_info;
+            detail_info.x = (float)(dropdown_x + 25 + strlen(item->label) * 8 + 10);
+            detail_info.y = item_y + 2;
+            detail_info.colour = detail_colour;
+            detail_info.font = NULL;
+            
+            /* Truncate detail if too long */
+            char detail_buf[64];
+            size_t detail_len = strlen(item->detail);
+            if (detail_len > 40) {
+                memcpy(detail_buf, item->detail, 37);
+                strcpy(detail_buf + 37, "...");
+            } else {
+                strcpy(detail_buf, item->detail);
+            }
+            vizero_renderer_draw_text(app->renderer, detail_buf, &detail_info);
+        }
+    }
+    
+    /* Draw scroll indicator if needed */
+    if ((int)completion_count > max_visible_items) {
+        char scroll_info[32];
+        snprintf(scroll_info, sizeof(scroll_info), "%zu/%zu", 
+                selected_index + 1, completion_count);
+        
+        vizero_colour_t scroll_colour = {0.6f, 0.6f, 0.7f, 1.0f};
+        vizero_text_info_t scroll_text_info;
+        scroll_text_info.x = (float)(dropdown_x + dropdown_width - 50);
+        scroll_text_info.y = (float)(dropdown_y + dropdown_height - 15);
+        scroll_text_info.colour = scroll_colour;
+        scroll_text_info.font = NULL;
+        vizero_renderer_draw_text(app->renderer, scroll_info, &scroll_text_info);
+    }
+}
+
 int vizero_application_run(vizero_application_t* app) {
     if (!app) {
         return -1;
@@ -657,6 +803,11 @@ int vizero_application_run(vizero_application_t* app) {
                 popup_text_info.font = NULL;
                 vizero_renderer_draw_text(app->renderer, instruction, &popup_text_info);
             }
+        }
+        
+        /* Render completion dropdown if visible */
+        if (vizero_editor_is_completion_visible(app->editor)) {
+            render_completion_dropdown(app, window_width, window_height);
         }
         
         /* File change polling temporarily disabled for debugging corruption. */
