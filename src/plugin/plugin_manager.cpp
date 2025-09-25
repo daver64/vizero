@@ -1,9 +1,11 @@
 #include "vizero/plugin_manager.h"
 #include "vizero/plugin_interface.h"
+#include "vizero/plugin_registry.h"
 #include "vizero/buffer.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -28,6 +30,10 @@ struct vizero_plugin_manager_t {
     vizero_editor_api_t api;
     vizero_plugin_t* plugins[MAX_PLUGINS];
     size_t plugin_count;
+    
+    /* Plugin registry for on-demand loading */
+    vizero_plugin_registry_t* registry;
+    char plugin_directory[512];
 };
 
 /* Function type definitions for plugin entry points */
@@ -46,6 +52,7 @@ vizero_plugin_manager_t* vizero_plugin_manager_create(vizero_editor_t* editor) {
     
     manager->editor = editor;
     manager->plugin_count = 0;
+    manager->registry = vizero_plugin_registry_create();
     
     /* Initialize the editor API */
     init_editor_api(&manager->api, editor);
@@ -71,6 +78,11 @@ void vizero_plugin_manager_destroy(vizero_plugin_manager_t* manager) {
             
             free(manager->plugins[i]);
         }
+    }
+    
+    /* Destroy registry */
+    if (manager->registry) {
+        vizero_plugin_registry_destroy(manager->registry);
     }
     
     free(manager);
@@ -242,6 +254,113 @@ int vizero_plugin_manager_scan_directory(vizero_plugin_manager_t* manager, const
     return loaded_count;
 }
 
+/* Registry management */
+int vizero_plugin_manager_load_manifest(vizero_plugin_manager_t* manager, const char* manifest_path) {
+    if (!manager || !manager->registry || !manifest_path) {
+        return -1;
+    }
+    
+    /* Extract plugin directory from manifest path */
+    const char* last_slash = strrchr(manifest_path, '/');
+    const char* last_backslash = strrchr(manifest_path, '\\');
+    const char* separator = (last_slash > last_backslash) ? last_slash : last_backslash;
+    
+    if (separator) {
+        size_t dir_len = separator - manifest_path;
+        if (dir_len < sizeof(manager->plugin_directory) - 1) {
+            strncpy(manager->plugin_directory, manifest_path, dir_len);
+            manager->plugin_directory[dir_len] = '\0';
+        }
+    } else {
+        strcpy(manager->plugin_directory, ".");
+    }
+    
+    return vizero_plugin_registry_load_manifest(manager->registry, manifest_path);
+}
+
+/* On-demand loading */
+int vizero_plugin_manager_load_plugins_for_file(vizero_plugin_manager_t* manager, const char* filename) {
+    if (!manager || !manager->registry || !filename) {
+        return -1;
+    }
+    
+    /* Find plugins that should handle this file */
+    vizero_plugin_registry_entry_t* entries[8];
+    size_t entry_count = vizero_plugin_registry_find_by_filename(manager->registry, filename, entries, 8);
+    
+    int loaded_count = 0;
+    for (size_t i = 0; i < entry_count; i++) {
+        vizero_plugin_registry_entry_t* entry = entries[i];
+        
+        /* Skip if already loaded */
+        if (entry->is_loaded) {
+            continue;
+        }
+        
+        /* Load the plugin */
+        char plugin_path[1024];
+#ifdef _WIN32
+        snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
+#else
+        snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, entry->dll_path);
+#endif
+        
+        if (vizero_plugin_manager_load_plugin(manager, plugin_path) == 0) {
+            entry->is_loaded = true;
+            entry->plugin_instance = manager->plugins[manager->plugin_count - 1];
+            loaded_count++;
+            printf("[PLUGIN] Loaded on-demand: %s for file %s\n", entry->name, filename);
+        }
+    }
+    
+    return loaded_count;
+}
+
+int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager) {
+    if (!manager || !manager->registry) {
+        return -1;
+    }
+    
+    int loaded_count = 0;
+    for (size_t i = 0; i < manager->registry->entry_count; i++) {
+        vizero_plugin_registry_entry_t* entry = &manager->registry->entries[i];
+        
+        if (entry->always_load && !entry->is_loaded) {
+            /* Load the plugin */
+            char plugin_path[1024];
+#ifdef _WIN32
+            snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
+#else
+            snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, entry->dll_path);
+#endif
+            
+            if (vizero_plugin_manager_load_plugin(manager, plugin_path) == 0) {
+                entry->is_loaded = true;
+                entry->plugin_instance = manager->plugins[manager->plugin_count - 1];
+                loaded_count++;
+                printf("[PLUGIN] Loaded always-load: %s\n", entry->name);
+            }
+        }
+    }
+    
+    return loaded_count;
+}
+
+/* Plugin queries */
+bool vizero_plugin_manager_is_plugin_loaded(vizero_plugin_manager_t* manager, const char* plugin_name) {
+    if (!manager || !plugin_name) {
+        return false;
+    }
+    
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        if (manager->plugins[i] && strcmp(manager->plugins[i]->info.name, plugin_name) == 0) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 size_t vizero_plugin_manager_get_plugin_count(vizero_plugin_manager_t* manager) {
     return manager ? manager->plugin_count : 0;
 }
@@ -271,6 +390,12 @@ vizero_plugin_t* vizero_plugin_manager_find_plugin(vizero_plugin_manager_t* mana
 void vizero_plugin_manager_on_buffer_open(vizero_plugin_manager_t* manager, vizero_buffer_t* buffer, const char* filename) {
     if (!manager) return;
     
+    /* Load plugins on-demand for this file type */
+    if (filename && manager->registry) {
+        vizero_plugin_manager_load_plugins_for_file(manager, filename);
+    }
+    
+    /* Notify all loaded plugins */
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->callbacks.on_buffer_open) {

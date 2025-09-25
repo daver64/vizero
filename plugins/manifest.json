@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "plugins": {
+    "example_plugin": {
+      "type": "generic",
+      "load_on_demand": false,
+      "dll_path": "example_plugin.dll",
+      "description": "Example plugin for development and testing",
+      "always_load": true
+    },
+    "file_browser": {
+      "type": "file_browser",
+      "load_on_demand": false,
+      "dll_path": "file_browser.dll",
+      "description": "File system navigation plugin",
+      "always_load": true
+    },
+    "syntax_c": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],
+      "assembly_extensions": [".s", ".S", ".asm", ".inc", ".x86"],
+      "load_on_demand": true,
+      "dll_path": "syntax_c.dll",
+      "description": "C/C++/Assembly syntax highlighting",
+      "priority": 1
+    },
+    "syntax_csharp": {
+      "type": "syntax_highlighter", 
+      "file_extensions": [".cs"],
+      "load_on_demand": true,
+      "dll_path": "syntax_csharp.dll",
+      "description": "C# syntax highlighting",
+      "priority": 1
+    },
+    "syntax_markdown": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".md", ".markdown"],
+      "load_on_demand": true,
+      "dll_path": "syntax_markdown.dll",
+      "description": "Markdown syntax highlighting",
+      "priority": 1
+    },
+    "syntax_xml": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".xml", ".xsd", ".xsl", ".xslt", ".xaml", ".config", ".plist", ".svg"],
+      "load_on_demand": true,
+      "dll_path": "syntax_xml.dll",
+      "description": "XML syntax highlighting",
+      "priority": 1
+    },
+    "syntax_python": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".py", ".pyw", ".pyi", ".pyx"],
+      "repl_patterns": ["*Python*", "*REPL*", "python-repl", ".py-repl"],
+      "load_on_demand": true,
+      "dll_path": "syntax_python.dll",
+      "description": "Python syntax highlighting with REPL support",
+      "priority": 1
+    },
+    "syntax_lisp": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".lisp", ".lsp", ".cl", ".asd", ".el"],
+      "repl_patterns": ["*SLIME*", "*Lisp*", "*sbcl*", "*ccl*", "*clisp*", "lisp-repl", ".lisp-repl"],
+      "load_on_demand": true,
+      "dll_path": "syntax_lisp.dll",
+      "description": "Common Lisp syntax highlighting with REPL support",
+      "priority": 1
+    }
+  }
+}

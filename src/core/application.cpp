@@ -259,10 +259,23 @@ int vizero_application_initialize(vizero_application_t* app) {
     /* Set up editor-session manager connection */
     vizero_editor_set_session_manager(app->editor, app->session_manager);
     
-    /* Load plugins from plugin directory */
+    /* Load plugin manifest and always-load plugins */
     if (app->config.plugin_dir) {
-        int loaded = vizero_plugin_manager_scan_directory(app->plugin_manager, app->config.plugin_dir);
-        printf("Loaded %d plugins from %s\n", loaded, app->config.plugin_dir);
+        char manifest_path[1024];
+#ifdef _WIN32
+        snprintf(manifest_path, sizeof(manifest_path), "%s\\manifest.json", app->config.plugin_dir);
+#else
+        snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", app->config.plugin_dir);
+#endif
+        
+        if (vizero_plugin_manager_load_manifest(app->plugin_manager, manifest_path) == 0) {
+            int always_loaded = vizero_plugin_manager_ensure_always_loaded(app->plugin_manager);
+            printf("Loaded %d always-load plugins from %s\n", always_loaded, app->config.plugin_dir);
+        } else {
+            printf("Warning: Could not load plugin manifest from %s, falling back to directory scan\n", manifest_path);
+            int loaded = vizero_plugin_manager_scan_directory(app->plugin_manager, app->config.plugin_dir);
+            printf("Loaded %d plugins from %s\n", loaded, app->config.plugin_dir);
+        }
     }
     
     printf("Vizero initialized successfully\n");

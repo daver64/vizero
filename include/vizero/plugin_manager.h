@@ -6,7 +6,9 @@ extern "C" {
 #endif
 
 #include "plugin_interface.h"
+#include "plugin_registry.h"
 #include <stddef.h>
+#include <stdbool.h>
 
 /* Plugin manager structure */
 typedef struct vizero_plugin_manager_t vizero_plugin_manager_t;
@@ -19,6 +21,16 @@ void vizero_plugin_manager_destroy(vizero_plugin_manager_t* manager);
 int vizero_plugin_manager_load_plugin(vizero_plugin_manager_t* manager, const char* plugin_path);
 int vizero_plugin_manager_unload_plugin(vizero_plugin_manager_t* manager, const char* plugin_name);
 int vizero_plugin_manager_scan_directory(vizero_plugin_manager_t* manager, const char* directory);
+
+/* Registry management */
+int vizero_plugin_manager_load_manifest(vizero_plugin_manager_t* manager, const char* manifest_path);
+
+/* On-demand loading */
+int vizero_plugin_manager_load_plugins_for_file(vizero_plugin_manager_t* manager, const char* filename);
+int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager);
+
+/* Plugin queries */
+bool vizero_plugin_manager_is_plugin_loaded(vizero_plugin_manager_t* manager, const char* plugin_name);
 
 /* Plugin queries */
 size_t vizero_plugin_manager_get_plugin_count(vizero_plugin_manager_t* manager);

@@ -250,6 +250,7 @@ add_library(vizero_core STATIC
     src/project/project.cpp
     src/plugin/plugin_manager.cpp
     src/plugin/plugin_interface.cpp
+    src/plugin/plugin_registry.cpp
     src/ui/status_bar.cpp
     src/ui/status_bar_render.cpp
     src/ui/editor_window.cpp
