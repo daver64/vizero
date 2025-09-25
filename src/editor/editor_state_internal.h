@@ -42,6 +42,9 @@ struct vizero_editor_state_t {
     uint32_t popup_start_time;
     uint32_t popup_duration_ms;
     int popup_scroll_offset;
+    /* Buffer selection popup state */
+    int popup_is_buffer_list;
+    size_t popup_selected_buffer;
     /* Settings */
     vizero_settings_t* settings;
     /* Text selection */

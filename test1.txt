@@ -1,4 +1,0 @@
-Test file 1 content
-This is the first test file
-Line 3 of test1
-End of file 1

@@ -1,4 +1,0 @@
-Test content for shell commands
-This is line 2
-Line 3 content
-End of test file

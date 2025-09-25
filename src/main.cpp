@@ -41,6 +41,8 @@ int main(int argc, char* argv[]) {
         if (editor) {
             if (vizero_editor_open_buffer(editor, argv[i]) == 0) {
                 printf("Successfully opened: %s\n", argv[i]);
+                /* Hide welcome screen when files are loaded */
+                vizero_application_on_user_input(app);
             } else {
                 printf("Warning: Could not open file: %s\n", argv[i]);
             }

@@ -144,6 +144,40 @@ int test_cursor_operations(void) {
     return 1;
 }
 
+/* Test line deletion commands */
+int test_line_deletion_commands(void) {
+    vizero_editor_state_t* state = vizero_editor_state_create();
+    TEST_ASSERT_NOT_NULL(state, "Editor state should be created");
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    TEST_ASSERT_NOT_NULL(buffer, "Should have a current buffer");
+    
+    /* Add some test lines */
+    vizero_buffer_insert_text(buffer, 0, 0, "Line 1\n");
+    vizero_buffer_insert_text(buffer, 1, 0, "Line 2\n");
+    vizero_buffer_insert_text(buffer, 2, 0, "Line 3\n");
+    vizero_buffer_insert_text(buffer, 3, 0, "Line 4\n");
+    vizero_buffer_insert_text(buffer, 4, 0, "Line 5\n");
+    
+    /* Verify we have 5 lines */
+    TEST_ASSERT_EQUAL(5, vizero_buffer_get_line_count(buffer), "Should have 5 lines initially");
+    
+    /* Test single line deletion command ":2d" */
+    printf("Testing single line deletion command: 2d\n");
+    int result = vizero_editor_execute_command(state, "2d");
+    TEST_ASSERT_EQUAL(0, result, "Command should execute successfully");
+    TEST_ASSERT_EQUAL(4, vizero_buffer_get_line_count(buffer), "Should have 4 lines after deletion");
+    
+    /* Test range deletion command ":2,3d" */
+    printf("Testing range deletion command: 2,3d\n");
+    result = vizero_editor_execute_command(state, "2,3d");
+    TEST_ASSERT_EQUAL(0, result, "Range command should execute successfully");
+    TEST_ASSERT_EQUAL(2, vizero_buffer_get_line_count(buffer), "Should have 2 lines after range deletion");
+    
+    vizero_editor_state_destroy(state);
+    return 1;
+}
+
 /* Main test runner */
 int main(void) {
     test_case_t tests[] = {
@@ -151,7 +185,8 @@ int main(void) {
         {"editor_mode_switching", test_editor_mode_switching},
         {"command_buffer", test_command_buffer},
         {"multi_buffer", test_multi_buffer},
-        {"cursor_operations", test_cursor_operations}
+        {"cursor_operations", test_cursor_operations},
+        {"line_deletion_commands", test_line_deletion_commands}
     };
     
     size_t test_count = sizeof(tests) / sizeof(tests[0]);

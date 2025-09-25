@@ -2,6 +2,7 @@
 #include "vizero/renderer.h"
 #include "vizero/window.h"
 #include <GL/glew.h>
+#include <SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,10 @@ static const char* fragment_shader_source =
 "        }\n"
 "        \n"
 "        FragColour = vec4(uColour.rgb, uColour.a * alpha);\n"
+"    } else if (uUseFontTexture == 1 && uChar < 0) {\n"
+"        // Direct texture rendering (images)\n"
+"        vec4 tex_sample = texture(uFontTexture, TexCoord);\n"
+"        FragColour = tex_sample * uColour;\n"
 "    } else {\n"
 "        // Non-font rendering (rectangles, lines)\n"
 "        FragColour = uColour;\n"
@@ -471,4 +476,112 @@ vizero_font_t* vizero_font_load(const char* path, int size) {
 
 void vizero_font_destroy(vizero_font_t* font) {
     free(font);
+}
+
+/* Image structure is now defined in header */
+
+/* Image loading and rendering */
+vizero_image_t* vizero_image_load(const char* path) {
+    if (!path) return NULL;
+    
+    /* Initialize SDL_image if not already done */
+    static int img_initialized = 0;
+    if (!img_initialized) {
+        if (IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG) == 0) {
+            fprintf(stderr, "Failed to initialize SDL_image: %s\n", IMG_GetError());
+            return NULL;
+        }
+        img_initialized = 1;
+    }
+    
+    /* Load image surface */
+    SDL_Surface* surface = IMG_Load(path);
+    if (!surface) {
+        fprintf(stderr, "Failed to load image %s: %s\n", path, IMG_GetError());
+        return NULL;
+    }
+    
+    /* Create image structure */
+    vizero_image_t* image = (vizero_image_t*)calloc(1, sizeof(vizero_image_t));
+    if (!image) {
+        SDL_FreeSurface(surface);
+        return NULL;
+    }
+    
+    image->width = surface->w;
+    image->height = surface->h;
+    
+    /* Create OpenGL texture */
+    GLuint texture;
+    glGenTextures(1, &texture);
+    image->texture = texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    
+    /* Set texture parameters */
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    /* Convert surface to a consistent format (RGBA) */
+    SDL_Surface* converted_surface = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
+    if (!converted_surface) {
+        fprintf(stderr, "Failed to convert surface format: %s\n", SDL_GetError());
+        SDL_FreeSurface(surface);
+        free(image);
+        return NULL;
+    }
+    
+    /* Upload texture data */
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, converted_surface->w, converted_surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, converted_surface->pixels);
+    
+    SDL_FreeSurface(converted_surface);
+    
+    SDL_FreeSurface(surface);
+    return image;
+}
+
+void vizero_image_destroy(vizero_image_t* image) {
+    if (image) {
+        if (image->texture) {
+            GLuint texture = image->texture;
+            glDeleteTextures(1, &texture);
+        }
+        free(image);
+    }
+}
+
+void vizero_renderer_draw_image(vizero_renderer_t* renderer, vizero_image_t* image, float x, float y, float width, float height) {
+    if (!renderer || !image) return;
+    
+    /* Use the existing shader but set it up for direct texture rendering */
+    glUseProgram(renderer->shader_program);
+    
+    /* Set uniforms */
+    glUniformMatrix4fv(renderer->mvp_uniform, 1, GL_FALSE, renderer->projection);
+    glUniform4f(renderer->colour_uniform, 1.0f, 1.0f, 1.0f, 1.0f); /* White tint */
+    glUniform1i(renderer->use_font_texture_uniform, 1); /* Use texture */
+    glUniform1i(renderer->char_uniform, -1); /* Set to -1 to bypass font atlas logic */
+    
+    /* Bind image texture */
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)image->texture);
+    glUniform1i(renderer->font_texture_uniform, 0);
+    
+    /* Set up vertices for a textured quad - flip V coordinates to fix upside down issue */
+    float vertices[] = {
+        /* Position (x,y)  Texture (u,v) */
+        x,         y,          0.0f, 0.0f,  /* Bottom left */
+        x + width, y,          1.0f, 0.0f,  /* Bottom right */
+        x,         y + height, 0.0f, 1.0f,  /* Top left */
+        x + width, y + height, 1.0f, 1.0f   /* Top right */
+    };
+    
+    /* Upload vertices */
+    glBindVertexArray(renderer->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    
+    /* Draw quad */
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }

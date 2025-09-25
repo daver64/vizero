@@ -86,17 +86,21 @@ if(WIN32)
             set(SDL2_LIBRARIES 
                 ${SDL2_ROOT_DIR}/lib/x64/SDL2.lib
                 ${SDL2_ROOT_DIR}/lib/x64/SDL2main.lib
+                ${SDL2_ROOT_DIR}/lib/x64/SDL2_image.lib
             )
             set(SDL2_DLLS
                 ${SDL2_ROOT_DIR}/lib/x64/SDL2.dll
+                ${SDL2_ROOT_DIR}/lib/x64/SDL2_image.dll
             )
         else()
             set(SDL2_LIBRARIES 
                 ${SDL2_ROOT_DIR}/lib/x86/SDL2.lib
                 ${SDL2_ROOT_DIR}/lib/x86/SDL2main.lib
+                ${SDL2_ROOT_DIR}/lib/x86/SDL2_image.lib
             )
             set(SDL2_DLLS
                 ${SDL2_ROOT_DIR}/lib/x86/SDL2.dll
+                ${SDL2_ROOT_DIR}/lib/x86/SDL2_image.lib
             )
         endif()
     else()

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -102,6 +103,9 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
         state->popup_content = NULL;
         state->popup_start_time = 0;
         state->popup_duration_ms = 5000; /* 5 seconds default */
+        state->popup_scroll_offset = 0;
+        state->popup_is_buffer_list = 0;
+        state->popup_selected_buffer = 0;
         
         /* Initialize help system */
         state->help_mode_active = 0;
@@ -386,6 +390,9 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
     if (state->buffer_count == 1 && state->buffers[0]) {
         const char* first_filename = vizero_buffer_get_filename(state->buffers[0]);
         const char* first_text = vizero_buffer_get_text(state->buffers[0]);
+        size_t text_len = first_text ? strlen(first_text) : 0;
+        printf("[DEBUG] Buffer replacement check: filename='%s', text_len=%zu\n", 
+               first_filename ? first_filename : "(null)", text_len);
         if ((!first_filename || strlen(first_filename) == 0) && (!first_text || strlen(first_text) == 0)) {
             /* Store old buffer/cursor pointers before destroying them */
             vizero_buffer_t* old_buffer = state->buffers[0];
@@ -411,21 +418,6 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
             }
             return 0;
         }
-    }
-
-    // Always add the buffer/cursor to the global list if not present
-    int found = 0;
-    for (size_t i = 0; i < state->buffer_count; ++i) {
-        if (state->buffers[i] == buffer) {
-            found = 1;
-            break;
-        }
-    }
-    if (!found && state->buffer_count < MAX_BUFFERS) {
-        state->buffers[state->buffer_count] = buffer;
-        state->cursors[state->buffer_count] = cursor;
-        state->current_buffer_index = state->buffer_count;
-        state->buffer_count++;
     }
 
     /* Notify plugins of buffer open (for syntax highlighting, etc.) */
@@ -515,26 +507,79 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     }
                 }
                 
-                // If no other windows use this buffer index, destroy the old buffer/cursor
+                // If no other windows use this buffer index, check if we can replace it
                 if (refcount == 0 && focused_buffer_index < state->buffer_count) {
-                    if (state->buffers[focused_buffer_index] && state->buffers[focused_buffer_index] != buffer) {
-                        /* Notify plugins of buffer close */
-                        if (state->plugin_manager) {
-                            vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[focused_buffer_index]);
-                        }
-                        vizero_buffer_destroy(state->buffers[focused_buffer_index]);
-                    }
-                    if (state->cursors[focused_buffer_index] && state->cursors[focused_buffer_index] != cursor) {
-                        vizero_cursor_destroy(state->cursors[focused_buffer_index]);
-                    }
+                    // Only replace buffer if it's empty and unnamed (same check as earlier)
+                    vizero_buffer_t* existing_buffer = state->buffers[focused_buffer_index];
+                    const char* existing_filename = existing_buffer ? vizero_buffer_get_filename(existing_buffer) : NULL;
+                    const char* existing_text = existing_buffer ? vizero_buffer_get_text(existing_buffer) : NULL;
+                    int can_replace = (!existing_filename || strlen(existing_filename) == 0) && 
+                                     (!existing_text || strlen(existing_text) == 0);
                     
-                    // Replace the buffer/cursor at this index
-                    state->buffers[focused_buffer_index] = buffer;
-                    state->cursors[focused_buffer_index] = cursor;
-                    state->current_buffer_index = focused_buffer_index;
+                    printf("[DEBUG] Window management: can_replace=%d for buffer at index %zu\n", can_replace, focused_buffer_index);
+                    
+                    if (can_replace) {
+                        printf("[DEBUG] Window management: replacing buffer at index %zu\n", focused_buffer_index);
+                        if (state->buffers[focused_buffer_index] && state->buffers[focused_buffer_index] != buffer) {
+                            /* Notify plugins of buffer close */
+                            if (state->plugin_manager) {
+                                vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[focused_buffer_index]);
+                            }
+                            vizero_buffer_destroy(state->buffers[focused_buffer_index]);
+                        }
+                        if (state->cursors[focused_buffer_index] && state->cursors[focused_buffer_index] != cursor) {
+                            vizero_cursor_destroy(state->cursors[focused_buffer_index]);
+                        }
+                        
+                        // Replace the buffer/cursor at this index
+                        state->buffers[focused_buffer_index] = buffer;
+                        state->cursors[focused_buffer_index] = cursor;
+                        state->current_buffer_index = focused_buffer_index;
+                    } else {
+                        // Cannot replace, add to new slot
+                        printf("[DEBUG] Window management: cannot replace, adding to new slot\n");
+                        // Check if buffer already exists first
+                        int buffer_exists = 0;
+                        size_t existing_index = 0;
+                        for (size_t i = 0; i < state->buffer_count; ++i) {
+                            if (state->buffers[i] == buffer) {
+                                buffer_exists = 1;
+                                existing_index = i;
+                                break;
+                            }
+                        }
+                        
+                        if (buffer_exists) {
+                            printf("[DEBUG] Buffer already exists at index %zu, switching to it\n", existing_index);
+                            focused_window->buffer_index = existing_index;
+                            state->current_buffer_index = existing_index;
+                        } else if (state->buffer_count < MAX_BUFFERS) {
+                            state->buffers[state->buffer_count] = buffer;
+                            state->cursors[state->buffer_count] = cursor;
+                            focused_window->buffer_index = state->buffer_count;
+                            state->current_buffer_index = state->buffer_count;
+                            state->buffer_count++;
+                        }
+                    }
                 } else {
                     // Other windows use this index, so add buffer to a new slot
-                    if (state->buffer_count < MAX_BUFFERS) {
+                    printf("[DEBUG] Window management: adding buffer to new slot (other windows exist)\n");
+                    // Check if buffer already exists first
+                    int buffer_exists = 0;
+                    size_t existing_index = 0;
+                    for (size_t i = 0; i < state->buffer_count; ++i) {
+                        if (state->buffers[i] == buffer) {
+                            buffer_exists = 1;
+                            existing_index = i;
+                            break;
+                        }
+                    }
+                    
+                    if (buffer_exists) {
+                        printf("[DEBUG] Buffer already exists at index %zu, switching to it\n", existing_index);
+                        focused_window->buffer_index = existing_index;
+                        state->current_buffer_index = existing_index;
+                    } else if (state->buffer_count < MAX_BUFFERS) {
                         state->buffers[state->buffer_count] = buffer;
                         state->cursors[state->buffer_count] = cursor;
                         focused_window->buffer_index = state->buffer_count;
@@ -859,12 +904,14 @@ void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content,
     state->popup_start_time = SDL_GetTicks();
     state->popup_duration_ms = duration_ms;
     state->popup_scroll_offset = 0;  /* Reset scroll to top */
+    state->popup_is_buffer_list = 0;  /* This is a regular popup, not buffer selector */
 }
 
 void vizero_editor_hide_popup(vizero_editor_state_t* state) {
     if (!state) return;
     
     state->popup_visible = 0;
+    state->popup_is_buffer_list = 0;
     if (state->popup_content) {
         free(state->popup_content);
         state->popup_content = NULL;
@@ -926,6 +973,116 @@ void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines) {
 int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state) {
     if (!state || !vizero_editor_is_popup_visible(state)) return 0;
     return state->popup_scroll_offset;
+}
+
+void vizero_editor_show_buffer_selector(vizero_editor_state_t* state) {
+    if (!state) return;
+    
+    /* Set up buffer selector state */
+    state->popup_is_buffer_list = 1;
+    state->popup_selected_buffer = state->current_buffer_index;
+    state->popup_scroll_offset = 0;
+    
+    /* Generate buffer list content */
+    vizero_editor_update_buffer_selector_content(state);
+}
+
+void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state) {
+    if (!state) return;
+    
+    char popup[2048];
+    sprintf(popup, "Buffer List (Total: %zu) - Use arrows to select, Enter to switch\n\n", state->buffer_count);
+    
+    for (size_t i = 0; i < state->buffer_count; i++) {
+        const char* filename = vizero_buffer_get_filename(state->buffers[i]);
+        const char* text = vizero_buffer_get_text(state->buffers[i]);
+        size_t text_len = text ? strlen(text) : 0;
+        
+        char line[256];
+        char indicator[8] = "   ";
+        
+        if (i == state->popup_selected_buffer) {
+            strcpy(indicator, " > ");  /* Selected buffer */
+        } else if (i == state->current_buffer_index) {
+            strcpy(indicator, " * ");  /* Current buffer */
+        }
+        
+        sprintf(line, "%s%2zu: %-30s %6zu chars%s\n",
+                indicator,
+                i + 1,
+                filename ? filename : "[No Name]",
+                text_len,
+                (i == state->current_buffer_index) ? "  [CURRENT]" : "");
+        strcat(popup, line);
+    }
+    
+    strcat(popup, "\nPress ENTER to switch to selected buffer, ESC to cancel");
+    
+    /* Clean up existing popup content */
+    if (state->popup_content) {
+        free(state->popup_content);
+    }
+    
+    /* Set new popup */
+    state->popup_content = strdup(popup);
+    state->popup_visible = 1;
+    state->popup_start_time = SDL_GetTicks();
+    state->popup_duration_ms = 0; /* No timeout */
+}
+
+int vizero_editor_handle_buffer_selector_key(vizero_editor_state_t* state, int key) {
+    if (!state || !state->popup_is_buffer_list) return 0;
+    
+    switch (key) {
+        case SDLK_UP:
+            if (state->popup_selected_buffer > 0) {
+                state->popup_selected_buffer--;
+                vizero_editor_update_buffer_selector_content(state);
+            }
+            return 1; /* Consumed */
+            
+        case SDLK_DOWN:
+            if (state->popup_selected_buffer < state->buffer_count - 1) {
+                state->popup_selected_buffer++;
+                vizero_editor_update_buffer_selector_content(state);
+            }
+            return 1; /* Consumed */
+            
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            {
+                /* Switch to selected buffer */
+                state->current_buffer_index = state->popup_selected_buffer;
+                
+                /* Update focused window's buffer index */
+                if (state->window_manager) {
+                    vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+                    if (focused_window) {
+                        vizero_editor_window_set_buffer_index(focused_window, state->popup_selected_buffer);
+                    }
+                }
+                
+                /* Show status message */
+                char msg[256];
+                vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+                const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
+                sprintf(msg, "Switched to buffer %zu: %s", state->popup_selected_buffer + 1, filename ? filename : "[No Name]");
+                vizero_editor_set_status_message(state, msg);
+                
+                /* Hide popup */
+                vizero_editor_hide_popup(state);
+                state->popup_is_buffer_list = 0;
+                return 1; /* Consumed */
+            }
+            
+        case SDLK_ESCAPE:
+            /* Cancel selection */
+            vizero_editor_hide_popup(state);
+            state->popup_is_buffer_list = 0;
+            return 1; /* Consumed */
+    }
+    
+    return 0; /* Not consumed */
 }
 
 /* Window management functions */
@@ -1304,18 +1461,24 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
     char* cmd_copy = strdup(command);
     char* cmd_part = NULL;
     
-    if (strstr(cmd_copy, "d")) {
-        cmd_part = strstr(cmd_copy, "d");
-    } else if (strstr(cmd_copy, "y")) {
-        cmd_part = strstr(cmd_copy, "y");
-    } else if (strstr(cmd_copy, "s/")) {
-        cmd_part = strstr(cmd_copy, "s/");
+    /* Find the command at the end of the string */
+    size_t len = strlen(cmd_copy);
+    if (len > 0) {
+        char last_char = cmd_copy[len - 1];
+        if (last_char == 'd' || last_char == 'y') {
+            cmd_part = &cmd_copy[len - 1];
+        } else if (strstr(cmd_copy, "s/")) {
+            cmd_part = strstr(cmd_copy, "s/");
+        }
     }
     
     if (!cmd_part) {
         free(cmd_copy);
         return -1;
     }
+    
+    /* Save the command character before nullifying */
+    char command_char = *cmd_part;
     
     /* Extract range part */
     *cmd_part = '\0';
@@ -1336,7 +1499,24 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
     }
     
     /* Execute the command */
-    if (*cmd_part == 'd') {
+    if (command_char == 'd') {
+        /* Check if buffer is read-only */
+        if (vizero_buffer_is_readonly(buffer)) {
+            vizero_editor_set_status_message(state, "Buffer is read-only");
+            free(cmd_copy);
+            return -1;
+        }
+        
+        /* Check if lines exist */
+        size_t buffer_line_count = vizero_buffer_get_line_count(buffer);
+        if (end_line > buffer_line_count) {
+            char msg[128];
+            sprintf(msg, "Line %zu out of range (buffer has %zu lines)", end_line, buffer_line_count);
+            vizero_editor_set_status_message(state, msg);
+            free(cmd_copy);
+            return -1;
+        }
+        
         /* Delete lines in range */
         char lines_text[8192] = "";
         for (size_t line = start_line; line <= end_line; line++) {
@@ -1367,7 +1547,7 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
         sprintf(msg, "%zu lines deleted", end_line - start_line + 1);
         vizero_editor_set_status_message(state, msg);
         
-    } else if (*cmd_part == 'y') {
+    } else if (command_char == 'y') {
         /* Yank (copy) lines in range */
         char lines_text[8192] = "";
         for (size_t line = start_line; line <= end_line; line++) {
@@ -2356,6 +2536,8 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             sprintf(msg, "Buffer: %s", filename ? filename : "[No Name]");
             vizero_editor_set_status_message(state, msg);
             return 0;
+        } else {
+            vizero_editor_set_status_message(state, "No next buffer");
         }
         
     } else if (strcmp(command, "bp") == 0 || strcmp(command, "bprev") == 0) {
@@ -2375,21 +2557,41 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             sprintf(msg, "Buffer: %s", filename ? filename : "[No Name]");
             vizero_editor_set_status_message(state, msg);
             return 0;
+        } else {
+            vizero_editor_set_status_message(state, "No previous buffer");
         }
         
-    } else if (strcmp(command, "ls") == 0 || strcmp(command, "buffers") == 0) {
-        /* List buffers */
-        char msg[512] = "Buffers: ";
-        for (size_t i = 0; i < state->buffer_count; i++) {
-            const char* filename = vizero_buffer_get_filename(state->buffers[i]);
-            char buffer_info[64];
-            sprintf(buffer_info, "%zu:%s%s ", 
-                    i + 1, 
-                    filename ? filename : "[No Name]",
-                    (i == state->current_buffer_index) ? "*" : "");
-            strncat(msg, buffer_info, sizeof(msg) - strlen(msg) - 1);
+    } else if (command[0] == 'b' && isdigit(command[1])) {
+        /* Buffer number command (:b1, :b2, etc.) */
+        int buffer_num = atoi(command + 1);
+        if (buffer_num >= 1 && buffer_num <= (int)state->buffer_count) {
+            size_t buffer_index = buffer_num - 1;
+            state->current_buffer_index = buffer_index;
+            
+            /* Update focused window's buffer index */
+            if (state->window_manager) {
+                vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (focused_window) {
+                    vizero_editor_window_set_buffer_index(focused_window, buffer_index);
+                }
+            }
+            
+            char msg[256];
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
+            sprintf(msg, "Buffer %d: %s", buffer_num, filename ? filename : "[No Name]");
+            vizero_editor_set_status_message(state, msg);
+            return 0;
+        } else {
+            char msg[256];
+            sprintf(msg, "No buffer %d (valid range: 1-%zu)", buffer_num, state->buffer_count);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
         }
-        vizero_editor_set_status_message(state, msg);
+        
+    } else if (strcmp(command, "buffers") == 0) {
+        /* Show interactive buffer selection popup */
+        vizero_editor_show_buffer_selector(state);
         return 0;
         
     } else if (strcmp(command, "ro") == 0 || strcmp(command, "readonly") == 0) {
@@ -3384,6 +3586,17 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Check for line range operations like 1,5d or .,+5d */
         if (strchr(command, ',') && (strstr(command, "d") || strstr(command, "y") || strstr(command, "s/"))) {
             return vizero_execute_line_range_command(state, command);
+        }
+        
+        /* Check for single line operations like 5d, 10y */
+        char* single_endptr;
+        long single_line_num = strtol(command, &single_endptr, 10);
+        if (single_line_num > 0 && single_endptr && (*single_endptr == 'd' || *single_endptr == 'y') && *(single_endptr + 1) == '\0') {
+            /* Convert single line to range format and execute */
+            char range_cmd[64];
+            sprintf(range_cmd, "%ld,%ld%c", single_line_num, single_line_num, *single_endptr);
+            
+            return vizero_execute_line_range_command(state, range_cmd);
         }
         
         /* Check for global commands like g/pattern/d */

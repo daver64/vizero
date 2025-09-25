@@ -82,13 +82,23 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             break; /* Consume the ESC key */
                         }
                         
-                        /* Check for UP/DOWN keys to scroll popup */
+                        /* Check for popup interactions */
                         if (vizero_editor_is_popup_visible(editor)) {
+                            /* Try buffer selector keys first */
+                            if (vizero_editor_handle_buffer_selector_key(editor, event.key.keysym.sym)) {
+                                break; /* Buffer selector consumed the key */
+                            }
+                            
+                            /* Fall back to regular popup scrolling */
                             if (event.key.keysym.sym == SDLK_UP) {
                                 vizero_editor_scroll_popup(editor, -1);
                                 break; /* Consume the key */
                             } else if (event.key.keysym.sym == SDLK_DOWN) {
                                 vizero_editor_scroll_popup(editor, 1);
+                                break; /* Consume the key */
+                            } else if (event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_KP_ENTER) {
+                                /* For non-buffer-selector popups, Enter just closes them */
+                                vizero_editor_hide_popup(editor);
                                 break; /* Consume the key */
                             }
                         }
@@ -580,8 +590,9 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         /* In command mode, append text to command buffer */
                         const char* text = event.text.text;
                         
-                        /* Skip the : character if we just entered command mode */
-                        if (input->mode_changed_this_frame && strlen(text) == 1 && text[0] == ':') {
+                        /* Skip the mode-entering character if we just entered command mode */
+                        if (input->mode_changed_this_frame && strlen(text) == 1 && 
+                            (text[0] == ':' || text[0] == '/' || text[0] == '?')) {
                             break;
                         }
                         
@@ -601,7 +612,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             /* Use persistent mode manager from editor state */
                             vizero_mode_manager_t* mode_manager = vizero_editor_get_mode_manager(editor);
                             if (mode_manager) {
-                                vizero_mode_manager_handle_key(mode_manager, key, 0);
+                                int handled = vizero_mode_manager_handle_key(mode_manager, key, 0);
+                                if (handled && (c == ':' || c == '/' || c == '?')) {
+                                    /* If mode manager handled a mode-changing key, set flag */
+                                    input->mode_changed_this_frame = 1;
+                                }
                             }
                         }
                     }

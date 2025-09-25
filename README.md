@@ -152,6 +152,8 @@ N              # Previous match
 
 #### Advanced Line Operations
 ```
+:5d            # Delete line 5
+:10y           # Yank (copy) line 10
 :1,5d          # Delete lines 1-5
 :1,5y          # Yank (copy) lines 1-5
 :1,5s/old/new/g# Substitute in line range

@@ -48,6 +48,17 @@ void vizero_renderer_draw_line(vizero_renderer_t* renderer, float x1, float y1, 
 vizero_font_t* vizero_font_load(const char* path, int size);
 void vizero_font_destroy(vizero_font_t* font);
 
+/* Image management */
+typedef struct vizero_image_t {
+    unsigned int texture; /* GLuint but avoiding GL header dependency */
+    int width;
+    int height;
+} vizero_image_t;
+
+vizero_image_t* vizero_image_load(const char* path);
+void vizero_image_destroy(vizero_image_t* image);
+void vizero_renderer_draw_image(vizero_renderer_t* renderer, vizero_image_t* image, float x, float y, float width, float height);
+
 #ifdef __cplusplus
 }
 #endif

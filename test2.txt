@@ -1,4 +1,0 @@
-Test file 2 content
-This is the second test file
-Line 3 of test2
-End of file 2

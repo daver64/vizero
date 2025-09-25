@@ -41,6 +41,9 @@ struct vizero_application_t {
     /* Welcome message state */
     int show_welcome;
     
+    /* Logo display */
+    vizero_image_t* logo_image;
+    
     /* Temporary settings during initialization */
     vizero_settings_t* settings;
 };
@@ -62,6 +65,7 @@ vizero_application_t* vizero_application_create(const vizero_app_config_t* confi
     app->scroll_x = 0;
     app->scroll_y = 0;
     app->show_welcome = 1; /* Show welcome message initially */
+    app->logo_image = NULL;
     
     return app;
 }
@@ -69,6 +73,11 @@ vizero_application_t* vizero_application_create(const vizero_app_config_t* confi
 void vizero_application_destroy(vizero_application_t* app) {
     if (!app) {
         return;
+    }
+    
+    /* Clean up logo image */
+    if (app->logo_image) {
+        vizero_image_destroy(app->logo_image);
     }
     
     free(app);
@@ -212,6 +221,12 @@ int vizero_application_initialize(vizero_application_t* app) {
     
     /* Set up editor-theme manager connection */
     vizero_editor_set_theme_manager(app->editor, (void*)app->theme_manager);
+    
+    /* Load logo image */
+    app->logo_image = vizero_image_load("images/logo.bmp");
+    if (!app->logo_image) {
+        printf("Warning: Could not load logo image from images/logo.bmp\n");
+    }
     
     /* Load default theme from settings or apply "Default" theme */
     const char* saved_theme = vizero_settings_get_string(app->settings, "theme");
@@ -502,6 +517,28 @@ int vizero_application_run(vizero_application_t* app) {
         } else {
             /* Fallback to legacy rendering */
             render_single_window_fallback(app, window_width, window_height);
+        }
+        
+        /* Render logo if showing welcome and no files loaded */
+        if (app->show_welcome && app->logo_image) {
+            /* Check if any files are loaded */
+            int has_files = 0;
+            if (app->editor) {
+                has_files = (vizero_editor_get_buffer_count(app->editor) > 1 || 
+                           vizero_buffer_get_line_count(vizero_editor_get_current_buffer(app->editor)) > 1 ||
+                           vizero_buffer_is_modified(vizero_editor_get_current_buffer(app->editor)));
+            }
+            
+            if (!has_files) {
+                /* Position logo in upper right corner at 128x128 */
+                float logo_width = 128.0f;
+                float logo_height = 128.0f;
+                float logo_x = (float)window_width - logo_width - 20.0f;  /* 20px margin from right edge */
+                float logo_y = 20.0f;  /* 20px margin from top edge */
+                
+                /* Render logo */
+                vizero_renderer_draw_image(app->renderer, app->logo_image, logo_x, logo_y, logo_width, logo_height);
+            }
         }
         
         /* Update and render status bar */

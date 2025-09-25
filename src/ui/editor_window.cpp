@@ -651,14 +651,17 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             }
         }
         
-        /* Check if we're in command mode for special cursor styling */
+        /* Check mode for cursor styling */
         vizero_editor_mode_t current_mode = vizero_editor_get_mode(state);
         if (current_mode == VIZERO_MODE_COMMAND) {
             /* Yellow underline cursor for command mode */
             vizero_colour_t yellow_colour = {1.0f, 1.0f, 0.0f, 0.8f}; // Solid yellow
             vizero_renderer_fill_rect(renderer, cursor_x, cursor_y + 14.0f, 8.0f, 2.0f, yellow_colour);
+        } else if (current_mode == VIZERO_MODE_INSERT) {
+            /* Underline cursor for insert mode */
+            vizero_renderer_fill_rect(renderer, cursor_x, cursor_y + 14.0f, 8.0f, 2.0f, cursor_colour);
         } else {
-            /* Normal block cursor for other modes */
+            /* Normal block cursor for normal/visual modes */
             vizero_renderer_fill_rect(renderer, cursor_x, cursor_y, 8.0f, 16.0f, cursor_colour);
         }
     }

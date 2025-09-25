@@ -162,6 +162,11 @@ uint32_t vizero_editor_get_popup_duration(vizero_editor_state_t* state);
 void vizero_editor_scroll_popup(vizero_editor_state_t* state, int lines);
 int vizero_editor_get_popup_scroll_offset(vizero_editor_state_t* state);
 
+/* Interactive buffer selector */
+void vizero_editor_show_buffer_selector(vizero_editor_state_t* state);
+void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state);
+int vizero_editor_handle_buffer_selector_key(vizero_editor_state_t* state, int key);
+
 /* Help system */
 int vizero_editor_enter_help_mode(vizero_editor_state_t* state);
 int vizero_editor_exit_help_mode(vizero_editor_state_t* state);

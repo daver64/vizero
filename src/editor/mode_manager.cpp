@@ -48,8 +48,10 @@ void vizero_mode_manager_enter_normal_mode(vizero_mode_manager_t* manager) {
     vizero_editor_set_mode(manager->state, VIZERO_MODE_NORMAL);
     
     /* Clear command mode status display when returning to normal mode */
+    /* Only clear if it's actually a command prompt, not a result message */
     const char* current_status = vizero_editor_get_status_message(manager->state);
-    if (current_status && (current_status[0] == ':' || strcmp(current_status, ":") == 0)) {
+    if (current_status && strcmp(current_status, ":") == 0) {
+        /* Only clear bare colon prompt, not command results */
         vizero_editor_set_status_message(manager->state, NULL);
     }
 }
@@ -147,6 +149,32 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
         case ':': /* Command mode */
             manager->pending_key = 0; /* Clear pending key */
             vizero_mode_manager_enter_command_mode(manager);
+            return 1;
+            
+        case '/': /* Search forward */
+            manager->pending_key = 0; /* Clear pending key */
+            manager->current_mode = VIZERO_MODE_COMMAND;
+            manager->command_length = 0;
+            manager->command_buffer[0] = '/';
+            manager->command_buffer[1] = '\0';
+            manager->command_length = 1;
+            
+            /* Update editor state mode */
+            vizero_editor_set_mode(manager->state, VIZERO_MODE_COMMAND);
+            vizero_editor_set_status_message(manager->state, "/");
+            return 1;
+            
+        case '?': /* Search backward */
+            manager->pending_key = 0; /* Clear pending key */
+            manager->current_mode = VIZERO_MODE_COMMAND;
+            manager->command_length = 0;
+            manager->command_buffer[0] = '?';
+            manager->command_buffer[1] = '\0';
+            manager->command_length = 1;
+            
+            /* Update editor state mode */
+            vizero_editor_set_mode(manager->state, VIZERO_MODE_COMMAND);
+            vizero_editor_set_status_message(manager->state, "?");
             return 1;
             
         /* Basic movement keys */
@@ -270,7 +298,14 @@ static int handle_command_mode_key(vizero_mode_manager_t* manager, uint32_t key,
             if (manager->command_length > 0) {
                 manager->command_buffer[manager->command_length] = '\0';
                 /* Execute the command - this would be handled by the main editor */
-                vizero_editor_execute_command(manager->state, manager->command_buffer);
+                /* Always ensure we return to normal mode, even if command fails */
+                if (manager->state) {
+                    vizero_editor_execute_command(manager->state, manager->command_buffer);
+                }
+                
+                /* Clear command buffer before mode transition */
+                manager->command_length = 0;
+                manager->command_buffer[0] = '\0';
             }
             vizero_mode_manager_enter_normal_mode(manager);
             return 1;
@@ -282,7 +317,13 @@ static int handle_command_mode_key(vizero_mode_manager_t* manager, uint32_t key,
                 
                 /* Update status message */
                 char status[258];
-                snprintf(status, sizeof(status), ":%s", manager->command_buffer);
+                if (manager->command_buffer[0] == '/' || manager->command_buffer[0] == '?') {
+                    /* For search commands, don't add colon prefix */
+                    snprintf(status, sizeof(status), "%s", manager->command_buffer);
+                } else {
+                    /* For regular commands, add colon prefix */
+                    snprintf(status, sizeof(status), ":%s", manager->command_buffer);
+                }
                 vizero_editor_set_status_message(manager->state, status);
             }
             return 1;
@@ -296,7 +337,13 @@ static int handle_command_mode_key(vizero_mode_manager_t* manager, uint32_t key,
                 
                 /* Update status message */
                 char status[258];
-                snprintf(status, sizeof(status), ":%s", manager->command_buffer);
+                if (manager->command_buffer[0] == '/' || manager->command_buffer[0] == '?') {
+                    /* For search commands, don't add colon prefix */
+                    snprintf(status, sizeof(status), "%s", manager->command_buffer);
+                } else {
+                    /* For regular commands, add colon prefix */
+                    snprintf(status, sizeof(status), ":%s", manager->command_buffer);
+                }
                 vizero_editor_set_status_message(manager->state, status);
                 return 1;
             }
