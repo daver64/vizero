@@ -2,6 +2,7 @@
 #include <string.h>
 #include "vizero/editor_state.h"
 #include "vizero/renderer.h"
+#include "vizero/search.h"
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -599,8 +600,49 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                         break;
                     }
                 }
+                
+                /* Check for search match highlighting */
+                int is_search_match = 0;
+                int is_current_match = 0;
+                if (vizero_search_has_results(state)) {
+                    const vizero_search_match_t* matches = vizero_search_get_all_matches(state);
+                    int match_count = vizero_search_get_match_count(state);
+                    int current_match_index = vizero_search_get_current_match_index(state);
+                    
+                    for (int m = 0; m < match_count; m++) {
+                        if (matches[m].line == (int)i && 
+                            logical_col >= (size_t)matches[m].column && 
+                            logical_col < (size_t)(matches[m].column + matches[m].length)) {
+                            is_search_match = 1;
+                            if (m == current_match_index) {
+                                is_current_match = 1;
+                            }
+                            break;
+                        }
+                    }
+                }
+                
                 char ch[2] = {visual[col], '\0'};
                 vizero_text_info_t info = { (float)(text_x + (int)col * 8), (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), colour, NULL };
+                
+                /* Draw search match background highlighting */
+                if (is_search_match) {
+                    vizero_colour_t bg_colour;
+                    if (is_current_match) {
+                        /* Current match: orange background */
+                        bg_colour = {1.0f, 0.5f, 0.0f, 0.7f}; /* Orange with transparency */
+                    } else {
+                        /* Other matches: yellow background */
+                        bg_colour = {1.0f, 1.0f, 0.0f, 0.4f}; /* Yellow with transparency */
+                    }
+                    
+                    /* Draw background rectangle */
+                    vizero_renderer_draw_rect(renderer, 
+                        (float)(text_x + (int)col * 8), 
+                        (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16),
+                        8.0f, 16.0f, bg_colour);
+                }
+                
                 vizero_renderer_draw_text(renderer, ch, &info);
             }
             // No free needed, stack buffer
