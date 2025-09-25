@@ -209,6 +209,17 @@ N              # Previous match
 :colourscheme <theme>   # Switch colour theme (Default/Monokai/Solarized Dark)
 ```
 
+#### Compiler Configuration
+```
+:set c_compiler gcc|msvc        # Set C compiler
+:set cpp_compiler g++|msvc      # Set C++ compiler  
+:set assembler nasm|fasm        # Set assembler
+:set c_compiler_path <path>     # Set C compiler path
+:set cpp_compiler_path <path>   # Set C++ compiler path
+:set assembler_path <path>      # Set assembler path
+:show c_compiler                # Show current C compiler
+```
+
 #### Session Management
 ```
 :mksession <name>       # Create/save session
@@ -323,15 +334,26 @@ static int highlight_syntax(/* ... */) {
 | `:new` | New empty buffer |
 | `:split/:vsplit` | Split window |
 | `:close` | Close window |
+| `:only` | Close all except current window |
+| `:enew` | Edit new unnamed buffer |
 | `:[N]` | Go to line N |
 | `:cc/:cpp/:asm` | Compile files |
 | `:run` | Execute program |
+| `:make` | Run make command |
+| `:!cmd` | Execute shell command |
+| `:r !cmd` | Read command output |
 | `:set` | Configure settings |
 | `:help` | Show help |
+| `:version` | Show version info |
 | `:colourscheme <theme>` | Switch colour theme |
 | `:mksession <name>` | Create session |
 | `:session <name>` | Load session |
 | `:sessions` | List sessions |
+| `:d/:y/:p/:P` | Delete/yank/paste lines |
+| `:j` | Join lines |
+| `:u/:redo` | Undo/redo |
+| `g/<pattern>/d` | Global delete |
+| `v/<pattern>/d` | Inverse global delete |
 
 ## Contributing
 

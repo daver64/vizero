@@ -426,14 +426,39 @@ vizero main.c          # Start with main.c as buffer 1
 | `:!command` | Execute shell command in new window |
 | `:r !command` | Read command output into buffer at cursor |
 
+### Compiler Configuration
+| Command | Action |
+|---------|--------|
+| `:set c_compiler <name>` | Set C compiler (gcc, msvc) |
+| `:set cpp_compiler <name>` | Set C++ compiler (g++, msvc) |
+| `:set assembler <name>` | Set assembler (nasm, fasm) |
+| `:set c_compiler_path <path>` | Set C compiler executable path |
+| `:set cpp_compiler_path <path>` | Set C++ compiler executable path |
+| `:set assembler_path <path>` | Set assembler executable path |
+| `:show c_compiler` | Show current C compiler setting |
+| `:show cpp_compiler` | Show current C++ compiler setting |
+| `:show assembler` | Show current assembler setting |
+
 ### Compiler Features
+- **Configurable Compilers**: Set preferred compilers with `:set` commands
 - **Automatic Detection**: Detects available compilers (GCC, MSVC, NASM, FASM)
 - **Real-time Feedback**: Popup windows show compilation results
 - **Error Capture**: Compiler output displayed in popup with timeout
 - **Flexible Arguments**: Pass any compiler flags and options
+- **Persistent Settings**: Compiler preferences saved between sessions
 
 ### Examples
 ```
+# Configure compilers
+:set c_compiler gcc
+:set cpp_compiler g++
+:set assembler nasm
+
+# Set specific paths if needed
+:set c_compiler_path "C:\MinGW\bin\gcc.exe"
+:set cpp_compiler_path "C:\MinGW\bin\g++.exe"
+
+# Compile with configured compilers
 :cc -o hello hello.c
 :cpp -std=c++17 -O2 main.cpp
 :asm -f win64 program.asm
@@ -600,6 +625,8 @@ vizero main.c          # Start with main.c as buffer 1
 | `:split`, `:sp` | Split window horizontally |
 | `:vsplit`, `:vsp` | Split window vertically |
 | `:close`, `:clo` | Close current window |
+| `:only` | Close all windows except current |
+| `:enew` | Edit new unnamed buffer |
 
 ### Navigation
 | Command | Description |
@@ -623,6 +650,42 @@ vizero main.c          # Start with main.c as buffer 1
 | `:ls` | List files in current directory |
 | `:chdir <path>` | Change working directory |
 | `:pwd` | Print working directory |
+
+### External Commands
+| Command | Description |
+|---------|-------------|
+| `:!<command>` | Execute shell command in new window |
+| `:r !<command>` | Read command output into buffer at cursor |
+
+### Advanced Navigation & Editing
+| Command | Description |
+|---------|-------------|
+| `:marks` | Show all marks |
+| `:jumps` | Show jump history |
+| `:changes` | Show change history |
+| `:d` | Delete current line |
+| `:y` | Yank (copy) current line |
+| `:p` | Put (paste) after cursor |
+| `:P` | Put (paste) before cursor |
+| `:j` | Join current line with next |
+| `:u` | Undo last change |
+| `:redo` | Redo last undone change |
+| `:n`, `:next` | Edit next file |
+| `:prev`, `:previous` | Edit previous file |
+
+### Line Range Operations
+| Command | Description |
+|---------|-------------|
+| `<start>,<end>d` | Delete lines from start to end |
+| `<start>,<end>y` | Yank lines from start to end |
+| `<line>d` | Delete specific line number |
+| `<line>y` | Yank specific line number |
+
+### Global Commands
+| Command | Description |
+|---------|-------------|
+| `g/<pattern>/d` | Delete all lines matching pattern |
+| `v/<pattern>/d` | Delete all lines NOT matching pattern |
 
 ### Compilation
 | Command | Description |

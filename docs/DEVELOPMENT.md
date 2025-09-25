@@ -15,7 +15,7 @@
 - **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
 - **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
 - **Merged Rendering Logic**: Word wrap, syntax highlighting, and cursor/scrolling are now unified in the renderer for consistent behavior.
-- **Settings System**: All settings (including word wrap, line numbers, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`.
+- **Settings System**: All settings (including word wrap, line numbers, compiler preferences, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`. Configure compilers with `:set c_compiler gcc|msvc`, `:set cpp_compiler g++|msvc`, and `:set assembler nasm|fasm`.
 - **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
 - **Colour Theme System**: Complete theming infrastructure with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command for immediate visual feedback.
 - **Session Management Infrastructure**: Comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands for workspace persistence (implementation framework complete).
