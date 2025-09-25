@@ -177,7 +177,7 @@ void vizero_theme_manager_load_builtin_themes(vizero_theme_manager_t* manager) {
     vizero_theme_manager_add_theme(manager, &msvc_blue_theme);
     
     /* GVim Default theme */
-    vizero_colour_theme_t gvim_default_theme = create_theme("GVim Default", "Vizero Team", "Classic GVim default color scheme");
+    vizero_colour_theme_t gvim_default_theme = create_theme("GVim Default", "Vizero Team", "Classic GVim default colour scheme");
     gvim_default_theme.background = make_colour(1.0f, 1.0f, 1.0f, 1.0f);     /* White */
     gvim_default_theme.foreground = make_colour(0.0f, 0.0f, 0.0f, 1.0f);     /* Black */
     gvim_default_theme.cursor = make_colour(0.0f, 0.0f, 0.0f, 1.0f);         /* Black */
@@ -202,7 +202,7 @@ void vizero_theme_manager_load_builtin_themes(vizero_theme_manager_t* manager) {
     vizero_theme_manager_add_theme(manager, &gvim_default_theme);
     
     /* GVim Desert theme */
-    vizero_colour_theme_t gvim_desert_theme = create_theme("GVim Desert", "Vizero Team", "Popular desert color scheme from GVim");
+    vizero_colour_theme_t gvim_desert_theme = create_theme("GVim Desert", "Vizero Team", "Popular desert colour scheme from GVim");
     gvim_desert_theme.background = make_colour(0.20f, 0.20f, 0.20f, 1.0f);   /* Dark gray */
     gvim_desert_theme.foreground = make_colour(1.0f, 1.0f, 1.0f, 1.0f);     /* White */
     gvim_desert_theme.cursor = make_colour(1.0f, 1.0f, 0.0f, 1.0f);         /* Yellow */
@@ -227,7 +227,7 @@ void vizero_theme_manager_load_builtin_themes(vizero_theme_manager_t* manager) {
     vizero_theme_manager_add_theme(manager, &gvim_desert_theme);
     
     /* GVim Evening theme */
-    vizero_colour_theme_t gvim_evening_theme = create_theme("GVim Evening", "Vizero Team", "Evening color scheme from GVim");
+    vizero_colour_theme_t gvim_evening_theme = create_theme("GVim Evening", "Vizero Team", "Evening colour scheme from GVim");
     gvim_evening_theme.background = make_colour(0.11f, 0.11f, 0.20f, 1.0f);  /* Dark blue */
     gvim_evening_theme.foreground = make_colour(1.0f, 1.0f, 1.0f, 1.0f);    /* White */
     gvim_evening_theme.cursor = make_colour(1.0f, 1.0f, 0.0f, 1.0f);        /* Yellow */
@@ -277,7 +277,7 @@ void vizero_theme_manager_load_builtin_themes(vizero_theme_manager_t* manager) {
     vizero_theme_manager_add_theme(manager, &github_light_theme);
     
     /* Gruvbox Dark theme */
-    vizero_colour_theme_t gruvbox_dark_theme = create_theme("Gruvbox Dark", "Vizero Team", "Retro groove color scheme");
+    vizero_colour_theme_t gruvbox_dark_theme = create_theme("Gruvbox Dark", "Vizero Team", "Retro groove colour scheme");
     gruvbox_dark_theme.background = make_colour(0.16f, 0.16f, 0.16f, 1.0f);  /* Dark gray */
     gruvbox_dark_theme.foreground = make_colour(0.92f, 0.86f, 0.70f, 1.0f);  /* Light beige */
     gruvbox_dark_theme.cursor = make_colour(0.92f, 0.86f, 0.70f, 1.0f);      /* Light beige */
@@ -371,7 +371,7 @@ const vizero_colour_theme_t* vizero_theme_manager_get_theme_at_index(const vizer
 /* Apply the current theme (notify application about theme change) */
 void vizero_theme_manager_apply_theme(vizero_theme_manager_t* manager) {
     /* This function exists to notify the application that the theme has changed.
-     * The actual color application is done by the application layer by querying
+     * The actual colour application is done by the application layer by querying
      * the current theme when rendering. */
     (void)manager; /* Suppress unused parameter warning */
 }

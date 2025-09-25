@@ -1,6 +1,6 @@
 /* 
- * Vizero Color Theme Showcase
- * Test file to demonstrate the new color themes
+ * Vizero Colour Theme Showcase
+ * Test file to demonstrate the new colour themes
  */
 
 #include <stdio.h>
@@ -30,22 +30,22 @@ char* allocate_string(size_t length);
 /*
  * Main function - entry point
  * 
- * Available color themes:
- * :colorscheme Default       - Original dark theme
- * :colorscheme Monokai       - Popular Sublime Text inspired
- * :colorscheme "Solarized Dark" - Ethan Schoonover's theme
- * :colorscheme "MSVC Light"     - Visual Studio light theme
- * :colorscheme "MSVC Blue"      - Visual Studio blue theme  
- * :colorscheme "GVim Default"   - Classic GVim colors
- * :colorscheme "GVim Desert"    - Popular desert scheme
- * :colorscheme "GVim Evening"   - Evening color scheme
- * :colorscheme "GitHub Light"   - GitHub inspired light theme
- * :colorscheme "Gruvbox Dark"   - Retro groove colors
+ * Available colour themes:
+ * :colourscheme Default       - Original dark theme
+ * :colourscheme Monokai       - Popular Sublime Text inspired
+ * :colourscheme "Solarized Dark" - Ethan Schoonover's theme
+ * :colourscheme "MSVC Light"     - Visual Studio light theme
+ * :colourscheme "MSVC Blue"      - Visual Studio blue theme  
+ * :colourscheme "GVim Default"   - Classic GVim colours
+ * :colourscheme "GVim Desert"    - Popular desert scheme
+ * :colourscheme "GVim Evening"   - Evening colour scheme
+ * :colourscheme "GitHub Light"   - GitHub inspired light theme
+ * :colourscheme "Gruvbox Dark"   - Retro groove colours
  *
- * Type :colorscheme without arguments to list all themes
+ * Type :colourscheme without arguments to list all themes
  */
 int main(int argc, char** argv) {
-    printf("=== Vizero Color Theme Showcase ===\n");
+    printf("=== Vizero Colour Theme Showcase ===\n");
     
     // String literals and escape sequences
     char* test_string = "This is a \"quoted string\" with \n escape sequences";

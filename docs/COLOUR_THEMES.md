@@ -1,6 +1,6 @@
-# Vizero Color Themes
+# Vizero Colour Themes
 
-Vizero now includes a comprehensive collection of color themes inspired by popular editors and IDEs. This document describes the available themes and how to use them.
+Vizero now includes a comprehensive collection of colour themes inspired by popular editors and IDEs. This document describes the available themes and how to use them.
 
 ## Available Themes
 
@@ -10,82 +10,82 @@ Vizero now includes a comprehensive collection of color themes inspired by popul
 - **Description**: Original Vizero dark theme
 - **Background**: Dark blue-gray
 - **Best for**: General programming, low-light environments
-- **Command**: `:colorscheme Default`
+- **Command**: `:colourscheme Default`
 
 #### Monokai 
 - **Description**: Popular theme inspired by Sublime Text
 - **Background**: Dark charcoal
-- **Colors**: Pink keywords, yellow strings, purple numbers
+- **Colours**: Pink keywords, yellow strings, purple numbers
 - **Best for**: Modern development, syntax highlighting
-- **Command**: `:colorscheme Monokai`
+- **Command**: `:colourscheme Monokai`
 
 #### Solarized Dark
-- **Description**: Ethan Schoonover's scientifically designed color scheme
+- **Description**: Ethan Schoonover's scientifically designed colour scheme
 - **Background**: Dark blue-green
-- **Colors**: Carefully balanced hues for reduced eye strain
-- **Best for**: Long coding sessions, color accuracy
-- **Command**: `:colorscheme "Solarized Dark"`
+- **Colours**: Carefully balanced hues for reduced eye strain
+- **Best for**: Long coding sessions, colour accuracy
+- **Command**: `:colourscheme "Solarized Dark"`
 
 #### GVim Desert
-- **Description**: Popular desert color scheme from GVim
+- **Description**: Popular desert colour scheme from GVim
 - **Background**: Dark gray
-- **Colors**: Warm earth tones (oranges, browns, yellows)
-- **Best for**: Retro feel, warm color preference
-- **Command**: `:colorscheme "GVim Desert"`
+- **Colours**: Warm earth tones (oranges, browns, yellows)
+- **Best for**: Retro feel, warm colour preference
+- **Command**: `:colourscheme "GVim Desert"`
 
 #### GVim Evening
-- **Description**: Evening color scheme from GVim
+- **Description**: Evening colour scheme from GVim
 - **Background**: Dark blue
-- **Colors**: Cool evening tones (blues, cyans, yellows)
-- **Best for**: Night coding, cool color preference
-- **Command**: `:colorscheme "GVim Evening"`
+- **Colours**: Cool evening tones (blues, cyans, yellows)
+- **Best for**: Night coding, cool colour preference
+- **Command**: `:colourscheme "GVim Evening"`
 
 #### Gruvbox Dark
-- **Description**: Retro groove color scheme
+- **Description**: Retro groove colour scheme
 - **Background**: Dark gray with warm undertones
-- **Colors**: Retro-inspired palette with high contrast
+- **Colours**: Retro-inspired palette with high contrast
 - **Best for**: Vintage aesthetics, warm retro feel
-- **Command**: `:colorscheme "Gruvbox Dark"`
+- **Command**: `:colourscheme "Gruvbox Dark"`
 
 ### Light Themes
 
 #### MSVC Light
 - **Description**: Clean light theme inspired by Visual Studio
 - **Background**: Pure white
-- **Colors**: Blue keywords, red strings, green comments
+- **Colours**: Blue keywords, red strings, green comments
 - **Best for**: Daytime coding, professional environments
-- **Command**: `:colorscheme "MSVC Light"`
+- **Command**: `:colourscheme "MSVC Light"`
 
 #### MSVC Blue
 - **Description**: Subtle blue-tinted theme inspired by Visual Studio
 - **Background**: Very light blue
-- **Colors**: Similar to MSVC Light with cooler undertones
+- **Colours**: Similar to MSVC Light with cooler undertones
 - **Best for**: Reduced eye strain in bright environments
-- **Command**: `:colorscheme "MSVC Blue"`
+- **Command**: `:colourscheme "MSVC Blue"`
 
 #### GVim Default
-- **Description**: Classic GVim default color scheme
+- **Description**: Classic GVim default colour scheme
 - **Background**: White
-- **Colors**: Traditional vim colors (purple, magenta, blue)
+- **Colours**: Traditional vim colours (purple, magenta, blue)
 - **Best for**: Vim users, traditional editing
-- **Command**: `:colorscheme "GVim Default"`
+- **Command**: `:colourscheme "GVim Default"`
 
 #### GitHub Light
 - **Description**: Light theme inspired by GitHub's interface
 - **Background**: White
-- **Colors**: Modern web-inspired palette
+- **Colours**: Modern web-inspired palette
 - **Best for**: Web development, modern workflows
-- **Command**: `:colorscheme "GitHub Light"`
+- **Command**: `:colourscheme "GitHub Light"`
 
 ## Usage Instructions
 
 ### Switching Themes
-Use the `:colorscheme` command (or `:colourscheme` for UK spelling) followed by the theme name:
+Use the `:colourscheme` command (or `:colorscheme` for US spelling) followed by the theme name:
 
 ```
-:colorscheme Monokai
-:colorscheme "MSVC Light"
-:colorscheme "GVim Desert"
+:colourscheme Monokai
+:colourscheme "MSVC Light"
+:colourscheme "GVim Desert"
 ```
 
 **Note**: Theme names with spaces must be quoted.
@@ -93,7 +93,7 @@ Use the `:colorscheme` command (or `:colourscheme` for UK spelling) followed by 
 ### Listing Available Themes
 To see all available themes with descriptions:
 ```
-:colorscheme
+:colourscheme
 ```
 
 ### Persistent Theme Settings
@@ -119,7 +119,7 @@ The test file includes:
 
 ## Theme Development
 
-The color theme system is implemented in `src/core/colour_theme.cpp`. Each theme defines colors for:
+The colour theme system is implemented in `src/core/colour_theme.cpp`. Each theme defines colours for:
 
 ### UI Elements
 - Background and foreground
@@ -154,7 +154,7 @@ The color theme system is implemented in `src/core/colour_theme.cpp`. Each theme
 ### For Long Coding Sessions
 - Solarized Dark (scientifically designed for eye comfort)
 - Gruvbox Dark (warm, high contrast)
-- GVim Evening (cool, calming colors)
+- GVim Evening (cool, calming colours)
 
 ### For Bright Environments
 - MSVC Light (high contrast)
