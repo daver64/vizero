@@ -101,7 +101,7 @@ vizero_lsp_client_t* vizero_lsp_client_create(const char* server_path, const cha
     }
     
     client->next_request_id = 1;
-    client->read_buffer_size = 4096;
+    client->read_buffer_size = 32768; /* Start with 32KB to handle large completion responses */
     client->read_buffer = (char*)malloc(client->read_buffer_size);
     if (!client->read_buffer) {
         free(client->working_directory);
@@ -401,7 +401,7 @@ static int lsp_client_write_message(vizero_lsp_client_t* client, const char* mes
 }
 
 static int lsp_client_read_messages(vizero_lsp_client_t* client) {
-    if (!client->stdout_read) {
+    if (!client || !client->stdout_read) {
         return -1;
     }
     
@@ -410,9 +410,17 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
         return 0; /* No data available */
     }
     
-    /* Ensure buffer has space */
+    /* Limit bytes to read to prevent excessive memory usage */
+    if (bytes_available > 64 * 1024) {
+        bytes_available = 64 * 1024;
+    }
+    
+    /* Ensure buffer has space with safety checks */
     if (client->read_buffer_used + bytes_available >= client->read_buffer_size) {
         size_t new_size = client->read_buffer_size * 2;
+        if (new_size > 10 * 1024 * 1024) { /* Limit to 10MB */
+            return -1;
+        }
         char* new_buffer = (char*)realloc(client->read_buffer, new_size);
         if (!new_buffer) {
             return -1;
@@ -427,52 +435,100 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
     }
     
     client->read_buffer_used += bytes_read;
+    if (client->read_buffer_used >= client->read_buffer_size) {
+        return -1; /* Buffer overflow protection */
+    }
     client->read_buffer[client->read_buffer_used] = '\0';
     
-    /* Process complete messages */
+    /* Process complete messages with strict loop protection */
     char* buffer_start = client->read_buffer;
-    while (client->read_buffer_used > 0) {
+    int message_count = 0;
+    const int MAX_MESSAGES_PER_CALL = 5; /* Allow more messages but still prevent infinite loops */
+    size_t previous_buffer_used = client->read_buffer_used;
+    
+    while (client->read_buffer_used > 10 && message_count < MAX_MESSAGES_PER_CALL) {
+        /* Infinite loop detection: if buffer size didn't change, break */
+        if (message_count > 0 && client->read_buffer_used == previous_buffer_used) {
+            printf("[LSP] Detected potential infinite loop, breaking\n");
+            break;
+        }
+        previous_buffer_used = client->read_buffer_used;
+        
         /* Look for Content-Length header */
         char* content_length_start = strstr(buffer_start, "Content-Length: ");
-        if (!content_length_start) {
+        if (!content_length_start || content_length_start >= client->read_buffer + client->read_buffer_used) {
+            printf("[LSP] No Content-Length header found, breaking\n");
+            break;
+        }
+        
+        /* Safety: ensure we have enough bytes for length parsing */
+        if (content_length_start + 16 >= client->read_buffer + client->read_buffer_used) {
+            printf("[LSP] Incomplete Content-Length header, breaking\n");
             break;
         }
         
         int content_length = atoi(content_length_start + 16);
-        if (content_length <= 0) {
+        if (content_length <= 0 || content_length > 512 * 1024) { /* Max 512KB per message */
+            printf("[LSP] Invalid content length %d, breaking\n", content_length);
             break;
         }
         
         /* Find start of content (after \r\n\r\n) */
         char* content_start = strstr(content_length_start, "\r\n\r\n");
-        if (!content_start) {
+        if (!content_start || content_start >= client->read_buffer + client->read_buffer_used) {
+            printf("[LSP] No message separator found, breaking\n");
             break;
         }
         content_start += 4;
         
+        /* Safety: ensure content_start is within bounds */
+        if (content_start >= client->read_buffer + client->read_buffer_used) {
+            printf("[LSP] Content start beyond buffer, breaking\n");
+            break;
+        }
+        
         /* Check if we have the complete message */
         size_t header_len = content_start - buffer_start;
         if (client->read_buffer_used < header_len + content_length) {
+            printf("[LSP] Incomplete message (%zu < %zu + %d), breaking\n", 
+                   client->read_buffer_used, header_len, content_length);
             break; /* Incomplete message */
         }
         
-        /* Extract and process the message */
+        printf("[LSP] Processing message %d: length=%d\n", message_count + 1, content_length);
+        
+        /* Extract and process the message safely */
         char* message_content = (char*)malloc(content_length + 1);
         if (message_content) {
             memcpy(message_content, content_start, content_length);
             message_content[content_length] = '\0';
             lsp_client_parse_message(client, message_content);
             free(message_content);
+        } else {
+            printf("[LSP] Failed to allocate message buffer\n");
+            break;
         }
         
         /* Move remaining data to start of buffer */
         size_t message_total_len = header_len + content_length;
+        if (message_total_len > client->read_buffer_used || message_total_len == 0) {
+            printf("[LSP] Invalid message length calculation, breaking\n");
+            break; /* Safety check */
+        }
+        
         client->read_buffer_used -= message_total_len;
         if (client->read_buffer_used > 0) {
             memmove(client->read_buffer, buffer_start + message_total_len, client->read_buffer_used);
         }
         client->read_buffer[client->read_buffer_used] = '\0';
         buffer_start = client->read_buffer;
+        message_count++;
+        
+        printf("[LSP] Processed message %d, %zu bytes remaining\n", message_count, client->read_buffer_used);
+    }
+    
+    if (message_count >= MAX_MESSAGES_PER_CALL) {
+        printf("[LSP] Hit message processing limit (%d), deferring remaining messages\n", MAX_MESSAGES_PER_CALL);
     }
     
     return 0;
@@ -637,55 +693,162 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
 
 #endif
 
-/* Message parsing (platform-independent) */
-static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* content) {
-    /* This is a simplified JSON parser - in a real implementation,
-     * you might want to use a proper JSON library like cJSON */
+/* Safe JSON field extraction */
+static char* safe_extract_json_string(const char* json, const char* field_name, size_t json_len) {
+    if (!json || !field_name || json_len == 0) {
+        return NULL;
+    }
     
-    /* Check if it's a response (has "id" field) */
-    if (strstr(content, "\"id\":")) {
-        /* Parse response */
-        int id = -1;
-        const char* id_start = strstr(content, "\"id\":");
-        if (id_start) {
-            id = atoi(id_start + 5);
-        }
+    /* Build search pattern: "fieldname": */
+    size_t pattern_len = strlen(field_name) + 4; /* "": */
+    char* pattern = (char*)malloc(pattern_len + 1);
+    if (!pattern) return NULL;
+    
+    snprintf(pattern, pattern_len + 1, "\"%s\":", field_name);
+    
+    const char* field_start = strstr(json, pattern);
+    free(pattern);
+    
+    if (!field_start || field_start >= json + json_len) {
+        return NULL;
+    }
+    
+    /* Skip to value part */
+    const char* value_start = field_start + strlen(field_name) + 3;
+    
+    /* Skip whitespace */
+    while (value_start < json + json_len && (*value_start == ' ' || *value_start == '\t' || *value_start == '\n' || *value_start == '\r')) {
+        value_start++;
+    }
+    
+    if (value_start >= json + json_len) {
+        return NULL;
+    }
+    
+    /* Handle string values */
+    if (*value_start == '"') {
+        value_start++; /* Skip opening quote */
+        const char* value_end = value_start;
         
-        const char* result = strstr(content, "\"result\":");
-        const char* error = strstr(content, "\"error\":");
-        
-        if (client->callbacks.on_response) {
-            client->callbacks.on_response(id, 
-                                        result ? result + 9 : NULL,
-                                        error ? error + 8 : NULL,
-                                        client->user_data);
-        }
-    } else {
-        /* Parse notification */
-        const char* method_start = strstr(content, "\"method\":\"");
-        if (method_start) {
-            method_start += 10;
-            const char* method_end = strchr(method_start, '"');
-            if (method_end) {
-                size_t method_len = method_end - method_start;
-                char* method = (char*)malloc(method_len + 1);
-                if (method) {
-                    memcpy(method, method_start, method_len);
-                    method[method_len] = '\0';
-                    
-                    const char* params = strstr(content, "\"params\":");
-                    
-                    if (client->callbacks.on_notification) {
-                        client->callbacks.on_notification(method,
-                                                         params ? params + 9 : NULL,
-                                                         client->user_data);
-                    }
-                    
-                    free(method);
-                }
+        /* Find closing quote, handling escaped quotes */
+        while (value_end < json + json_len && *value_end != '"') {
+            if (*value_end == '\\' && value_end + 1 < json + json_len) {
+                value_end += 2; /* Skip escaped character */
+            } else {
+                value_end++;
             }
         }
+        
+        if (value_end >= json + json_len || *value_end != '"') {
+            return NULL; /* No closing quote found */
+        }
+        
+        size_t value_len = value_end - value_start;
+        if (value_len == 0 || value_len > 10000) { /* Reasonable limit */
+            return NULL;
+        }
+        
+        char* result = (char*)malloc(value_len + 1);
+        if (!result) return NULL;
+        
+        memcpy(result, value_start, value_len);
+        result[value_len] = '\0';
+        return result;
     }
+    
+    return NULL;
+}
+
+static int safe_extract_json_int(const char* json, const char* field_name, size_t json_len) {
+    if (!json || !field_name || json_len == 0) {
+        return -1;
+    }
+    
+    /* Build search pattern */
+    size_t pattern_len = strlen(field_name) + 4;
+    char* pattern = (char*)malloc(pattern_len + 1);
+    if (!pattern) return -1;
+    
+    snprintf(pattern, pattern_len + 1, "\"%s\":", field_name);
+    
+    const char* field_start = strstr(json, pattern);
+    free(pattern);
+    
+    if (!field_start || field_start >= json + json_len) {
+        return -1;
+    }
+    
+    /* Skip to value part */
+    const char* value_start = field_start + strlen(field_name) + 3;
+    
+    /* Skip whitespace */
+    while (value_start < json + json_len && (*value_start == ' ' || *value_start == '\t' || *value_start == '\n' || *value_start == '\r')) {
+        value_start++;
+    }
+    
+    if (value_start >= json + json_len) {
+        return -1;
+    }
+    
+    /* Parse integer */
+    if (*value_start >= '0' && *value_start <= '9') {
+        return atoi(value_start);
+    }
+    
+    return -1;
+}
+
+/* Message parsing (platform-independent) with robust JSON handling */
+static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* content) {
+    if (!client || !content) {
+        printf("[LSP] Parse message: NULL client or content\n");
+        return;
+    }
+    
+    size_t content_len = strlen(content);
+    if (content_len == 0 || content_len > 1024 * 1024) {
+        printf("[LSP] Parse message: Invalid content length %zu\n", content_len);
+        return;
+    }
+    
+    printf("[LSP] Parsing JSON message of %zu bytes\n", content_len);
+    
+    /* Check if it's a response (has "id" field) */
+    int id = safe_extract_json_int(content, "id", content_len);
+    if (id >= 0) {
+        printf("[LSP] Parsing response with ID %d\n", id);
+        
+        /* Extract result and error fields safely */
+        char* result_str = safe_extract_json_string(content, "result", content_len);
+        char* error_str = safe_extract_json_string(content, "error", content_len);
+        
+        if (client->callbacks.on_response) {
+            /* Pass the entire content as result since we need the full JSON structure */
+            client->callbacks.on_response(id, content, error_str, client->user_data);
+        }
+        
+        if (result_str) free(result_str);
+        if (error_str) free(error_str);
+        
+    } else {
+        printf("[LSP] Parsing notification\n");
+        
+        /* Extract method name safely */
+        char* method = safe_extract_json_string(content, "method", content_len);
+        if (method) {
+            printf("[LSP] Notification method: %s\n", method);
+            
+            if (client->callbacks.on_notification) {
+                client->callbacks.on_notification(method, content, client->user_data);
+            }
+            
+            free(method);
+        } else {
+            printf("[LSP] Failed to extract method from notification\n");
+        }
+    }
+    
+    printf("[LSP] Message parsing complete\n");
 }
 
 static lsp_message_t* lsp_message_create(void) {

@@ -1,17 +1,16 @@
 #include <stdio.h>
-#include <stdlib.h>
-typedef struct tbar_t
-{
-    int a;
-} tbar_t;
+#include <stdint.h>
 
-int hello()
+typedef struct tagged_ptr
 {
-    return 42;
-}
-int main() {
-    printf("Hello, World!\n");
-    tbar_t t;
-    t.
+    void *ptr;
+    size_t capacity;
+    size_t length;
+    uint32_t status;
+} tagged_ptr;
+
+int main(int argc, char *argv[])
+{
+
     return 0;
 }
