@@ -299,14 +299,20 @@ int vizero_plugin_manager_load_plugins_for_file(vizero_plugin_manager_t* manager
         
         /* Load the plugin */
         char plugin_path[1024];
-#ifdef _WIN32
-        snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
-#else
-        /* Convert .dll extension to .so on Unix platforms */
         char plugin_filename[512];
         strncpy(plugin_filename, entry->dll_path, sizeof(plugin_filename) - 1);
         plugin_filename[sizeof(plugin_filename) - 1] = '\0';
         
+#ifdef _WIN32
+        /* Convert .so extension to .dll on Windows */
+        char* ext = strrchr(plugin_filename, '.');
+        if (ext && strcmp(ext, ".so") == 0) {
+            strcpy(ext, ".dll");
+        }
+        
+        snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, plugin_filename);
+#else
+        /* Convert .dll extension to .so on Unix platforms */
         char* ext = strrchr(plugin_filename, '.');
         if (ext && strcmp(ext, ".dll") == 0) {
             strcpy(ext, ".so");
@@ -338,14 +344,20 @@ int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager)
         if (entry->always_load && !entry->is_loaded) {
             /* Load the plugin */
             char plugin_path[1024];
-#ifdef _WIN32
-            snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
-#else
-            /* Convert .dll extension to .so on Unix platforms */
             char plugin_filename[512];
             strncpy(plugin_filename, entry->dll_path, sizeof(plugin_filename) - 1);
             plugin_filename[sizeof(plugin_filename) - 1] = '\0';
             
+#ifdef _WIN32
+            /* Convert .so extension to .dll on Windows */
+            char* ext = strrchr(plugin_filename, '.');
+            if (ext && strcmp(ext, ".so") == 0) {
+                strcpy(ext, ".dll");
+            }
+            
+            snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, plugin_filename);
+#else
+            /* Convert .dll extension to .so on Unix platforms */
             char* ext = strrchr(plugin_filename, '.');
             if (ext && strcmp(ext, ".dll") == 0) {
                 strcpy(ext, ".so");
@@ -746,4 +758,92 @@ int vizero_plugin_manager_check_completion_results(
     }
     
     return -1; /* No results available */
+}
+
+/* Plugin command execution */
+int vizero_plugin_manager_execute_command(
+    vizero_plugin_manager_t* manager,
+    vizero_editor_t* editor,
+    const char* command,
+    const char* args)
+{
+    if (!manager || !editor || !command) {
+        return -1;
+    }
+    
+    printf("[PLUGIN] Searching for command: %s\n", command);
+    
+    /* Search all loaded plugins for this command */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (!plugin || !plugin->callbacks.commands || plugin->callbacks.command_count == 0) {
+            continue;
+        }
+        
+        /* Check each command registered by this plugin */
+        for (size_t j = 0; j < plugin->callbacks.command_count; j++) {
+            vizero_plugin_command_t* cmd = &plugin->callbacks.commands[j];
+            if (strcmp(cmd->command, command) == 0) {
+                printf("[PLUGIN] Found command '%s' in plugin '%s'\n", command, plugin->info.name);
+                
+                /* Execute the command handler */
+                if (cmd->handler) {
+                    return cmd->handler(editor, args);
+                } else {
+                    printf("[PLUGIN] Warning: Command '%s' has no handler\n", command);
+                    return -1;
+                }
+            }
+        }
+    }
+    
+    printf("[PLUGIN] Command '%s' not found in any loaded plugin\n", command);
+    return -1; /* Command not found */
+}
+
+/* Get list of all registered commands for help/completion */
+int vizero_plugin_manager_get_commands(
+    vizero_plugin_manager_t* manager,
+    vizero_plugin_command_t** commands,
+    size_t* command_count)
+{
+    if (!manager || !commands || !command_count) {
+        return -1;
+    }
+    
+    /* Count total commands */
+    size_t total_commands = 0;
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.commands) {
+            total_commands += plugin->callbacks.command_count;
+        }
+    }
+    
+    if (total_commands == 0) {
+        *commands = NULL;
+        *command_count = 0;
+        return 0;
+    }
+    
+    /* Allocate array for all commands */
+    vizero_plugin_command_t* cmd_array = (vizero_plugin_command_t*)malloc(total_commands * sizeof(vizero_plugin_command_t));
+    if (!cmd_array) {
+        return -1;
+    }
+    
+    /* Copy all commands */
+    size_t cmd_index = 0;
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.commands) {
+            for (size_t j = 0; j < plugin->callbacks.command_count; j++) {
+                cmd_array[cmd_index++] = plugin->callbacks.commands[j];
+            }
+        }
+    }
+    
+    *commands = cmd_array;
+    *command_count = total_commands;
+    return 0;
 }

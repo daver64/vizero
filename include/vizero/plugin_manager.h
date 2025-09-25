@@ -56,6 +56,19 @@ int vizero_plugin_manager_highlight_syntax(
     size_t max_tokens,
     size_t* token_count);
 
+/* Plugin command execution */
+int vizero_plugin_manager_execute_command(
+    vizero_plugin_manager_t* manager,
+    vizero_editor_t* editor,
+    const char* command,
+    const char* args);
+
+/* Get list of all registered commands for help/completion */
+int vizero_plugin_manager_get_commands(
+    vizero_plugin_manager_t* manager,
+    vizero_plugin_command_t** commands,
+    size_t* command_count);
+
 /* LSP functionality */
 int vizero_plugin_manager_lsp_completion(
     vizero_plugin_manager_t* manager,

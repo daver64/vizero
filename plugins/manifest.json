@@ -66,6 +66,13 @@
       "description": "Common Lisp syntax highlighting with REPL support",
       "priority": 1
     },
+    "irc": {
+      "type": "generic",
+      "load_on_demand": false,
+      "dll_path": "irc.dll",
+      "description": "IRC Client Plugin with command registration (demo)",
+      "always_load": true
+    },
     "clangd": {
       "type": "language_server",
       "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],

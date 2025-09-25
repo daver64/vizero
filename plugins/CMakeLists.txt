@@ -81,6 +81,9 @@ add_vizero_plugin(file_browser
     file_browser/file_browser.c
 )
 
+# IRC client plugin
+add_subdirectory(irc)
+
 # clangd LSP plugin (directory not yet created)
 # add_subdirectory(clangd)
 

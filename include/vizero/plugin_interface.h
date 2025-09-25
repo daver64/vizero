@@ -172,6 +172,14 @@ typedef struct {
     int (*clear_syntax_tokens)(vizero_editor_t* editor);
 } vizero_editor_api_t;
 
+/* Plugin command registration */
+typedef struct {
+    char command[64];                      /* Command name (e.g., "irc") */
+    char description[256];                 /* Help text */
+    int (*handler)(vizero_editor_t* editor, const char* args);
+    void* user_data;                       /* Plugin-specific data */
+} vizero_plugin_command_t;
+
 /* Plugin callback functions */
 typedef struct {
     /* Required: Plugin initialization */
@@ -208,6 +216,10 @@ typedef struct {
     int (*lsp_goto_definition)(vizero_buffer_t* buffer, vizero_position_t position, vizero_location_t** locations, size_t* location_count);
     int (*lsp_get_diagnostics)(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics, size_t* diagnostic_count);
     void (*lsp_shutdown)(void);
+    
+    /* Command registration - plugins can register custom commands */
+    vizero_plugin_command_t* commands;     /* Array of commands this plugin provides */
+    size_t command_count;                  /* Number of commands */
 } vizero_plugin_callbacks_t;
 
 /* Main plugin structure */

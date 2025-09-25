@@ -23,6 +23,7 @@
 - **Crash-Free LSP Completion**: Robust JSON parsing with 32KB buffer support handles massive completion responses (42KB+ tested) without crashes or hangs.
 - **Production-Ready clangd Plugin**: Complete implementation with automatic clangd discovery, memory-safe operation, and comprehensive error handling.
 - **Cross-Platform Plugin Loading**: Plugin system now correctly handles platform-specific extensions (.dll on Windows, .so on Linux/Unix) by automatically converting manifest entries at runtime, enabling seamless cross-platform plugin deployment.
+- **Plugin Command Registration**: Complete command registration system allowing plugins to register custom vi commands (e.g., `:irc`, `:git`, `:ssh`). Commands are automatically discovered and routed through the standard vi command parser with full argument support and error handling.
 
 ## Quick Start
 

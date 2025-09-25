@@ -10,6 +10,7 @@
 #include "vizero/editor_window.h"
 #include "vizero/mode_manager.h"
 #include "vizero/colour_theme.h"
+#include "vizero/plugin_manager.h"
 #include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -3677,6 +3678,31 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                     }
                 }
                 return -1;
+            }
+        }
+        
+        /* Try plugin commands before giving up */
+        vizero_plugin_manager_t* plugin_manager = vizero_editor_get_plugin_manager(state);
+        if (plugin_manager) {
+            /* Parse command and arguments */
+            char cmd_name[64] = {0};
+            const char* args = "";
+            
+            const char* space = strchr(command, ' ');
+            if (space) {
+                size_t cmd_len = space - command;
+                if (cmd_len < sizeof(cmd_name)) {
+                    strncpy(cmd_name, command, cmd_len);
+                    cmd_name[cmd_len] = '\0';
+                    args = space + 1; /* Skip the space */
+                }
+            } else {
+                strncpy(cmd_name, command, sizeof(cmd_name) - 1);
+            }
+            
+            /* Try to execute as plugin command */
+            if (vizero_plugin_manager_execute_command(plugin_manager, (vizero_editor_t*)state, cmd_name, args) == 0) {
+                return 0; /* Plugin handled the command */
             }
         }
         
