@@ -7,6 +7,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /* Version information */
 #define VIZERO_PLUGIN_API_VERSION_MAJOR 1
@@ -37,6 +38,7 @@ typedef enum {
     VIZERO_PLUGIN_TYPE_FILTER,
     VIZERO_PLUGIN_TYPE_UI_EXTENSION,
     VIZERO_PLUGIN_TYPE_FILE_TYPE_HANDLER,
+    VIZERO_PLUGIN_TYPE_LANGUAGE_SERVER,        /* NEW */
     VIZERO_PLUGIN_TYPE_GENERIC
 } vizero_plugin_type_t;
 
@@ -75,6 +77,70 @@ typedef struct {
     vizero_plugin_colour_t colour;
     uint32_t flags; /* bold, italic, underline, etc. */
 } vizero_syntax_token_t;
+
+/* LSP completion item kinds */
+typedef enum {
+    VIZERO_COMPLETION_TEXT = 1,
+    VIZERO_COMPLETION_METHOD = 2,
+    VIZERO_COMPLETION_FUNCTION = 3,
+    VIZERO_COMPLETION_CONSTRUCTOR = 4,
+    VIZERO_COMPLETION_FIELD = 5,
+    VIZERO_COMPLETION_VARIABLE = 6,
+    VIZERO_COMPLETION_CLASS = 7,
+    VIZERO_COMPLETION_INTERFACE = 8,
+    VIZERO_COMPLETION_MODULE = 9,
+    VIZERO_COMPLETION_PROPERTY = 10,
+    VIZERO_COMPLETION_UNIT = 11,
+    VIZERO_COMPLETION_VALUE = 12,
+    VIZERO_COMPLETION_ENUM = 13,
+    VIZERO_COMPLETION_KEYWORD = 14,
+    VIZERO_COMPLETION_SNIPPET = 15,
+    VIZERO_COMPLETION_COLOR = 16,
+    VIZERO_COMPLETION_FILE = 17,
+    VIZERO_COMPLETION_REFERENCE = 18
+} vizero_completion_kind_t;
+
+/* LSP completion item */
+typedef struct {
+    char* label;                        /* "push_back" */
+    char* detail;                       /* "void push_back(const T&)" */
+    char* documentation;                /* "Appends element to container" */
+    char* insert_text;                  /* Text to insert when selected */
+    char* filter_text;                  /* Text used for filtering */
+    char* sort_text;                    /* Text used for sorting */
+    vizero_completion_kind_t kind;      /* Function, Variable, etc. */
+    bool deprecated;                    /* Is this item deprecated? */
+} vizero_completion_item_t;
+
+/* LSP completion list */
+typedef struct {
+    vizero_completion_item_t* items;
+    size_t item_count;
+    bool is_incomplete;                 /* More items available */
+} vizero_completion_list_t;
+
+/* LSP location (for go-to-definition, etc.) */
+typedef struct {
+    char* file_path;
+    vizero_position_t position;
+} vizero_location_t;
+
+/* LSP diagnostic severity */
+typedef enum {
+    VIZERO_DIAGNOSTIC_ERROR = 1,
+    VIZERO_DIAGNOSTIC_WARNING = 2,
+    VIZERO_DIAGNOSTIC_INFORMATION = 3,
+    VIZERO_DIAGNOSTIC_HINT = 4
+} vizero_diagnostic_severity_t;
+
+/* LSP diagnostic */
+typedef struct {
+    vizero_range_t range;
+    vizero_diagnostic_severity_t severity;
+    char* message;
+    char* source;                       /* "clangd", "gcc", etc. */
+    int code;                          /* Optional error code */
+} vizero_diagnostic_t;
 
 /* Editor API functions provided to plugins */
 typedef struct {
@@ -134,6 +200,14 @@ typedef struct {
     
     /* Optional: Called for key input processing */
     int (*on_key_input)(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
+    
+    /* LSP callbacks - for VIZERO_PLUGIN_TYPE_LANGUAGE_SERVER plugins */
+    int (*lsp_initialize)(const char* project_root, const char* session_config);
+    int (*lsp_completion)(vizero_buffer_t* buffer, vizero_position_t position, vizero_completion_list_t** result);
+    int (*lsp_hover)(vizero_buffer_t* buffer, vizero_position_t position, char** hover_text);
+    int (*lsp_goto_definition)(vizero_buffer_t* buffer, vizero_position_t position, vizero_location_t** locations, size_t* location_count);
+    int (*lsp_get_diagnostics)(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics, size_t* diagnostic_count);
+    void (*lsp_shutdown)(void);
 } vizero_plugin_callbacks_t;
 
 /* Main plugin structure */

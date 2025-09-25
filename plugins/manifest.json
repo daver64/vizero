@@ -65,6 +65,15 @@
       "dll_path": "syntax_lisp.dll",
       "description": "Common Lisp syntax highlighting with REPL support",
       "priority": 1
+    },
+    "clangd": {
+      "type": "language_server",
+      "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],
+      "load_on_demand": true,
+      "dll_path": "clangd.dll",
+      "description": "clangd Language Server for C/C++ IntelliSense",
+      "priority": 2,
+      "capabilities": ["completion", "hover", "goto_definition", "diagnostics"]
     }
   }
 }
