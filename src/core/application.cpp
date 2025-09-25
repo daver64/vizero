@@ -14,6 +14,7 @@
 #include "vizero/settings.h"
 #include "vizero/search.h"
 #include "vizero/filewatch_poll.h"
+#include "vizero/file_utils.h"
 #include <SDL.h>
 #include <GL/glew.h>
 #include <stdio.h>
@@ -223,9 +224,16 @@ int vizero_application_initialize(vizero_application_t* app) {
     vizero_editor_set_theme_manager(app->editor, (void*)app->theme_manager);
     
     /* Load logo image */
-    app->logo_image = vizero_image_load("images/logo.bmp");
-    if (!app->logo_image) {
-        printf("Warning: Could not load logo image from images/logo.bmp\n");
+    char* logo_path = vizero_get_resource_path("images/logo.bmp");
+    if (logo_path) {
+        app->logo_image = vizero_image_load(logo_path);
+        if (!app->logo_image) {
+            printf("Warning: Could not load logo image from %s\n", logo_path);
+        }
+        free(logo_path);
+    } else {
+        app->logo_image = NULL;
+        printf("Warning: Could not determine logo image path\n");
     }
     
     /* Load default theme from settings or apply "Default" theme */

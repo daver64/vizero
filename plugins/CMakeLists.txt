@@ -46,10 +46,14 @@ add_vizero_plugin(example_plugin
     example/example_plugin.c
 )
 
-# Syntax highlighting plugin
-add_vizero_plugin(syntax_highlight
-    syntax_highlight/syntax_highlight.c
-    syntax_highlight/markdown_syntax.c
+# C/C++/Assembly syntax highlighting plugin
+add_vizero_plugin(syntax_c
+    syntax_c/syntax_c.c
+)
+
+# Markdown syntax highlighting plugin
+add_vizero_plugin(syntax_markdown
+    syntax_markdown/syntax_markdown.c
 )
 
 # File browser plugin

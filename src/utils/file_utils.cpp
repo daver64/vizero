@@ -264,3 +264,54 @@ int vizero_directory_exists(const char* path) {
     
     return vizero_file_is_directory(path);
 }
+
+char* vizero_get_executable_path(void) {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    DWORD length = GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    if (length == 0 || length == MAX_PATH) {
+        return NULL;
+    }
+    
+    char* result = (char*)malloc(length + 1);
+    if (result) {
+        strcpy(result, buffer);
+    }
+    return result;
+#else
+    char buffer[4096];
+    ssize_t length = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (length == -1) {
+        return NULL;
+    }
+    
+    buffer[length] = '\0';
+    char* result = (char*)malloc(length + 1);
+    if (result) {
+        strcpy(result, buffer);
+    }
+    return result;
+#endif
+}
+
+char* vizero_get_executable_directory(void) {
+    char* exe_path = vizero_get_executable_path();
+    if (!exe_path) {
+        return NULL;
+    }
+    
+    char* exe_dir = vizero_path_get_directory(exe_path);
+    free(exe_path);
+    return exe_dir;
+}
+
+char* vizero_get_resource_path(const char* relative_path) {
+    if (!relative_path) return NULL;
+    
+    char* exe_dir = vizero_get_executable_directory();
+    if (!exe_dir) return NULL;
+    
+    char* resource_path = vizero_path_join(exe_dir, relative_path);
+    free(exe_dir);
+    return resource_path;
+}

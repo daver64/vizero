@@ -23,6 +23,11 @@ char* vizero_path_join(const char* dir, const char* filename);
 int vizero_directory_create(const char* path);
 int vizero_directory_exists(const char* path);
 
+/* Executable path operations */
+char* vizero_get_executable_path(void);
+char* vizero_get_executable_directory(void);
+char* vizero_get_resource_path(const char* relative_path);
+
 #ifdef __cplusplus
 }
 #endif

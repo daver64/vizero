@@ -1,4 +1,5 @@
 #include "vizero/vizero.h"
+#include "vizero/file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 int main(int argc, char* argv[]) {
@@ -12,7 +13,11 @@ int main(int argc, char* argv[]) {
     config.height = 800;
     config.fullscreen = 0;
     config.config_dir = NULL;  /* Will use default */
-    config.plugin_dir = "plugins";
+    config.plugin_dir = NULL;  /* Will be set below */
+    
+    /* Set plugin directory relative to executable */
+    char* plugin_dir = vizero_get_resource_path("plugins");
+    config.plugin_dir = plugin_dir;
     
     /* Create application */
     vizero_application_t* app = vizero_application_create(&config);
@@ -57,6 +62,11 @@ int main(int argc, char* argv[]) {
     /* Cleanup */
     vizero_application_shutdown(app);
     vizero_application_destroy(app);
+    
+    /* Free plugin directory path */
+    if (plugin_dir) {
+        free(plugin_dir);
+    }
     
     return result;
 }

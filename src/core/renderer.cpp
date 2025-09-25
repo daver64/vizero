@@ -1,6 +1,7 @@
 /* Basic OpenGL text renderer implementation */
 #include "vizero/renderer.h"
 #include "vizero/window.h"
+#include "vizero/file_utils.h"
 #include <GL/glew.h>
 #include <SDL_image.h>
 #include <stdio.h>
@@ -236,7 +237,14 @@ vizero_renderer_t* vizero_renderer_create(vizero_window_t* window) {
     renderer->use_font_texture_uniform = glGetUniformLocation(renderer->shader_program, "uUseFontTexture");
     
     /* Load font texture */
-    renderer->font_texture = load_bmp_texture("fonts/whitefont.bmp");
+    char* font_path = vizero_get_resource_path("fonts/whitefont.bmp");
+    if (font_path) {
+        renderer->font_texture = load_bmp_texture(font_path);
+        free(font_path);
+    } else {
+        renderer->font_texture = 0;
+    }
+    
     if (!renderer->font_texture) {
         printf("Warning: Failed to load font texture, text will not render properly\n");
     }

@@ -4475,19 +4475,11 @@ int vizero_editor_enter_help_mode(vizero_editor_state_t* state) {
     /* Store the current buffer index for restoration */
     state->help_original_buffer_index = state->current_buffer_index;
     
-    /* Create help buffer and load manual.md from startup directory */
-    char manual_path[1024];
-    if (state->startup_directory) {
-        snprintf(manual_path, sizeof(manual_path), "%s%smanual.md", 
-                 state->startup_directory, 
-                 #ifdef _WIN32
-                 "\\"
-                 #else
-                 "/"
-                 #endif
-                );
-    } else {
-        strcpy(manual_path, "manual.md");
+    /* Create help buffer and load manual.md from executable directory */
+    char* manual_path = vizero_get_resource_path("manual.md");
+    if (!manual_path) {
+        vizero_editor_set_status_message(state, "Error: Could not determine manual.md path");
+        return -1;
     }
     
     vizero_buffer_t* help_buffer = vizero_buffer_create_from_file(manual_path);
@@ -4495,8 +4487,12 @@ int vizero_editor_enter_help_mode(vizero_editor_state_t* state) {
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Error: Could not load manual.md from %s", manual_path);
         vizero_editor_set_status_message(state, error_msg);
+        free(manual_path);
         return -1;
     }
+    
+    /* Free the path now that we're done with it */
+    free(manual_path);
     
     /* Ensure the filename is set for syntax highlighting */
     if (vizero_buffer_set_filename(help_buffer, "manual.md") != 0) {

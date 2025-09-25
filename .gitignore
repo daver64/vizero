@@ -10,6 +10,7 @@ vizero-gui.exe
 plugins/*.dll
 plugins/*.so
 plugins/*.dylib
+clangd/
 
 # Visual Studio
 .vs/
