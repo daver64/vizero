@@ -279,6 +279,9 @@ target_link_libraries(vizero_core PUBLIC
     ${PLATFORM_LIBS}
 )
 
+# Enable position-independent code for static library (required for plugins on Unix)
+set_target_properties(vizero_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Main executable (console version)
 if(WIN32)
     add_executable(vizero
