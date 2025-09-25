@@ -22,6 +22,7 @@
 - **Language Server Protocol Integration**: Full LSP support with clangd for C/C++ development, providing intelligent code completion (Ctrl+Space), real-time diagnostics, and graceful degradation when language servers are unavailable.
 - **Crash-Free LSP Completion**: Robust JSON parsing with 32KB buffer support handles massive completion responses (42KB+ tested) without crashes or hangs.
 - **Production-Ready clangd Plugin**: Complete implementation with automatic clangd discovery, memory-safe operation, and comprehensive error handling.
+- **Cross-Platform Plugin Loading**: Plugin system now correctly handles platform-specific extensions (.dll on Windows, .so on Linux/Unix) by automatically converting manifest entries at runtime, enabling seamless cross-platform plugin deployment.
 
 ## Quick Start
 

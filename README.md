@@ -76,7 +76,7 @@ For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
 - **Code Completion**: Intelligent auto-completion with Ctrl+Space (requires clangd)
 - **Real-time Diagnostics**: Error and warning reporting from language servers
 - **Compiler Integration**: Built-in C/C++/Assembly compilation
-- **Plugin System**: Modular syntax highlighting with 8 built-in language plugins and extension support
+- **Plugin System**: Cross-platform modular architecture with 8 built-in language plugins, automatic extension handling (.dll/.so), and manifest-based configuration
 - **Settings Persistence**: Configuration saved to `%APPDATA%\Vizero\`
 - **Command Execution**: Direct compiler invocation from editor
 - **Graceful Degradation**: Full functionality even when language servers are not available

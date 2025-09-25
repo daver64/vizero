@@ -302,7 +302,17 @@ int vizero_plugin_manager_load_plugins_for_file(vizero_plugin_manager_t* manager
 #ifdef _WIN32
         snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
 #else
-        snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, entry->dll_path);
+        /* Convert .dll extension to .so on Unix platforms */
+        char plugin_filename[512];
+        strncpy(plugin_filename, entry->dll_path, sizeof(plugin_filename) - 1);
+        plugin_filename[sizeof(plugin_filename) - 1] = '\0';
+        
+        char* ext = strrchr(plugin_filename, '.');
+        if (ext && strcmp(ext, ".dll") == 0) {
+            strcpy(ext, ".so");
+        }
+        
+        snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, plugin_filename);
 #endif
         
         if (vizero_plugin_manager_load_plugin(manager, plugin_path) == 0) {
@@ -331,7 +341,17 @@ int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager)
 #ifdef _WIN32
             snprintf(plugin_path, sizeof(plugin_path), "%s\\%s", manager->plugin_directory, entry->dll_path);
 #else
-            snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, entry->dll_path);
+            /* Convert .dll extension to .so on Unix platforms */
+            char plugin_filename[512];
+            strncpy(plugin_filename, entry->dll_path, sizeof(plugin_filename) - 1);
+            plugin_filename[sizeof(plugin_filename) - 1] = '\0';
+            
+            char* ext = strrchr(plugin_filename, '.');
+            if (ext && strcmp(ext, ".dll") == 0) {
+                strcpy(ext, ".so");
+            }
+            
+            snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, plugin_filename);
 #endif
             
             if (vizero_plugin_manager_load_plugin(manager, plugin_path) == 0) {
