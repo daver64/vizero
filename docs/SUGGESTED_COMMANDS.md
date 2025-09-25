@@ -65,6 +65,15 @@
 - ✅ `:linenum on/off` - Enable/disable line numbers
 - ✅ `:syntax on/off` - Enable/disable syntax highlighting
 - ✅ `:tabs <N>` - Set tab size to N spaces
+- ✅ `:colourscheme <theme>` - Switch colour themes (Default/Monokai/Solarized Dark)
+
+### Compiler Integration
+- ✅ `:set c_compiler <name>` - Set C compiler (gcc, msvc)
+- ✅ `:set cpp_compiler <name>` - Set C++ compiler (g++, msvc)
+- ✅ `:set assembler <name>` - Set assembler (nasm, fasm)
+- ✅ `:set c_compiler_path <path>` - Set C compiler executable path
+- ✅ `:set cpp_compiler_path <path>` - Set C++ compiler executable path
+- ✅ `:set assembler_path <path>` - Set assembler executable path
 
 ### Buffer Properties
 - ✅ `:ro`, `:readonly` - Make current buffer read-only
@@ -82,40 +91,40 @@
 - **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved colour contrast for headings, code, and emphasis.
 - **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, clear error/info popups, and read-only status indicator (pale green 'rw' / pale red 'ro').
 - **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
-- **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
+- **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `Ctrl+w`), all input goes to the correct window and buffer.
 - **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
 
-## Commands Still To Be Implemented (❌ Not Implemented)
+## Recently Implemented Commands (✅ Now Complete)
 
-### File Operations
-- ✅ `:n` - Edit next file in argument list (same as :bn)
-- ✅ `:prev` - Edit previous file in argument list (same as :bp)
+### File Operations  
+- ✅ `:n`, `:next` - Edit next file in argument list (same as :bn)
+- ✅ `:prev`, `:previous` - Edit previous file in argument list (same as :bp)
 - ✅ `:pwd` - Print working directory
 
-### Buffer/Window Management  
+### Buffer/Window Management
 - ✅ `:only` - Close all windows except current
 - ✅ `:enew` - Edit new unnamed buffer
 
 ### Text Manipulation (Command Mode)
 - ✅ `:d` - Delete current line
-- ✅ `:y` - Yank (copy) current line  
+- ✅ `:y` - Yank (copy) current line
 - ✅ `:p` - Put (paste) after cursor
 - ✅ `:P` - Put (paste) before cursor
 - ✅ `:j` - Join current line with next
-- ✅ `:u` - Undo last change (Ctrl+Z works in normal mode)
+- ✅ `:u` - Undo last change
 - ✅ `:redo` - Redo last undone change
 
 ### Line Range Operations
 - ✅ `:1,5d` - Delete lines 1-5
-- ✅ `:1,5y` - Yank lines 1-5  
+- ✅ `:1,5y` - Yank lines 1-5
 - ✅ `:1,5s/old/new/g` - Substitute in range
 - ✅ `:.,.+5d` - Delete from current line to 5 lines down
+- ✅ `<line>d` - Delete specific line number
+- ✅ `<line>y` - Yank specific line number
 
-### Advanced Search/Replace  
+### Advanced Search/Replace
 - ✅ `:g/pattern/d` - Delete all lines matching pattern
-- ✅ `:g/pattern/p` - Print all lines matching pattern
 - ✅ `:v/pattern/d` - Delete all lines NOT matching pattern
-- ✅ `:%g/pattern/s//replacement/g` - Global substitute with pattern
 
 ### Marks and Navigation
 - ✅ `:marks` - List all marks (shows info popup)
@@ -123,61 +132,84 @@
 - ✅ `:changes` - List change history (shows info popup)
 
 ### External Commands
-- ✅ `:!command` - Execute shell command
-- ✅ `:r !command` - Read output of shell command
-- ✅ `:make` - Run make command
-- ❌ `:grep pattern files` - Run grep and load results
+- ✅ `:!command` - Execute shell command in new window
+- ✅ `:r !command` - Read output of shell command into buffer
+- ✅ `:make` - Run make command in new window
 
 ### Help and Information
-- ✅ `:version` - Show version information
-- ✅ `:help`, `:h` - Load manual.md in current buffer
+- ✅ `:version` - Show version information and build details
 
-### Session Management
-- ❌ `:mksession` - Save current session
+### Compiler Configuration
+- ✅ `:set c_compiler gcc|msvc` - Set C compiler
+- ✅ `:set cpp_compiler g++|msvc` - Set C++ compiler
+- ✅ `:set assembler nasm|fasm` - Set assembler
+- ✅ `:set <compiler>_path <path>` - Set compiler executable paths
+
+## Commands Still To Be Implemented (❌ Not Implemented)
+
+### Session Management (Framework Complete, Implementation Pending)
+- ❌ `:mksession <name>` - Create/save session (shows "not yet implemented" message)
+- ❌ `:session <name>` - Load session (shows "not yet implemented" message) 
+- ❌ `:sessions` - List available sessions (shows "not yet implemented" message)
+- ❌ `:session-save` - Save current session (shows "not yet implemented" message)
+
+### Advanced Features
+- ❌ `:grep pattern files` - Run grep and load results
 - ❌ `:source filename` - Execute commands from file
 
-### Advanced Configuration  
-- ❌ `:colourscheme name` - Set colour scheme
+### Theme System (Partially Implemented)
+- ✅ `:colourscheme Default|Monokai|Solarized\ Dark` - Switch colour themes (implemented)
+- ❌ Custom theme creation/loading
+
+### Configuration Aliases
 - ❌ `:set number` - Show line numbers (alias for :linenum on)
-- ❌ `:set nonumber` - Hide line numbers (alias for :linenum off) 
+- ❌ `:set nonumber` - Hide line numbers (alias for :linenum off)
 - ❌ `:set hlsearch` - Highlight search results (search highlighting is always on)
 - ❌ `:set nohlsearch` - Don't highlight search results
 
 ## Priority Implementation Order for Remaining Commands
 
-### High Priority (Most Used)
-1. ❌ `:grep pattern files` - Search integration (cross-platform solution needed)
+### High Priority (Most Useful)
+1. ❌ Session management implementation - Framework exists, needs actual save/load logic
+2. ❌ `:grep pattern files` - Search integration (cross-platform solution needed)
 
-### Lower Priority (Advanced Features)  
-1. ❌ `:mksession` - Session management
-2. ❌ `:colourscheme` - Theme support
-3. ❌ `:jumps` / `:changes` - History navigation
-4. ❌ `:source filename` - Script execution
-5. ❌ `:grep` integration
+### Medium Priority (Quality of Life)
+1. ❌ `:source filename` - Script execution for configuration
+2. ❌ Configuration aliases (`:set number`, `:set nonumber`)
+3. ❌ Custom theme creation/loading
+
+### Lower Priority (Advanced Features)
+1. ❌ Advanced search highlighting controls
+2. ❌ Extended mark navigation in normal mode
 
 ## Summary of Current State
 
-**Vizero has an exceptionally comprehensive command set!** The core vi/vim functionality is largely complete:
+**Vizero has an exceptionally comprehensive command set!** The core vi/vim functionality is now nearly complete:
 
 ### ✅ **Fully Implemented Areas:**
 - Complete file operations (open, save, quit, read)
-- Full buffer management (create, switch, delete, list)
-- Complete window management (split, close, focus)
+- Full buffer management (create, switch, delete, list, interactive selector)
+- Complete window management (split, close, focus, only)
 - Advanced search and replace with regex support
+- Line range operations (delete, yank, substitute)
+- Global commands (g/pattern/d, v/pattern/d)
 - Comprehensive settings system with persistence
-- Integrated compilation and execution
-- Directory operations
-- Navigation commands
+- Integrated compilation and execution with configurable compilers
+- External command execution (`:!command`, `:r !command`)
+- Directory operations (ls, chdir, pwd)
+- Navigation commands and history displays
+- Text manipulation (delete, yank, paste, join, undo/redo)
 - Syntax highlighting and word wrap
-- Help system
+- Help system and version information
+- Colour theme system (Default/Monokai/Solarized Dark)
 
 ### ❌ **Notable Missing Features:**
-- Shell command execution (`:!command`)
-- Session management (`:mksession`)
-- Full mark navigation system (mark setting/jumping in normal mode)
-- Jump/change history navigation (Ctrl+O, Ctrl+I, g;, g,)
+- Session management implementation (framework exists, shows placeholder messages)
+- Grep integration for cross-file search
+- Configuration aliases and extended search controls
+- Script execution (`:source filename`)
 
-The editor is remarkably feature-complete for a vi clone and includes many modern conveniences!
+The editor is remarkably feature-complete for a vi clone and includes many modern conveniences like interactive buffer selection, compiler integration, and real-time syntax highlighting!
 
 ## Implementation Notes
 

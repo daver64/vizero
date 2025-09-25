@@ -89,7 +89,7 @@ Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling i
 ## Common Gotchas
 
 - Plugin tokens must use line-relative column positions, not absolute
-- Window focus changes must update input routing - test with `:wincmd` and `Ctrl+w`
+- Window focus changes must update input routing - test with `Ctrl+w`
 - Boost library names are version/compiler specific on Windows
 - OpenGL context required for all rendering operations
 - Settings changes need `vizero_settings_save_to_file()` for persistence

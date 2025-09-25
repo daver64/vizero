@@ -10,7 +10,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved colour contrast for headings, code, and emphasis.
 - **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, and clear error/info popups.
 - **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
-- **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `:wincmd`, `Ctrl+w`), all input goes to the correct window and buffer.
+- **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `Ctrl+w`), all input goes to the correct window and buffer.
 - **Crash/Corruption Fixes**: Resolved all known crashes and data corruption after split and file load operations. Buffer and window arrays are always in sync.
 - **Merged Rendering Logic**: Word wrap, syntax highlighting, and cursor/scrolling are now unified in the renderer for consistent behavior.
 - **Settings System**: All settings (including word wrap, line numbers, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`.
@@ -40,7 +40,7 @@ Both versions share identical functionality and command-line arguments. Use the 
 ## Usage Notes
 
 For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
-- **Window focus and input routing**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `:wincmd`, `Ctrl+w`, or any window focus command, keypresses and text input go to the correct window.
+- **Window focus and input routing**: All input and editing operations now follow the currently focused window, matching vi-like behavior. After using `Ctrl+w` or any window focus command, keypresses and text input go to the correct window.
 - **Crash/corruption fixes**: Resolved crashes and data corruption after split and file load operations.
 - **Helper functions for window manager**: All access to window manager internals is now via safe helper functions, improving code safety and maintainability.
 
@@ -66,7 +66,7 @@ For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
 - **Cross-Platform File Handling**: Automatic line ending normalization
 - **File Reading**: `:r filename` inserts files at cursor position
  - **Smart Buffer Switching**: Detects already-open files
- - **Multi-Window Support**: Split windows, focus any window, and input always follows the focused window (vi-style `:wincmd`, `Ctrl+w` navigation)
+ - **Multi-Window Support**: Split windows, focus any window, and input always follows the focused window (vi-style `Ctrl+w` navigation)
 
 ### [*] Developer Tools
 - **Compiler Integration**: Built-in C/C++/Assembly compilation

@@ -299,9 +299,7 @@ These commands show informational popups about navigation features that are plan
 
 ## Buffer Management
 
-Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
-
-Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `:wincmd`, `Ctrl+w`, or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
+Vizero supports multiple file buffers and windows, allowing you to work with several files and window splits simultaneously. Each buffer maintains its own cursor position, undo history, and modification state. **All buffer and cursor operations always follow the currently focused window**—after any window focus change (e.g., `Ctrl+w` or window navigation), all input and editing go to the correct window and buffer, just like in vi/vim.
 
 ### Opening Files in New Buffers
 | Command | Action |
@@ -499,6 +497,12 @@ vizero main.c          # Start with main.c as buffer 1
 | `show_line_numbers` | false | Display line numbers |
 | `linewrap` | true | Word wrap at word boundaries |
 | `colour_theme` | "Default" | Current colour theme (Default/Monokai/Solarized Dark) |
+| `c_compiler` | "gcc" | C compiler (gcc, msvc) |
+| `cpp_compiler` | "g++" | C++ compiler (g++, msvc) |
+| `assembler` | "nasm" | Assembler (nasm, fasm) |
+| `c_compiler_path` | "" | Path to C compiler executable |
+| `cpp_compiler_path` | "" | Path to C++ compiler executable |
+| `assembler_path` | "" | Path to assembler executable |
 
 
 ### Persistence
