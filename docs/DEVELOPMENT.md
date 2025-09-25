@@ -3,6 +3,11 @@
 
 ## September 2025: Major Architecture, Features & Bugfixes
 
+- **Complete Buffer Management System**: Fixed buffer duplication issues, corrected `:bn`/`:bp` navigation, and added direct buffer switching with `:b1`, `:b2`, etc. commands.
+- **Interactive Buffer Selector**: `:buffers` command now opens a visual buffer browser with arrow key navigation and Enter to switch buffers.
+- **Insert Mode Cursor**: Insert mode now displays traditional underline cursor instead of block cursor for better vi compatibility.
+- **Logo Display System**: Professional logo display on startup when no files are loaded, using SDL2_image integration.
+- **Search System Improvements**: Fixed double-character input issues in search mode (`/`, `?`) and command mode (`:`) through improved SDL event handling.
 - **Word Wrap (linewrap) by Default**: Lines wrap at word boundaries, with hanging indent for wrapped lines. Toggle with `:set linewrap on|off`. Rendering and movement logic are unified for robust cursor/scrolling.
 - **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved colour contrast for headings, code, and emphasis. Implemented in the renderer and plugin system.
 - **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, and clear error/info popups. Panel system supports left/right alignment.
@@ -14,7 +19,6 @@
 - **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
 - **Colour Theme System**: Complete theming infrastructure with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command for immediate visual feedback.
 - **Session Management Infrastructure**: Comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands for workspace persistence (implementation framework complete).
-- **Buffer Navigation Fixes**: Fixed `:bn` and `:bp` commands to work correctly with split windows and focused window management.
 
 ## Quick Start
 

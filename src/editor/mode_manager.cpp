@@ -48,10 +48,10 @@ void vizero_mode_manager_enter_normal_mode(vizero_mode_manager_t* manager) {
     vizero_editor_set_mode(manager->state, VIZERO_MODE_NORMAL);
     
     /* Clear command mode status display when returning to normal mode */
-    /* Only clear if it's actually a command prompt, not a result message */
+    /* Clear if it's a command prompt (starts with :) or search (starts with / or ?) */
     const char* current_status = vizero_editor_get_status_message(manager->state);
-    if (current_status && strcmp(current_status, ":") == 0) {
-        /* Only clear bare colon prompt, not command results */
+    if (current_status && (current_status[0] == ':' || current_status[0] == '/' || current_status[0] == '?')) {
+        /* Clear command/search prompts */
         vizero_editor_set_status_message(manager->state, NULL);
     }
 }

@@ -68,7 +68,7 @@ On success, a status message will confirm the new directory. On failure, an erro
 
 ### Insert Mode  
 - **Purpose**: Text input and editing
-- **Indicator**: Cursor is a line
+- **Indicator**: Cursor is an underline
 - **Entry**: Press `i` from Normal Mode
 
 ### Command Mode
@@ -316,12 +316,19 @@ Vizero supports multiple file buffers and windows, allowing you to work with sev
 |---------|--------|
 | `:bn`, `:bnext` | Switch to next buffer |
 | `:bp`, `:bprev` | Switch to previous buffer |
-| `:bN` | Switch directly to buffer number N (e.g., `:b1`) |
-| `:ls`, `:buffers` | List all open buffers with numbers |
+| `:bN` | Switch directly to buffer number N (e.g., `:b1`, `:b2`) |
+| `:buffers` | Interactive buffer selector (use arrows + Enter) |
 | `:bd`, `:bdelete` | Delete/close current buffer |
 | `:bd N`, `:bdelete N` | Delete buffer number N |
 | `:n`, `:next` | Edit next file (same as `:bn`) |
 | `:prev`, `:previous` | Edit previous file (same as `:bp`) |
+
+### Interactive Buffer Selector
+The `:buffers` command opens an interactive popup window showing all open buffers:
+- Use **↑/↓ arrow keys** to navigate through the buffer list  
+- Press **Enter** to switch to the selected buffer
+- Press **ESC** to cancel and close the selector
+- Current buffer is marked with `[CURRENT]`, selected buffer with `>`
 ### Buffer Deletion
 | Command | Action |
 |---------|--------|
@@ -394,6 +401,12 @@ vizero main.c          # Start with main.c as buffer 1
 |---------|--------|
 | `:file` | Show current filename and status |
 | `:pwd` | Print working directory |
+
+### Directory Operations
+| Command | Action |
+|---------|--------|
+| `:ls` | List files in current directory |
+| `:chdir <path>` | Change working directory |
 
 ---
 
@@ -573,7 +586,7 @@ vizero main.c          # Start with main.c as buffer 1
 ### Buffer Management
 | Command | Description |
 |---------|-------------|
-| `:ls`, `:buffers` | List all buffers |
+| `:buffers` | Interactive buffer selector (arrows + Enter) |
 | `:bn`, `:bnext` | Next buffer |
 | `:bp`, `:bprev` | Previous buffer |
 | `:b1`, `:b2`, `:b3` | Switch to buffer number |
@@ -609,6 +622,7 @@ vizero main.c          # Start with main.c as buffer 1
 |---------|-------------|
 | `:ls` | List files in current directory |
 | `:chdir <path>` | Change working directory |
+| `:pwd` | Print working directory |
 
 ### Compilation
 | Command | Description |

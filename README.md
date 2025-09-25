@@ -18,8 +18,12 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 
 ## September 2025 Update: Major Features and Fixes
 
+- **Complete Buffer Management System**: Fixed buffer duplication issues, proper `:bn`/`:bp` navigation, and added direct buffer switching with `:b1`, `:b2`, etc.
+- **Interactive Buffer Selector**: `:buffers` now opens a visual buffer browser with arrow key navigation and Enter to switch buffers.
+- **Insert Mode Cursor**: Insert mode now shows traditional underline cursor instead of block cursor for better vi compatibility.
+- **Logo Display**: Vizero logo appears on startup when no files are loaded, creating a professional welcome screen.
+- **Search System Improvements**: Fixed double-character input issues in search mode (`/`, `?`) and command mode (`:`).
 - **Colour Theme System**: Complete theming with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command.
-- **Buffer Navigation in Split Windows**: Fixed `:bn` and `:bp` commands to work correctly with split windows and focused window management.
 - **Session Management Infrastructure**: Added comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands (implementation in progress).
 - **Status Message Timeouts**: Status messages now auto-dismiss after 3 seconds for better user experience.
 - **Clean Build System**: Eliminated all compilation warnings for a professional development experience.
@@ -114,7 +118,7 @@ cmake --build . --config Release
 
 #### Buffer Management  
 ```
-:ls            # List all buffers
+:buffers       # Interactive buffer selector (arrows + Enter)
 :bn            # Next buffer
 :bp            # Previous buffer  
 :b1, :b2, :b3  # Jump to buffer number
@@ -226,7 +230,7 @@ vizero main.c
 :e data.txt
 
 # Navigate between buffers
-:ls                    # Shows: 1:main.c 2:header.h 3:utils.c 4:data.txt*
+:buffers               # Interactive buffer selector (use arrows + Enter)
 :b1                    # Jump to main.c
 :bn                    # Next buffer (header.h)
 :bp                    # Previous buffer (main.c)
@@ -314,7 +318,8 @@ static int highlight_syntax(/* ... */) {
 | `:bn/:bp` | Next/previous buffer |
 | `:b[N]` | Switch to buffer N |
 | `:bd` | Delete current buffer |
-| `:ls` | List buffers/files |
+| `:buffers` | Interactive buffer selector |
+| `:ls` | List files in directory |
 | `:new` | New empty buffer |
 | `:split/:vsplit` | Split window |
 | `:close` | Close window |
