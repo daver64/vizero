@@ -56,6 +56,26 @@ add_vizero_plugin(syntax_markdown
     syntax_markdown/syntax_markdown.c
 )
 
+# C# syntax highlighting plugin
+add_vizero_plugin(syntax_csharp
+    syntax_csharp/syntax_csharp.c
+)
+
+# XML syntax highlighting plugin
+add_vizero_plugin(syntax_xml
+    syntax_xml/syntax_xml.c
+)
+
+# Python syntax highlighting plugin
+add_vizero_plugin(syntax_python
+    syntax_python/syntax_python.c
+)
+
+# Common Lisp syntax highlighting plugin  
+add_vizero_plugin(syntax_lisp
+    syntax_lisp/syntax_lisp.c
+)
+
 # File browser plugin
 add_vizero_plugin(file_browser
     file_browser/file_browser.c

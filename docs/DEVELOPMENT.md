@@ -9,7 +9,7 @@
 - **Logo Display System**: Professional logo display on startup when no files are loaded, using SDL2_image integration.
 - **Search System Improvements**: Fixed double-character input issues in search mode (`/`, `?`) and command mode (`:`) through improved SDL event handling.
 - **Word Wrap (linewrap) by Default**: Lines wrap at word boundaries, with hanging indent for wrapped lines. Toggle with `:set linewrap on|off`. Rendering and movement logic are unified for robust cursor/scrolling.
-- **Markdown Syntax Highlighting**: Built-in Markdown highlighting with improved colour contrast for headings, code, and emphasis. Implemented in the renderer and plugin system.
+- **Multi-Language Syntax Highlighting**: Comprehensive syntax highlighting for C/C++/Assembly, C#, Markdown, XML, Python, and Common Lisp with REPL-aware buffer support. Implemented as modular plugins in the renderer system.
 - **Status Bar Improvements**: Status bar now features a right-aligned time/date panel, auto-reverting status messages, and clear error/info popups. Panel system supports left/right alignment.
 - **Robust Cursor and Scrolling**: Cursor always visible, including on empty lines. Vertical scrolling and cursor movement are robust, with preferred column logic for up/down and correct mapping between logical and visual cursor positions.
 - **Window Focus and Input Routing**: All input and editing operations always follow the currently focused window, matching vi-like behavior. After any window focus change (e.g., `Ctrl+w`), all input goes to the correct window and buffer.
@@ -96,7 +96,7 @@ chmod +x build.sh
 
 ### Adding New Features
 1. **Core Features**: Add to appropriate `src/` subdirectory. For editor/renderer changes, see `src/ui/editor_window.cpp` and related files.
-2. **Plugin Features**: Create new plugin in `plugins/`. For syntax highlighting, see the Markdown plugin and `vizero/plugin_interface.h`.
+2. **Plugin Features**: Create new plugin in `plugins/`. For syntax highlighting, see any of the language plugins (C, Python, Lisp, Markdown, XML, C#) and `vizero/plugin_interface.h`.
 3. **API Changes**: Update headers in `include/vizero/`.
 
 
@@ -111,7 +111,7 @@ chmod +x build.sh
        my_plugin/my_plugin.c
    )
    ```
-4. For syntax highlighting, see the Markdown plugin for an example of colour mapping and tokenization.
+4. For syntax highlighting, see any of the language plugins (Python, Lisp, C, Markdown, XML, C#) for examples of colour mapping, tokenization, and REPL buffer detection.
 
 #### Plugin Template
 
