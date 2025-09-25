@@ -71,6 +71,11 @@ add_vizero_plugin(syntax_python
     syntax_python/syntax_python.c
 )
 
+# PHP syntax highlighting plugin
+add_vizero_plugin(syntax_php
+    syntax_php/syntax_php.c
+)
+
 # Common Lisp syntax highlighting plugin  
 add_vizero_plugin(syntax_lisp
     syntax_lisp/syntax_lisp.c

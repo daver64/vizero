@@ -66,6 +66,15 @@
       "description": "Common Lisp syntax highlighting with REPL support",
       "priority": 1
     },
+    "syntax_php": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".php", ".phtml", ".php3", ".php4", ".php5", ".phps"],
+      "repl_patterns": ["*PHP*", "*php*", "php-repl", ".php-repl"],
+      "load_on_demand": true,
+      "dll_path": "syntax_php.dll",
+      "description": "PHP syntax highlighting with REPL support",
+      "priority": 1
+    },
     "irc": {
       "type": "generic",
       "load_on_demand": false,

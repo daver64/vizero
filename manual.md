@@ -942,7 +942,7 @@ The IRC integration in Vizero provides a powerful combination of real-time commu
 
 ### Plugin System
 - **Dynamic Loading**: Load plugins at runtime
-- **Syntax Highlighting**: Extensible language support
+- **Syntax Highlighting**: Extensible language support for C/C++, C#, Python, PHP, XML, Markdown, Lisp
 - **API Integration**: Full editor API access for plugins
 
 ### Search Match Highlighting
