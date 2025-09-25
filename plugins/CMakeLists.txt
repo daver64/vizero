@@ -81,6 +81,6 @@ add_vizero_plugin(file_browser
     file_browser/file_browser.c
 )
 
-# clangd LSP plugin
-add_subdirectory(clangd)
+# clangd LSP plugin (directory not yet created)
+# add_subdirectory(clangd)
 
