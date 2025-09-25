@@ -56,6 +56,34 @@ int vizero_plugin_manager_highlight_syntax(
     size_t max_tokens,
     size_t* token_count);
 
+/* LSP functionality */
+int vizero_plugin_manager_lsp_completion(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    vizero_completion_list_t** result);
+
+int vizero_plugin_manager_lsp_hover(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    char** hover_text);
+
+int vizero_plugin_manager_lsp_goto_definition(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    vizero_location_t** locations,
+    size_t* location_count);
+
+/* Process LSP messages for all plugins (non-blocking) */
+void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager);
+
+/* Check for pending LSP completion results */
+int vizero_plugin_manager_check_completion_results(
+    vizero_plugin_manager_t* manager,
+    vizero_completion_list_t** result);
+
 #ifdef __cplusplus
 }
 #endif

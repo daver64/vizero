@@ -574,3 +574,156 @@ static void init_editor_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     /* Store reference to editor for implementations */
     (void)editor;
 }
+
+/* LSP completion function */
+int vizero_plugin_manager_lsp_completion(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    vizero_completion_list_t** result) 
+{
+    if (!manager || !buffer || !result) {
+        return -1;
+    }
+    
+    *result = NULL;
+    
+    printf("[DEBUG] Searching %zu plugins for LSP completion support\n", manager->plugin_count);
+    
+    /* Find plugins that support LSP completion */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        printf("[DEBUG] Plugin %zu: name=%s, lsp_completion=%p\n", 
+               i, plugin ? (plugin->info.name ? plugin->info.name : "unknown") : "null",
+               plugin ? (void*)plugin->callbacks.lsp_completion : NULL);
+        
+        if (plugin && plugin->callbacks.lsp_completion) {
+            printf("[DEBUG] Trying LSP completion with plugin: %s\n", 
+                   plugin->info.name ? plugin->info.name : "unknown");
+            
+            int ret = plugin->callbacks.lsp_completion(buffer, position, result);
+            if (ret == 0 && *result) {
+                printf("[DEBUG] LSP completion successful, got %zu items\n", (*result)->item_count);
+                return 0;
+            } else {
+                printf("[DEBUG] LSP completion failed: ret=%d, result=%p\n", ret, (void*)*result);
+            }
+        }
+    }
+    
+    printf("[DEBUG] No LSP completion plugin found or no results\n");
+    return -1;
+}
+
+/* LSP hover function */
+int vizero_plugin_manager_lsp_hover(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    char** hover_text) 
+{
+    if (!manager || !buffer || !hover_text) {
+        return -1;
+    }
+    
+    *hover_text = NULL;
+    
+    /* Find plugins that support LSP hover */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_hover) {
+            int ret = plugin->callbacks.lsp_hover(buffer, position, hover_text);
+            if (ret == 0 && *hover_text) {
+                return 0;
+            }
+        }
+    }
+    
+    return -1;
+}
+
+/* LSP goto definition function */
+int vizero_plugin_manager_lsp_goto_definition(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_position_t position,
+    vizero_location_t** locations,
+    size_t* location_count) 
+{
+    if (!manager || !buffer || !locations || !location_count) {
+        return -1;
+    }
+    
+    *locations = NULL;
+    *location_count = 0;
+    
+    /* Find plugins that support LSP goto definition */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_goto_definition) {
+            int ret = plugin->callbacks.lsp_goto_definition(buffer, position, locations, location_count);
+            if (ret == 0 && *locations && *location_count > 0) {
+                return 0;
+            }
+        }
+    }
+    
+    return -1;
+}
+
+/* Process LSP messages in background (non-blocking) */
+void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager) {
+    if (!manager) {
+        return;
+    }
+    
+    /* Process LSP messages for all plugins that have LSP clients */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_completion) {
+            /* This is an LSP plugin - call its message processing function */
+            /* For clangd plugin, we'll call the exported function directly */
+            if (plugin->dll_handle) {
+                typedef int (*process_lsp_messages_func_t)(void);
+                process_lsp_messages_func_t process_func = 
+                    (process_lsp_messages_func_t)PLUGIN_GET_PROC(plugin->dll_handle, "clangd_process_lsp_messages");
+                if (process_func) {
+                    process_func();
+                }
+            }
+        }
+    }
+}
+
+/* Check for pending LSP completion results */
+int vizero_plugin_manager_check_completion_results(
+    vizero_plugin_manager_t* manager,
+    vizero_completion_list_t** result) 
+{
+    if (!manager || !result) {
+        return -1;
+    }
+    
+    *result = NULL;
+    
+    /* Check all LSP plugins for completion results */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_completion) {
+            /* Try to get completion results from this plugin */
+            if (plugin->dll_handle) {
+                typedef int (*get_completion_results_func_t)(vizero_completion_list_t**);
+                get_completion_results_func_t get_results_func = 
+                    (get_completion_results_func_t)PLUGIN_GET_PROC(plugin->dll_handle, "clangd_get_completion_results");
+                if (get_results_func) {
+                    int ret = get_results_func(result);
+                    if (ret == 0 && *result) {
+                        return 0; /* Found results */
+                    }
+                }
+            }
+        }
+    }
+    
+    return -1; /* No results available */
+}
