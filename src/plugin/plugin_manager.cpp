@@ -534,7 +534,7 @@ int vizero_plugin_manager_highlight_syntax(
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->info.type == VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER && plugin->callbacks.highlight_syntax) {
-            int n = plugin->callbacks.highlight_syntax(buffer, start_line, end_line, tokens, max_tokens);
+            int n = plugin->callbacks.highlight_syntax(buffer, start_line, end_line, tokens, max_tokens, token_count);
             if (n > 0) {
                 *token_count = (size_t)n;
                 

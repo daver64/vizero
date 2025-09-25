@@ -792,8 +792,8 @@ typedef struct {
     /* Optional: Called for command processing */
     int (*on_command)(vizero_editor_t* editor, const char* command, const char* args);
     
-    /* Optional: Called for syntax highlighting (updated signature) */
-    int (*highlight_syntax)(vizero_buffer_t* buffer, size_t start_line, size_t end_line, vizero_syntax_token_t* tokens, size_t max_tokens);
+    /* Optional: Called for syntax highlighting (see full signature below) */
+    /* int (*highlight_syntax) - defined in syntax_highlighting_callbacks section */
     
     /* Optional: Called for key input processing */
     int (*on_key_input)(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
