@@ -17,6 +17,8 @@ Vizero is a modern vi clone built with SDL2/OpenGL featuring hardware-accelerate
 
 **Plugin Architecture**: Uses function pointers in `vizero_plugin_callbacks_t` with versioned API. Plugins export `vizero_plugin_init()`, `vizero_plugin_cleanup()`, and `vizero_plugin_get_info()`. See `plugins/example/example_plugin.c` for template.
 
+**LSP Integration**: Language Server Protocol support via `src/lsp/lsp_client.cpp` with cross-platform process management and robust JSON parsing. Plugin callbacks provide `lsp_completion()`, `lsp_hover()`, etc. See `plugins/clangd/` for complete implementation.
+
 **Settings System**: Persistent configuration in `%APPDATA%\Vizero\settings.ini` with helper functions in `src/core/settings.cpp`.
 
 ## Critical Development Workflows
@@ -80,9 +82,11 @@ Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling i
 
 ## Essential Files for Understanding
 
-- `include/vizero/plugin_interface.h` - Complete plugin API
+- `include/vizero/plugin_interface.h` - Complete plugin API including LSP callbacks
 - `src/ui/editor_window.cpp` - Window management and rendering
 - `src/editor/editor_state.cpp` - Core editor logic
+- `src/lsp/lsp_client.cpp` - Language Server Protocol client implementation
+- `plugins/clangd/clangd_plugin.c` - Complete LSP plugin implementation
 - `plugins/syntax_highlight/syntax_highlight.c` - Plugin implementation example
 - `CMakeLists.txt` - Build system with dependency handling
 
@@ -93,3 +97,6 @@ Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling i
 - Boost library names are version/compiler specific on Windows
 - OpenGL context required for all rendering operations
 - Settings changes need `vizero_settings_save_to_file()` for persistence
+- LSP message parsing requires 32KB+ buffer for large completion responses
+- LSP plugins must handle graceful degradation when language servers unavailable
+- JSON parsing in LSP requires bounds checking - see safe extraction functions

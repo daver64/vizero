@@ -19,11 +19,12 @@
 8. [Buffer Management](#buffer-management)
 9. [File Operations](#file-operations)
 10. [Window Management](#window-management)
-11. [Compiler Integration](#compiler-integration)
-12. [Settings and Configuration](#settings-and-configuration)
-13. [Advanced Features](#advanced-features)
-14. [Working Directory](#working-directory)
-15. [Keyboard Reference](#keyboard-reference)
+11. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
+12. [Compiler Integration](#compiler-integration)
+13. [Settings and Configuration](#settings-and-configuration)
+14. [Advanced Features](#advanced-features)
+15. [Working Directory](#working-directory)
+16. [Keyboard Reference](#keyboard-reference)
 ## Working Directory
 
 ### Changing the Working Directory
@@ -408,6 +409,100 @@ vizero main.c          # Start with main.c as buffer 1
 
 ---
 
+## Language Server Protocol (LSP)
+
+Vizero includes comprehensive Language Server Protocol support, providing intelligent code completion, diagnostics, and other language-aware features for C/C++ development through integration with clangd.
+
+### LSP Features
+
+#### Code Completion
+| Key | Action |
+|-----|--------|
+| `Ctrl+Space` | Trigger intelligent code completion |
+
+- **Context-aware Suggestions**: Shows functions, variables, types, and members based on current context
+- **Real-time Results**: Completion suggestions appear instantly from language server
+- **Large Response Handling**: Supports completion lists with thousands of items (up to 42KB+ responses)
+- **Rich Information**: Displays function signatures, documentation, and parameter details
+
+#### Automatic Features
+- **Real-time Diagnostics**: Error and warning underlining as you type
+- **Hover Information**: Type information and documentation on cursor hover
+- **Smart Navigation**: Go-to-definition and symbol lookup
+
+### LSP Requirements
+
+#### For C/C++ Development
+- **clangd Language Server**: Download from [LLVM releases](https://github.com/llvm/llvm-project/releases)
+- **Installation**: Place `clangd.exe` in `vizero/clangd/bin/` directory or system PATH
+- **Project Setup**: Works best with `compile_commands.json` or CMake projects
+
+#### Graceful Degradation
+When clangd is not available:
+- ✅ **Editor continues to work normally** - All other features remain functional
+- ✅ **Clear feedback** - Informative messages explain LSP unavailability  
+- ✅ **No crashes** - Robust error handling prevents any instability
+- ✅ **Syntax highlighting** - Basic syntax coloring still works via built-in plugins
+
+### LSP Status Messages
+
+#### When clangd is Available
+```
+[CLANGD] Found clangd at: C:\path\to\clangd.exe
+[CLANGD] clangd process started successfully
+[CLANGD] clangd initialization complete
+```
+
+#### When clangd is Not Available
+```
+[CLANGD] clangd executable not found, disabling LSP functionality
+[CLANGD] Plugin will load but LSP features will be unavailable
+```
+
+### Code Completion Usage
+
+1. **Start typing** in a C/C++ file
+2. **Press Ctrl+Space** to trigger completion
+3. **Navigate suggestions** with arrow keys
+4. **Press Enter** to accept a completion
+5. **Press Esc** to dismiss completion popup
+
+#### Example Workflow
+```c
+#include <stdio.h>
+
+int main() {
+    pri    // Press Ctrl+Space here
+    // Shows: printf, print, etc.
+    
+    FILE* f = fo    // Press Ctrl+Space here  
+    // Shows: fopen, fork, etc.
+    
+    return 0;
+}
+```
+
+### LSP Integration Architecture
+
+- **Plugin-based**: LSP functionality provided by clangd plugin
+- **Non-blocking**: Completion requests don't freeze the editor
+- **Memory Safe**: Robust JSON parsing prevents crashes on malformed responses
+- **Configurable**: Future support for additional language servers
+
+### Troubleshooting LSP
+
+#### No Code Completion
+1. **Check clangd installation**: Ensure `clangd.exe` is in `vizero/clangd/bin/` or PATH
+2. **Verify file type**: LSP only works with C/C++ files (`.c`, `.cpp`, `.h`, `.hpp`)
+3. **Check status messages**: Look for clangd initialization messages at startup
+
+#### LSP Startup Issues
+- **Permission problems**: Ensure clangd executable has proper permissions
+- **Path issues**: Use absolute paths if relative paths don't work
+- **Version compatibility**: Use recent clangd versions (LLVM 12+)
+
+---
+
 ## Compiler Integration
 
 ### Compilation Commands
@@ -569,6 +664,7 @@ vizero main.c          # Start with main.c as buffer 1
 | `/` | Forward search |
 | `n` | Next search result |
 | `N` | Previous search result |
+| `Ctrl+Space` | Trigger code completion (LSP) |
 | `Ctrl+C` | Copy selection |
 | `Ctrl+X` | Cut selection |
 | `Ctrl+V` | Paste |
@@ -586,6 +682,7 @@ vizero main.c          # Start with main.c as buffer 1
 | `Delete` | Delete at cursor |
 | `Tab` | Smart indent or 4 spaces |
 | `Arrow Keys` | Navigate |
+| `Ctrl+Space` | Trigger code completion (LSP) |
 | `Ctrl+C/X/V` | Clipboard operations |
 | `Ctrl+Z` | Undo |
 

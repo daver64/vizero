@@ -19,6 +19,9 @@
 - **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
 - **Colour Theme System**: Complete theming infrastructure with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command for immediate visual feedback.
 - **Session Management Infrastructure**: Comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands for workspace persistence (implementation framework complete).
+- **Language Server Protocol Integration**: Full LSP support with clangd for C/C++ development, providing intelligent code completion (Ctrl+Space), real-time diagnostics, and graceful degradation when language servers are unavailable.
+- **Crash-Free LSP Completion**: Robust JSON parsing with 32KB buffer support handles massive completion responses (42KB+ tested) without crashes or hangs.
+- **Production-Ready clangd Plugin**: Complete implementation with automatic clangd discovery, memory-safe operation, and comprehensive error handling.
 
 ## Quick Start
 
@@ -90,14 +93,17 @@ chmod +x build.sh
 - **Core**: `src/core/` - Application, window, renderer, input
 - **Text**: `src/text/` - Buffer, cursor, line management
 - **Editor**: `src/editor/` - Modes, commands, state
+- **LSP**: `src/lsp/` - Language Server Protocol client implementation
 - **Plugin**: `src/plugin/` - Plugin system implementation
 - **Utils**: `src/utils/` - Utility functions
+- **UI**: `src/ui/` - Editor windows, completion popups, rendering
 
 
 ### Adding New Features
 1. **Core Features**: Add to appropriate `src/` subdirectory. For editor/renderer changes, see `src/ui/editor_window.cpp` and related files.
-2. **Plugin Features**: Create new plugin in `plugins/`. For syntax highlighting, see any of the language plugins (C, Python, Lisp, Markdown, XML, C#) and `vizero/plugin_interface.h`.
-3. **API Changes**: Update headers in `include/vizero/`.
+2. **Language Server Features**: Extend `src/lsp/lsp_client.cpp` and plugin callbacks in `include/vizero/plugin_interface.h`. See `plugins/clangd/` for complete LSP implementation example.
+3. **Plugin Features**: Create new plugin in `plugins/`. For syntax highlighting, see any of the language plugins (C, Python, Lisp, Markdown, XML, C#). For LSP plugins, see the clangd plugin structure.
+4. **API Changes**: Update headers in `include/vizero/`.
 
 
 ### Plugin Development
@@ -123,7 +129,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "1.0.0",
     "Your Name",
     "Description of plugin functionality",
-    VIZERO_PLUGIN_TYPE_GENERIC
+    VIZERO_PLUGIN_TYPE_GENERIC  // or VIZERO_PLUGIN_TYPE_LANGUAGE_SERVER
 );
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, 
@@ -132,7 +138,11 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin,
     // Setup plugin callbacks
     plugin->callbacks.on_buffer_open = my_on_buffer_open;
     plugin->callbacks.on_command = my_on_command;
-    // ... other callbacks
+    
+    // For LSP plugins, also set:
+    // plugin->callbacks.lsp_completion = my_lsp_completion;
+    // plugin->callbacks.lsp_hover = my_lsp_hover;
+    // etc.
     
     return 0; // Success
 }
@@ -153,6 +163,14 @@ static int my_on_command(vizero_editor_t* editor, const char* command, const cha
         return 1; // Command handled
     }
     return 0; // Command not handled
+}
+
+// For LSP plugins
+static int my_lsp_completion(vizero_buffer_t* buffer, vizero_position_t position, 
+                            vizero_completion_list_t** result) {
+    // Implement code completion
+    // See plugins/clangd/clangd_plugin.c for full example
+    return 0;
 }
 ```
 
@@ -272,3 +290,5 @@ perf report
 **Cursor disappears or scrolling broken?**: The cursor is always visible, including on empty lines. Up/down movement preserves the preferred column, and scrolling is smooth in all window modes.
 **Input not following window focus?**: This is now fixed: after any window focus change, all input and editing will go to the correct (focused) window. If you encounter issues, check that you are using the latest code and that all buffer/cursor access goes through the window manager helpers.
 **Crashes after split or file load?**: These have been resolved with robust buffer/cursor management. If you see new issues, check for direct struct access or missing helper usage in new code.
+**LSP completion not working?**: Check that clangd is installed in `vizero/clangd/bin/clangd.exe` or system PATH. The editor gracefully handles missing language servers.
+**LSP completion crashes?**: These have been fixed with robust JSON parsing and 32KB buffer support. If you see issues, check `src/lsp/lsp_client.cpp` message processing.

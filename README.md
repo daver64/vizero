@@ -27,6 +27,9 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Session Management Infrastructure**: Added comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands (implementation in progress).
 - **Status Message Timeouts**: Status messages now auto-dismiss after 3 seconds for better user experience.
 - **Clean Build System**: Eliminated all compilation warnings for a professional development experience.
+- **LSP Integration with clangd**: Full Language Server Protocol support for C/C++ with code completion, hover information, and diagnostics. Gracefully degrades when clangd is not available.
+- **Crash-Free Completion**: Fixed all LSP completion crashes with robust JSON parsing and proper buffer management for large completion responses (42KB+).
+- **Intelligent Code Completion**: Real-time code completion with Ctrl+Space, supporting functions, variables, and type information from clangd language server.
 
 ## Executables
 
@@ -69,10 +72,14 @@ For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
  - **Multi-Window Support**: Split windows, focus any window, and input always follows the focused window (vi-style `Ctrl+w` navigation)
 
 ### [*] Developer Tools
+- **Language Server Protocol**: Full LSP integration with clangd for C/C++ development
+- **Code Completion**: Intelligent auto-completion with Ctrl+Space (requires clangd)
+- **Real-time Diagnostics**: Error and warning reporting from language servers
 - **Compiler Integration**: Built-in C/C++/Assembly compilation
 - **Plugin System**: Modular syntax highlighting with 8 built-in language plugins and extension support
 - **Settings Persistence**: Configuration saved to `%APPDATA%\Vizero\`
 - **Command Execution**: Direct compiler invocation from editor
+- **Graceful Degradation**: Full functionality even when language servers are not available
 
 ### [*] Standard Features
 - **Clipboard Integration**: Full Ctrl+C/X/V system clipboard support
@@ -100,6 +107,11 @@ cmake --build . --config Release
 ```
 
 ### Essential Commands
+
+#### LSP and Code Completion
+```
+Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
+```
 
 #### File Operations
 ```
