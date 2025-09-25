@@ -169,6 +169,12 @@ typedef struct {
     /* Buffer management for new approach */
     vizero_buffer_t* original_buffer;  /* Buffer that was active when IRC loaded */
     vizero_buffer_t* irc_buffer;       /* Dedicated IRC buffer created on connect */
+    
+    /* Command mode tracking */
+    bool in_vi_command;  /* true when user is typing a vi command starting with : */
+    char vi_command_buffer[64];  /* buffer to collect vi command characters */
+    
+
 } irc_state_t;
 
 /* Global IRC state */
@@ -491,6 +497,29 @@ static void irc_send_message(const char* target, const char* message) {
     }
 }
 
+/* Forward declarations */
+static void irc_clear_users_from_channel(irc_buffer_t* buffer);
+
+/* Check if we're currently in an IRC buffer */
+static bool irc_is_in_irc_buffer(vizero_editor_t* editor) {
+    if (!g_irc_state || !g_irc_state->api || !g_irc_state->api->get_current_buffer) {
+        return false;
+    }
+    
+    vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
+    
+    /* Check if current buffer is the main IRC buffer we created */
+    if (current_buffer == g_irc_state->irc_buffer) {
+        return true;
+    }
+    
+    /* For the current implementation, we're using a single IRC buffer
+     * In the future, if we add support for multiple IRC buffers per channel,
+     * we would need to check against all IRC buffers here */
+    
+    return false;
+}
+
 static void irc_join_channel(const char* channel) {
     if (!channel) return;
     
@@ -499,7 +528,11 @@ static void irc_join_channel(const char* channel) {
     irc_send_raw(buffer);
     
     /* Create buffer for channel and switch to it */
-    irc_get_or_create_buffer(channel);
+    irc_buffer_t* channel_buffer = irc_get_or_create_buffer(channel);
+    if (channel_buffer) {
+        /* Clear user list for fresh start */
+        irc_clear_users_from_channel(channel_buffer);
+    }
     irc_set_active_buffer(channel);
 }
 
@@ -513,6 +546,58 @@ static void irc_part_channel(const char* channel, const char* reason) {
         snprintf(buffer, sizeof(buffer), "PART %s", channel);
     }
     irc_send_raw(buffer);
+}
+
+/* Add user to channel */
+static void irc_add_user_to_channel(irc_buffer_t* buffer, const char* nick) {
+    if (!buffer || !nick || buffer->channel_info.user_count >= 256) return;
+    
+    /* Check if user already exists */
+    for (size_t i = 0; i < buffer->channel_info.user_count; i++) {
+        if (strcmp(buffer->channel_info.users[i].nick, nick) == 0) {
+            return; /* User already exists */
+        }
+    }
+    
+    /* Add new user */
+    irc_user_t* user = &buffer->channel_info.users[buffer->channel_info.user_count];
+    strncpy(user->nick, nick, sizeof(user->nick) - 1);
+    user->nick[sizeof(user->nick) - 1] = '\0';
+    user->is_op = false;
+    user->has_voice = false;
+    
+    /* Check for operator/voice prefixes */
+    if (nick[0] == '@') {
+        user->is_op = true;
+        memmove(user->nick, user->nick + 1, strlen(user->nick));
+    } else if (nick[0] == '+') {
+        user->has_voice = true;
+        memmove(user->nick, user->nick + 1, strlen(user->nick));
+    }
+    
+    buffer->channel_info.user_count++;
+}
+
+/* Remove user from channel */
+static void irc_remove_user_from_channel(irc_buffer_t* buffer, const char* nick) {
+    if (!buffer || !nick) return;
+    
+    for (size_t i = 0; i < buffer->channel_info.user_count; i++) {
+        if (strcmp(buffer->channel_info.users[i].nick, nick) == 0) {
+            /* Move remaining users down */
+            for (size_t j = i; j < buffer->channel_info.user_count - 1; j++) {
+                buffer->channel_info.users[j] = buffer->channel_info.users[j + 1];
+            }
+            buffer->channel_info.user_count--;
+            break;
+        }
+    }
+}
+
+/* Clear all users from channel */
+static void irc_clear_users_from_channel(irc_buffer_t* buffer) {
+    if (!buffer) return;
+    buffer->channel_info.user_count = 0;
 }
 
 /* Parse IRC message and update buffers */
@@ -585,6 +670,9 @@ static void irc_parse_message(const char* line) {
                 char join_msg[256];
                 snprintf(join_msg, sizeof(join_msg), "%s has joined %s", nick, channel);
                 irc_add_message(buffer, NULL, join_msg, IRC_MSG_JOIN);
+                
+                /* Add user to channel user list */
+                irc_add_user_to_channel(buffer, nick);
             }
         }
     } else if (strcmp(command, "PART") == 0) {
@@ -595,12 +683,72 @@ static void irc_parse_message(const char* line) {
                 char part_msg[256];
                 snprintf(part_msg, sizeof(part_msg), "%s has left %s", nick, channel);
                 irc_add_message(buffer, NULL, part_msg, IRC_MSG_PART);
+                
+                /* Remove user from channel user list */
+                irc_remove_user_from_channel(buffer, nick);
+            }
+        }
+    } else if (strcmp(command, "QUIT") == 0) {
+        /* User quit - remove from all channels */
+        for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
+            irc_buffer_t* buffer = g_irc_state->buffers[i];
+            if (buffer && buffer->name[0] == '#') { /* Channel buffer */
+                irc_remove_user_from_channel(buffer, nick);
+                
+                /* Add quit message to channel */
+                char* reason = strtok_r(NULL, "", &saveptr);
+                if (reason && reason[0] == ':') reason++; /* Skip : */
+                
+                char quit_msg[256];
+                if (reason && strlen(reason) > 0) {
+                    snprintf(quit_msg, sizeof(quit_msg), "%s has quit (%s)", nick, reason);
+                } else {
+                    snprintf(quit_msg, sizeof(quit_msg), "%s has quit", nick);
+                }
+                irc_add_message(buffer, NULL, quit_msg, IRC_MSG_QUIT);
             }
         }
     } else {
         /* Handle numeric server messages */
         int numeric = atoi(command);
         if (numeric >= 001 && numeric <= 999) {
+            /* Handle specific numerics */
+            if (numeric == 353) { /* RPL_NAMREPLY - channel user list */
+                /* Format: :server 353 nick = #channel :nick1 nick2 @nick3 +nick4 */
+                char* rest = strtok_r(NULL, "", &saveptr);
+                if (rest) {
+                    /* Find channel name and user list */
+                    char* channel_start = strchr(rest, '#');
+                    if (channel_start) {
+                        char* space = strchr(channel_start, ' ');
+                        if (space) {
+                            *space = '\0';
+                            char* user_list = strchr(space + 1, ':');
+                            if (user_list) {
+                                user_list++; /* Skip ':' */
+                                
+                                /* Find buffer for this channel */
+                                irc_buffer_t* channel_buffer = irc_find_buffer(channel_start);
+                                if (channel_buffer) {
+                                    /* Parse user list */
+                                    char* user_list_copy = strdup(user_list);
+                                    char* user = strtok(user_list_copy, " ");
+                                    while (user) {
+                                        irc_add_user_to_channel(channel_buffer, user);
+                                        user = strtok(NULL, " ");
+                                    }
+                                    free(user_list_copy);
+                                }
+                            }
+                            *space = ' '; /* Restore original string */
+                        }
+                    }
+                }
+                /* Fall through to add to server buffer too */
+            } else if (numeric == 366) { /* RPL_ENDOFNAMES - end of user list */
+                /* Names list is complete, nothing special to do */
+            }
+            
             /* Add server messages to the server buffer */
             irc_buffer_t* server_buffer = NULL;
             if (g_irc_state->buffer_count > 0) {
@@ -1593,18 +1741,17 @@ static int irc_render_full_window(vizero_editor_t* editor, vizero_renderer_t* re
 
 /* Check if IRC plugin wants full window control */
 static int irc_wants_full_window(vizero_editor_t* editor) {
-    (void)editor; /* Unused */
-    
     if (!g_irc_state) {
         printf("[IRC] wants_full_window: no state\n");
         return 0;
     }
     
-    /* Take over full window when we have IRC buffers */
-    int wants = g_irc_state->buffer_count > 0 ? 1 : 0;
+    /* Only take over full window when we're actually in an IRC buffer */
+    int wants = irc_is_in_irc_buffer(editor) ? 1 : 0;
     static int last_wants = -1;
     if (wants != last_wants) {
-        printf("[IRC] wants_full_window: buffer_count=%zu, wants=%d\n", g_irc_state->buffer_count, wants);
+        printf("[IRC] wants_full_window: in_irc_buffer=%s, wants=%d\n", 
+               wants ? "yes" : "no", wants);
         last_wants = wants;
     }
     return wants;
@@ -1640,6 +1787,89 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     (void)editor; /* Unused */
     
     if (!g_irc_state) return 0;
+    
+    /* If we're in vi command mode, collect the command and execute it ourselves */
+    if (g_irc_state->in_vi_command) {
+        if (key == 13) { /* Enter - execute the collected command */
+            printf("[IRC] Vi command completed: '%s'\n", g_irc_state->vi_command_buffer);
+            
+            /* Execute common vi commands directly - strip the leading colon */
+            const char* command = g_irc_state->vi_command_buffer;
+            if (command[0] == ':') command++; /* Skip leading colon */
+            
+            if (strcmp(command, "bn") == 0) {
+                printf("[IRC] Executing buffer next command\n");
+                printf("[IRC] Current buffer before command: %s\n", 
+                       g_irc_state->api && g_irc_state->api->get_current_buffer ? "available" : "unavailable");
+                
+                if (g_irc_state->api && g_irc_state->api->execute_command) {
+                    /* Try different command formats to see what works */
+                    printf("[IRC] Trying execute_command with 'bn'\n");
+                    int result1 = g_irc_state->api->execute_command(editor, "bn");
+                    printf("[IRC] Result for 'bn': %d\n", result1);
+                    
+                    if (result1 != 0) {
+                        printf("[IRC] Trying execute_command with 'bnext'\n");
+                        int result2 = g_irc_state->api->execute_command(editor, "bnext");
+                        printf("[IRC] Result for 'bnext': %d\n", result2);
+                        
+                        if (result2 != 0) {
+                            printf("[IRC] Trying execute_command with 'buffer next'\n");
+                            int result3 = g_irc_state->api->execute_command(editor, "buffer next");
+                            printf("[IRC] Result for 'buffer next': %d\n", result3);
+                        }
+                    }
+                    
+                    /* Check if we're still in the same buffer after the command */
+                    if (irc_is_in_irc_buffer(editor)) {
+                        printf("[IRC] Still in IRC buffer after command execution\n");
+                    } else {
+                        printf("[IRC] *** SUCCESS: Buffer switched! You are now in a different buffer (likely hello.c) ***\n");
+                        printf("[IRC] *** Use :bp to return to the IRC buffer ***\n");
+                    }
+                } else {
+                    printf("[IRC] ERROR: execute_command API not available\n");
+                }
+            } else if (strcmp(command, "bp") == 0) {
+                printf("[IRC] Executing buffer previous command\n");
+                if (g_irc_state->api && g_irc_state->api->execute_command) {
+                    int result = g_irc_state->api->execute_command(editor, "bp");
+                    printf("[IRC] Buffer previous command result: %d\n", result);
+                } else {
+                    printf("[IRC] ERROR: execute_command API not available\n");
+                }
+            } else {
+                /* For other commands, try to execute them generically */
+                printf("[IRC] Executing generic vi command: %s\n", command);
+                if (g_irc_state->api && g_irc_state->api->execute_command) {
+                    int result = g_irc_state->api->execute_command(editor, command);
+                    printf("[IRC] Generic command result: %d\n", result);
+                } else {
+                    printf("[IRC] ERROR: execute_command API not available\n");
+                }
+            }
+            
+            /* Reset command mode */
+            g_irc_state->in_vi_command = false;
+            g_irc_state->vi_command_buffer[0] = '\0';
+            return 1; /* Consumed */
+        } else if (key == 27) { /* Escape - command cancelled */
+            printf("[IRC] Vi command cancelled\n");
+            g_irc_state->in_vi_command = false;
+            g_irc_state->vi_command_buffer[0] = '\0';
+            return 1; /* Consumed */
+        } else if (key >= 32 && key <= 126) { /* Collect printable characters */
+            size_t len = strlen(g_irc_state->vi_command_buffer);
+            if (len < sizeof(g_irc_state->vi_command_buffer) - 1) {
+                g_irc_state->vi_command_buffer[len] = (char)key;
+                g_irc_state->vi_command_buffer[len + 1] = '\0';
+                printf("[IRC] Vi command so far: '%s'\n", g_irc_state->vi_command_buffer);
+            }
+            return 1; /* Consumed */
+        }
+        /* For other keys (arrows, etc.) in vi command mode, let them pass through */
+        return 0;
+    }
     
     /* ONLY intercept the initial colon when IRC is inactive to set buffer readonly */
     if (key == ':' && !g_in_command_mode && g_irc_state->buffer_count == 0) {
@@ -1699,66 +1929,35 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     
     printf("[IRC] Handling key %d ('%c') in IRC mode\n", key, (char)key);
     
-    /* Check if IRC is currently active (has buffers) */
-    if (g_irc_state->buffer_count > 0) {
-        /* IRC is active - consume ALL keys to prevent text from reaching editor buffer */
+    /* Check if we're currently in an IRC buffer */
+    if (irc_is_in_irc_buffer(editor)) {
+        /* We're in an IRC buffer - check for vi commands */
         
-        /* Handle Escape key to exit IRC mode */
-        if (key == 27) {
-            printf("[IRC] Exiting IRC mode\n");
-            
-            /* Restore original buffer to be writable */
-            if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
-                vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(g_irc_state->editor);
-                if (current_buffer) {
-                    printf("[IRC] Restoring original buffer to writable state\n");
-                    g_irc_state->api->set_buffer_readonly(current_buffer, 0);
-                }
-            }
-            
-            /* Clear all buffers to exit IRC mode */
-            for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
-                if (g_irc_state->buffers[i]) {
-                    free(g_irc_state->buffers[i]);
-                    g_irc_state->buffers[i] = NULL;
-                }
-            }
-            g_irc_state->buffer_count = 0;
-            g_irc_state->current_buffer[0] = '\0';
-            g_irc_state->input_buffer[0] = '\0'; /* Clear input buffer */
-            /* Disconnect from IRC */
-            irc_disconnect();
-            
-            /* Try to clear any pending editor input */
-            if (g_irc_state->api && g_irc_state->api->execute_command && g_irc_state->editor) {
-                printf("[IRC] Trying to clear editor state\n");
-                /* Try to execute an empty command to clear any pending state */
-                g_irc_state->api->execute_command(g_irc_state->editor, "");
-            }
-            
-            /* Set a status message indicating IRC has exited */
-            if (g_irc_state->api && g_irc_state->api->set_status_message) {
-                printf("[IRC] Setting status message about IRC exit\n");
-                g_irc_state->api->set_status_message(g_irc_state->editor, "IRC disconnected - Press ESC if in insert mode");
-            }
-            
-            /* CRITICAL: Let this Escape pass through AND queue another Escape to guarantee normal mode */
-            printf("[IRC] Escape #1: Letting first Escape pass through to vim\n");
-            
-            /* Return 0 to let the current Escape pass through to vim */
-            return 0; /* Not consumed - let vim handle the Escape */
+        /* Handle colon - starts vi command mode */
+        if (key == ':' || (key == ';' && (modifiers & KMOD_SHIFT))) {
+            printf("[IRC] Colon detected (key=%d, shift=%s) - entering vi command mode\n", 
+                   key, (modifiers & KMOD_SHIFT) ? "yes" : "no");
+            g_irc_state->in_vi_command = true;
+            return 0; /* Let vi handle the command */
         }
         
-        /* All other keys are consumed when IRC is active */
-        printf("[IRC] IRC active - consuming key %d to prevent buffer contamination\n", key);
+        /* For all other keys when IRC is active and not in vi command mode, consume them for IRC input */
+        printf("[IRC] IRC active - processing key %d for IRC input\n", key);
+        
+        /* Handle other IRC-specific keys - regular text input for chat */
+        printf("[IRC] In IRC buffer - processing key %d for IRC input\n", key);
         /* Process the key for IRC functionality below */
         
+    } else {
+        /* Not in an IRC buffer - let Vizero handle the key normally */
+        printf("[IRC] Not in IRC buffer - letting Vizero handle key %d\n", key);
+        return 0;
     }
     
-    /* === IRC KEY PROCESSING (only runs when IRC is active) === */
+    /* === IRC KEY PROCESSING (only runs when in an IRC buffer) === */
     
-    /* Handle regular character input */
-    if (key >= 32 && key <= 126) { /* Printable ASCII */
+    /* Handle regular character input - but NOT when in vi command mode */
+    if (key >= 32 && key <= 126 && !g_irc_state->in_vi_command) { /* Printable ASCII and not in vi command mode */
         char input_char = (char)key;
         
         /* DEBUG: Print key and modifiers for testing */
@@ -1812,10 +2011,11 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         return 1; /* Consumed */
     }
     
-    /* Handle special keys */
-    switch (key) {
-        case 13: /* Enter */
-            if (strlen(g_irc_state->input_buffer) > 0) {
+    /* Handle special keys - but NOT when in vi command mode */
+    if (!g_irc_state->in_vi_command) {
+        switch (key) {
+            case 13: /* Enter */
+                if (strlen(g_irc_state->input_buffer) > 0) {
                 printf("[IRC] Input received: '%s'\n", g_irc_state->input_buffer);
                 
                 /* Check if input is a command (starts with /) */
@@ -1890,6 +2090,7 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
                 }
             }
             return 1; /* Consumed */
+        }
     }
     
     return 0; /* Let Vizero handle special keys (arrows, F-keys, etc.) */
@@ -1994,6 +2195,9 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     /* Store reference to original buffer for later restoration */
     g_irc_state->original_buffer = NULL;
     g_irc_state->irc_buffer = NULL;
+    g_irc_state->in_vi_command = false;
+    g_irc_state->vi_command_buffer[0] = '\0';
+
     
     if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
         g_irc_state->original_buffer = g_irc_state->api->get_current_buffer(editor);
