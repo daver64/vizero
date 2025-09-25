@@ -315,3 +315,20 @@ char* vizero_get_resource_path(const char* relative_path) {
     free(exe_dir);
     return resource_path;
 }
+
+/* UTF-16 BOM detection */
+int vizero_file_is_utf16(const char* filename) {
+    if (!filename) return 0;
+    
+    FILE* file = fopen(filename, "rb");
+    if (!file) return 0;
+    
+    unsigned char bom[2];
+    size_t bytes_read = fread(bom, 1, 2, file);
+    fclose(file);
+    
+    if (bytes_read < 2) return 0;
+    
+    /* Check for UTF-16 BOM (Little Endian: FF FE, Big Endian: FE FF) */
+    return (bom[0] == 0xFF && bom[1] == 0xFE) || (bom[0] == 0xFE && bom[1] == 0xFF);
+}

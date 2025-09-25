@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "vizero/filewatch_poll.h"
+#include "vizero/file_utils.h"
 #include <stdio.h>
 
 /* Windows compatibility for strdup */
@@ -162,6 +163,14 @@ vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
     vizero_buffer_t* buffer = vizero_buffer_create();
     if (buffer && filename) {
         buffer->filename = strdup(filename);
+        
+        /* Check for UTF-16 encoding before attempting to load */
+        if (vizero_file_is_utf16(filename)) {
+            printf("Error: Cannot open '%s' - UTF-16 encoded files are not yet supported.\n", filename);
+            printf("Please convert to UTF-8 or ASCII encoding and try again.\n");
+            vizero_buffer_destroy(buffer);
+            return NULL;
+        }
         
         /* Load file content */
         FILE* file = fopen(filename, "r");

@@ -28,6 +28,9 @@ char* vizero_get_executable_path(void);
 char* vizero_get_executable_directory(void);
 char* vizero_get_resource_path(const char* relative_path);
 
+/* File encoding detection */
+int vizero_file_is_utf16(const char* filename);
+
 #ifdef __cplusplus
 }
 #endif
