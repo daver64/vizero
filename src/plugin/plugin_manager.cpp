@@ -362,17 +362,38 @@ int vizero_plugin_manager_highlight_syntax(
 {
     if (!manager || !tokens || !token_count) return 0;
     *token_count = 0;
+    
+    /* First-come-first-served approach with conflict logging */
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->info.type == VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER && plugin->callbacks.highlight_syntax) {
             int n = plugin->callbacks.highlight_syntax(buffer, start_line, end_line, tokens, max_tokens);
             if (n > 0) {
                 *token_count = (size_t)n;
-                return 1;
+                
+                /* Check if any other plugins also claim this buffer (for debugging) */
+                #ifdef DEBUG_PLUGIN_CONFLICTS
+                for (size_t j = i + 1; j < manager->plugin_count; j++) {
+                    vizero_plugin_t* other = manager->plugins[j];
+                    if (other && other->info.type == VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER && other->callbacks.highlight_syntax) {
+                        vizero_syntax_token_t test_tokens[1];
+                        int other_n = other->callbacks.highlight_syntax(buffer, start_line, start_line, test_tokens, 1);
+                        if (other_n > 0) {
+                            const char* filename = manager->api.get_buffer_filename(buffer);
+                            printf("[PLUGIN] Conflict: Both %s and %s claim file %s (using %s)\n",
+                                   plugin->info.name, other->info.name,
+                                   filename ? filename : "<unnamed>", plugin->info.name);
+                        }
+                    }
+                }
+                #endif
+                
+                return 1; /* First plugin wins */
             }
         }
     }
-    return 0;
+    
+    return 0; /* No plugin handled the buffer */
 }
 
 /* API function implementations */
