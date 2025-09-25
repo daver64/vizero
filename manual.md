@@ -20,11 +20,12 @@
 9. [File Operations](#file-operations)
 10. [Window Management](#window-management)
 11. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
-12. [Compiler Integration](#compiler-integration)
-13. [Settings and Configuration](#settings-and-configuration)
-14. [Advanced Features](#advanced-features)
-15. [Working Directory](#working-directory)
-16. [Keyboard Reference](#keyboard-reference)
+12. [IRC Client Integration](#irc-client-integration)
+13. [Compiler Integration](#compiler-integration)
+14. [Settings and Configuration](#settings-and-configuration)
+15. [Advanced Features](#advanced-features)
+16. [Working Directory](#working-directory)
+17. [Keyboard Reference](#keyboard-reference)
 ## Working Directory
 
 ### Changing the Working Directory
@@ -503,6 +504,311 @@ int main() {
 
 ---
 
+## IRC Client Integration
+
+Vizero includes a comprehensive IRC (Internet Relay Chat) client plugin that seamlessly integrates with the editor's buffer system. You can chat on IRC channels while editing code, using familiar vi commands to switch between your IRC sessions and source files.
+
+### Getting Started with IRC
+
+#### Connecting to IRC Servers
+```
+:connect [server] [port] [nickname]
+```
+
+**Examples:**
+```
+:connect                                    # Connect to default server (irc.libera.chat:6667) with username "vi"
+:connect irc.libera.chat                   # Connect to Libera Chat with default port and nickname
+:connect irc.libera.chat 6667 mynick      # Connect with custom nickname
+:connect irc.freenode.net 6667 coder      # Connect to different server
+```
+
+**Default Settings:**
+- **Server**: `irc.libera.chat`
+- **Port**: `6667`
+- **Nickname**: `vi`
+
+#### Basic IRC Commands
+Once connected, you can use standard IRC commands by typing them directly (without the `/` prefix):
+
+| Command | Description |
+|---------|-------------|
+| `join #channel` | Join an IRC channel |
+| `part` | Leave current channel |
+| `part #channel` | Leave specific channel |
+| `quit` | Disconnect from IRC server |
+| `nick newnick` | Change your nickname |
+| `msg nick message` | Send private message to user |
+| `who #channel` | List users in channel |
+| `topic new topic` | Set channel topic (if you have permission) |
+
+**Examples:**
+```
+join #vizero                    # Join the #vizero channel
+join #programming              # Join programming discussion channel
+part                          # Leave current channel
+nick MyNewNick               # Change nickname to MyNewNick
+msg alice Hey there!         # Send private message to alice
+```
+
+### IRC Buffer Integration
+
+#### Buffer Management
+The IRC plugin creates dedicated IRC buffers that integrate seamlessly with Vizero's multi-buffer system:
+
+- **IRC Buffer Creation**: When you connect to IRC, a special IRC buffer is created
+- **Buffer Switching**: Use standard vi buffer commands (`:bn`, `:bp`) to switch between IRC and file buffers
+- **Visual Integration**: IRC interface only displays when you're in an IRC buffer
+
+#### Switching Between IRC and Files
+
+| Command | Action |
+|---------|--------|
+| `:bn`, `:bnext` | Switch to next buffer (from IRC to file, or file to IRC) |
+| `:bp`, `:bprev` | Switch to previous buffer |
+| `:buffers` | Interactive buffer selector (shows both IRC and file buffers) |
+
+**Example Workflow:**
+```bash
+# Start Vizero with a source file
+vizero main.c
+
+# Connect to IRC (creates IRC buffer)
+:connect
+
+# Join a programming channel
+join #programming
+
+# Switch to your source file buffer
+:bn
+
+# Now you're back in main.c - edit your code
+# ...make changes to your source file...
+
+# Switch back to IRC to chat
+:bp
+
+# You're back in IRC - continue chatting
+Hello everyone, working on some C code!
+
+# Switch back to source file
+:bn
+```
+
+### IRC Interface Layout
+
+When viewing an IRC buffer, Vizero displays a full IRC client interface:
+
+```
+┌─────────────────┬──────────────────────────────────────┬─────────────────┐
+│   Channel List  │           Message Area               │   Nick List     │
+│   #vizero      │ <alice> Hey everyone!                │   @admin        │
+│   #programming │ <bob> Anyone know C++?               │   alice         │
+│   #general     │ <charlie> Check out this code...     │   bob           │
+│                │ <you> Working on a vi clone          │   charlie       │
+│                │                                       │   you           │
+├─────────────────┼──────────────────────────────────────┼─────────────────┤
+│                 │ Type your message here...            │                 │
+└─────────────────┴──────────────────────────────────────┴─────────────────┘
+```
+
+#### Interface Components
+
+**Channel List (Left Panel)**
+- Shows all joined channels
+- Active channel highlighted
+- Click or use commands to switch channels
+
+**Message Area (Center)**
+- Displays chat messages with timestamps
+- Shows joins/parts and system messages
+- Scrolls automatically with new messages
+- colour-coded nicknames for easy identification
+
+**Nick List (Right Panel)**
+- Shows users in current channel
+- Operators marked with `@`
+- Updates automatically when users join/leave
+
+**Input Box (Bottom)**
+- Type messages directly
+- Supports IRC commands (without `/` prefix)
+- Press Enter to send messages or execute commands
+
+### IRC Features
+
+#### Multi-Channel Support
+- **Join Multiple Channels**: Use `join #channel` for each channel
+- **Channel Switching**: Automatic switching in interface
+- **Independent Histories**: Each channel maintains its own message history
+- **Channel Status**: See user counts and topics
+
+#### Real-Time Communication
+- **Live Messages**: Instant display of incoming messages
+- **Connection Status**: Clear indicators of connection state
+- **Server Messages**: MOTD (Message of the Day) and server notifications
+- **User Activity**: Join/part notifications and nick changes
+
+#### Vi Command Integration
+The IRC plugin seamlessly integrates with vi commands:
+
+- **Command Interception**: When in IRC buffer, vi commands like `:bn` are intercepted and executed
+- **Buffer Awareness**: Plugin knows when you're in IRC vs file buffers
+- **Automatic Switching**: Display automatically switches between IRC interface and normal editor
+- **Preserved State**: IRC connection and channels maintained while editing files
+
+### Advanced IRC Usage
+
+#### Private Messages
+```
+msg nickname Hello there!           # Send private message
+```
+
+#### Channel Management
+```
+join #channel                       # Join channel
+part                               # Leave current channel
+part #channel                      # Leave specific channel
+topic This is the new topic        # Set channel topic (if op)
+```
+
+#### Connection Management
+```
+quit                               # Disconnect and close IRC
+nick MyNewNick                     # Change nickname
+```
+
+#### Server Interaction
+```
+who #channel                       # List channel users
+whois nickname                     # Get info about user
+```
+
+### IRC Configuration
+
+#### Connection Settings
+IRC settings are handled through command parameters:
+
+```
+:connect server.example.com 6667 mynickname    # Custom server, port, nick
+:connect server.example.com 6697 mynickname    # SSL port (6697)
+:connect                                        # Use defaults
+```
+
+#### Color and Display
+The IRC interface uses Vizero's colour themes and adapts to your editor settings:
+- **Theme Integration**: Matches your current colour scheme
+- **Readable Layout**: Optimized for programming contexts
+- **Status Integration**: Connection status shown in editor status bar
+
+### Practical Use Cases
+
+#### Development Workflow
+1. **Code Review Sessions**: Chat with team while reviewing code
+2. **Debugging Help**: Get real-time help while editing problematic code
+3. **Project Coordination**: Discuss features while implementing them
+4. **Learning**: Ask questions in programming channels while coding
+
+#### Example Development Session
+```bash
+# Start editing your project
+vizero src/main.c src/utils.h
+
+# Connect to IRC for help
+:connect
+
+# Join relevant channels
+join #c-programming
+join #projectname
+
+# Ask for help while coding
+Hey, I'm having trouble with malloc() in this function...
+
+# Switch back to code to make changes
+:bn
+
+# Edit based on suggestions...
+
+# Switch back to IRC to report progress
+:bp
+
+# Continue the conversation
+Thanks! That fixed the memory leak issue.
+
+# Switch between buffers as needed
+:bn    # Back to code
+:bp    # Back to IRC
+```
+
+### Troubleshooting IRC
+
+#### Connection Issues
+- **Cannot Connect**: Check server name and port (6667 for standard, 6697 for SSL)
+- **Nickname in Use**: Try connecting with a different nickname
+- **Server Unreachable**: Try alternative IRC servers like `irc.freenode.net`
+
+#### Display Issues
+- **IRC Interface Not Showing**: Ensure you're in the IRC buffer (use `:bn`/`:bp` to switch)
+- **Messages Not Updating**: Check connection status; try reconnecting
+- **Layout Problems**: IRC interface adapts to window size; try resizing
+
+#### Buffer Switching Issues
+- **Can't Switch to Files**: Use `:bn` to cycle through buffers
+- **Lost IRC Buffer**: Use `:buffers` to see all buffers and select IRC buffer
+- **Commands Not Working**: Ensure you're in IRC buffer when using IRC commands
+
+### IRC Security and Best Practices
+
+#### Connection Security
+- **Use SSL**: Connect to port 6697 for encrypted connections when available
+- **Server Trust**: Connect only to well-known IRC networks
+- **Nickname Protection**: Register your nickname on networks that support it
+
+#### Chat Etiquette
+- **Channel Rules**: Read channel topics and follow guidelines
+- **Appropriate Content**: Keep discussions relevant to channel purpose
+- **Respect Others**: Follow standard IRC etiquette and respect other users
+
+#### Privacy Considerations
+- **Public Channels**: Remember that channel messages are visible to all users
+- **Private Messages**: Use `msg` command for one-on-one conversations
+- **Logging**: IRC conversations may be logged by servers or other users
+
+### IRC Command Reference
+
+#### Connection Commands
+| Command | Description |
+|---------|-------------|
+| `:connect [server] [port] [nick]` | Connect to IRC server |
+| `quit` | Disconnect from IRC |
+
+#### Channel Commands
+| Command | Description |
+|---------|-------------|
+| `join #channel` | Join a channel |
+| `part` | Leave current channel |
+| `part #channel` | Leave specific channel |
+| `topic <text>` | Set channel topic |
+| `who #channel` | List channel users |
+
+#### Communication Commands
+| Command | Description |
+|---------|-------------|
+| `<message>` | Send message to current channel |
+| `msg <nick> <message>` | Send private message |
+| `nick <newnick>` | Change nickname |
+
+#### Buffer Navigation (Vi Commands)
+| Command | Description |
+|---------|-------------|
+| `:bn`, `:bnext` | Switch to next buffer (IRC ↔ files) |
+| `:bp`, `:bprev` | Switch to previous buffer |
+| `:buffers` | Interactive buffer selector |
+
+The IRC integration in Vizero provides a powerful combination of real-time communication and code editing, making it an ideal tool for collaborative development, getting programming help, and staying connected with development communities while working on your projects.
+
+---
+
 ## Compiler Integration
 
 ### Compilation Commands
@@ -821,6 +1127,17 @@ int main() {
 | `:session <name>` | Load session with specified name |
 | `:sessions` | List all available sessions |
 | `:session-save` | Save current session state |
+
+### IRC Client
+| Command | Description |
+|---------|-------------|
+| `:connect [server] [port] [nick]` | Connect to IRC server |
+| `join #channel` | Join IRC channel (in IRC buffer) |
+| `part` | Leave current IRC channel |
+| `quit` | Disconnect from IRC |
+| `nick <name>` | Change IRC nickname |
+| `msg <nick> <message>` | Send private message |
+| `<message>` | Send message to current channel |
 
 ### Help and Information
 | Command | Description |
