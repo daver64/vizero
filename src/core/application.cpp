@@ -201,6 +201,8 @@ int vizero_application_initialize(vizero_application_t* app) {
         return -1;
     }
     
+    /* Plugin rendering no longer needs SDL renderer initialization */
+    
     /* Set up editor-plugin manager connection */
     vizero_editor_set_plugin_manager(app->editor, app->plugin_manager);
     
@@ -845,9 +847,38 @@ int vizero_application_run(vizero_application_t* app) {
         //     }
         // }
         
-        /* Present frame */
-        vizero_renderer_present(app->renderer);
-        vizero_window_swap_buffers(app->window);
+        /* Check if any plugin wants full window control */
+        if (app->plugin_manager && vizero_plugin_manager_wants_full_window(app->plugin_manager)) {
+            /* Get window dimensions */
+            int window_width, window_height;
+            SDL_GetWindowSize(vizero_window_get_sdl_window(app->window), &window_width, &window_height);
+            
+            /* Clear with black background */
+            vizero_colour_t bg_color = {0.0f, 0.0f, 0.0f, 1.0f};
+            vizero_renderer_clear(app->renderer, bg_color);
+            
+            /* Let plugin render using OpenGL */
+            if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, window_width, window_height)) {
+                /* Fallback: show placeholder if plugin rendering fails */
+                vizero_text_info_t text_info = {0};
+                text_info.x = 10.0f;
+                text_info.y = 10.0f;
+                vizero_colour_t text_color = {1.0f, 1.0f, 1.0f, 1.0f};
+                text_info.colour = text_color;
+                text_info.font = NULL;
+                
+                vizero_renderer_draw_text(app->renderer, "IRC Mode Active - Plugin rendering failed", &text_info);
+            }
+            
+            /* Present frame */
+            vizero_renderer_present(app->renderer);
+            vizero_window_swap_buffers(app->window);
+        } else {
+            /* Normal rendering */
+            /* Present frame */
+            vizero_renderer_present(app->renderer);
+            vizero_window_swap_buffers(app->window);
+        }
         
         /* Cap framerate */
         SDL_Delay(16); /* ~60 FPS */

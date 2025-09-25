@@ -49,6 +49,12 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     /* Reset mode change flag at start of frame */
     input->mode_changed_this_frame = 0;
     
+    /* Track recent plugin key consumption to prevent double processing */
+    static uint32_t last_consumed_key = 0;
+    static uint32_t last_consumed_timestamp = 0;
+    static uint32_t plugin_deactivation_time = 0;
+    static uint32_t recent_plugin_activity = 0;
+    
     /* Async completion checking disabled - caused infinite loops */
     
     /* CAUTIOUS: Only process LSP messages and check for results if we're actually using completion */
@@ -132,6 +138,42 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             if (vizero_editor_handle_completion_key(editor, event.key.keysym.sym)) {
                                 break; /* Completion UI consumed the key */
                             }
+                        }
+                        
+                        /* Check if any plugin wants to handle input */
+                        vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
+                        if (plugin_manager && vizero_plugin_manager_on_key_input(plugin_manager, (vizero_editor_t*)editor, event.key.keysym.sym, event.key.keysym.mod)) {
+                            /* Record that this key was consumed by plugin for potential SDL_TEXTINPUT deduplication */
+                            /* For shift-modified keys, we need to store the expected text character, not the base key */
+                            if (event.key.keysym.mod & KMOD_SHIFT) {
+                                /* Common shift mappings for deduplication */
+                                switch (event.key.keysym.sym) {
+                                    case SDLK_SLASH: last_consumed_key = '?'; break;        /* ? */
+                                    case SDLK_1: last_consumed_key = '!'; break;           /* ! */
+                                    case SDLK_2: last_consumed_key = '@'; break;           /* @ */
+                                    case SDLK_3: last_consumed_key = '#'; break;           /* # */
+                                    case SDLK_4: last_consumed_key = '$'; break;           /* $ */
+                                    case SDLK_5: last_consumed_key = '%'; break;           /* % */
+                                    case SDLK_6: last_consumed_key = '^'; break;           /* ^ */
+                                    case SDLK_7: last_consumed_key = '&'; break;           /* & */
+                                    case SDLK_8: last_consumed_key = '*'; break;           /* * */
+                                    case SDLK_9: last_consumed_key = '('; break;           /* ( */
+                                    case SDLK_0: last_consumed_key = ')'; break;           /* ) */
+                                    case SDLK_SEMICOLON: last_consumed_key = ':'; break;   /* : */
+                                    default: last_consumed_key = event.key.keysym.sym; break;
+                                }
+                            } else {
+                                last_consumed_key = event.key.keysym.sym;
+                            }
+                            last_consumed_timestamp = SDL_GetTicks();
+                            
+                            /* Special handling for Escape key - if it was consumed by plugin, 
+                             * the plugin likely deactivated, so suppress subsequent text input */
+                            if (event.key.keysym.sym == SDLK_ESCAPE) {
+                                plugin_deactivation_time = SDL_GetTicks();
+                            }
+                            
+                            break; /* Plugin consumed the key */
                         }
                         
                         /* Check for Ctrl+Space to trigger LSP completion (must be early to avoid being consumed) */
@@ -744,6 +786,32 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     }
                     
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    
+                    /* Check if any plugin wants to handle text input */
+                    /* Only call plugins if they didn't recently consume a matching keydown event */
+                    vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
+                    if (plugin_manager) {
+                        /* Convert text input to key events for plugin handling */
+                        const char* text = event.text.text;
+                        uint32_t current_time = SDL_GetTicks();
+                        
+                        /* If plugin was recently deactivated (via Escape), suppress all text input for a while */
+                        if (plugin_deactivation_time > 0 && (current_time - plugin_deactivation_time) < 500) {
+                            goto textinput_handled; /* Skip all text processing after recent plugin deactivation */
+                        }
+                        
+                        for (const char* c = text; *c; c++) {
+                            /* Skip if this character was recently consumed via SDL_KEYDOWN (within 10ms) */
+                            if ((uint32_t)*c == last_consumed_key && (current_time - last_consumed_timestamp) < 10) {
+                                continue; /* Skip this character to prevent double processing */
+                            }
+                            
+                            if (vizero_plugin_manager_on_key_input(plugin_manager, (vizero_editor_t*)editor, (uint32_t)*c, 0)) {
+                                /* Plugin consumed the character - skip normal text insertion */
+                                goto textinput_handled;
+                            }
+                        }
+                    }
                     /* Mode handling moved inline below */
                     if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_INSERT) {
                         /* Suppress the first SDL_TEXTINPUT event after switching to insert mode (e.g., after 'a') */
@@ -803,6 +871,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         }
                     }
                 }
+            textinput_handled:
                 break;
             default:
                 break;

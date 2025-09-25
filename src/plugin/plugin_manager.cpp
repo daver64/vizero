@@ -2,10 +2,12 @@
 #include "vizero/plugin_interface.h"
 #include "vizero/plugin_registry.h"
 #include "vizero/buffer.h"
+#include "vizero/window.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <SDL.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -34,6 +36,12 @@ struct vizero_plugin_manager_t {
     /* Plugin registry for on-demand loading */
     vizero_plugin_registry_t* registry;
     char plugin_directory[512];
+    
+    /* SDL rendering support for plugins */
+    SDL_Renderer* sdl_renderer;
+    SDL_Texture* plugin_texture;
+    int texture_width;
+    int texture_height;
 };
 
 /* Function type definitions for plugin entry points */
@@ -55,7 +63,7 @@ vizero_plugin_manager_t* vizero_plugin_manager_create(vizero_editor_t* editor) {
     manager->registry = vizero_plugin_registry_create();
     
     /* Initialize the editor API */
-    init_editor_api(&manager->api, editor);
+    vizero_plugin_interface_init_api(&manager->api, editor);
     
     return manager;
 }
@@ -64,6 +72,8 @@ void vizero_plugin_manager_destroy(vizero_plugin_manager_t* manager) {
     if (!manager) {
         return;
     }
+    
+    /* Plugin rendering resources no longer need cleanup */
     
     /* Unload all plugins */
     for (size_t i = 0; i < manager->plugin_count; i++) {
@@ -580,6 +590,14 @@ static size_t api_get_buffer_line_length(vizero_buffer_t* buffer, size_t line_nu
     return vizero_buffer_get_line_length(buffer, line_num);
 }
 
+static int api_is_buffer_readonly(vizero_buffer_t* buffer) {
+    return vizero_buffer_is_readonly(buffer);
+}
+
+static void api_set_buffer_readonly(vizero_buffer_t* buffer, int readonly) {
+    vizero_buffer_set_readonly(buffer, readonly);
+}
+
 /* Initialize the editor API structure - this would be implemented in the core editor */
 static void init_editor_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     /* Buffer operations */
@@ -588,6 +606,8 @@ static void init_editor_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     api->get_buffer_line_count = api_get_buffer_line_count;
     api->get_buffer_line = api_get_buffer_line;
     api->get_buffer_line_length = api_get_buffer_line_length;
+    api->is_buffer_readonly = api_is_buffer_readonly;
+    api->set_buffer_readonly = api_set_buffer_readonly;
     
     /* These would be implemented by the actual editor core */
     api->insert_text = NULL;               /* vizero_buffer_insert_text_impl */
@@ -847,3 +867,181 @@ int vizero_plugin_manager_get_commands(
     *command_count = total_commands;
     return 0;
 }
+
+/* Initialize SDL renderer for plugin rendering */
+int vizero_plugin_manager_init_renderer(vizero_plugin_manager_t* manager, SDL_Window* window) {
+    if (!manager || !window) {
+        return -1;
+    }
+    
+    /* Create SDL renderer from the window */
+    manager->sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
+    if (!manager->sdl_renderer) {
+        printf("[PLUGIN] Failed to create SDL renderer: %s\n", SDL_GetError());
+        return -1;
+    }
+    
+    /* Initialize texture dimensions */
+    manager->texture_width = 0;
+    manager->texture_height = 0;
+    manager->plugin_texture = NULL;
+    
+    printf("[PLUGIN] SDL renderer initialized for plugin rendering\n");
+    return 0;
+}
+
+/* Check if any plugin wants full window control */
+int vizero_plugin_manager_wants_full_window(vizero_plugin_manager_t* manager) {
+    if (!manager) {
+        return 0;
+    }
+    
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.wants_full_window) {
+            if (plugin->callbacks.wants_full_window(manager->editor)) {
+                return 1;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+/* Render plugin UI to texture and return it */
+SDL_Texture* vizero_plugin_manager_render_plugin_ui(vizero_plugin_manager_t* manager, int width, int height) {
+    if (!manager || !manager->sdl_renderer) {
+        return NULL;
+    }
+    
+    /* Create or recreate texture if size changed */
+    if (!manager->plugin_texture || manager->texture_width != width || manager->texture_height != height) {
+        if (manager->plugin_texture) {
+            SDL_DestroyTexture(manager->plugin_texture);
+        }
+        
+        manager->plugin_texture = SDL_CreateTexture(manager->sdl_renderer, 
+                                                   SDL_PIXELFORMAT_RGBA8888,
+                                                   SDL_TEXTUREACCESS_TARGET,
+                                                   width, height);
+        if (!manager->plugin_texture) {
+            printf("[PLUGIN] Failed to create plugin texture: %s\n", SDL_GetError());
+            return NULL;
+        }
+        
+        manager->texture_width = width;
+        manager->texture_height = height;
+    }
+    
+    /* Find plugin that wants to render */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        /* OLD SDL RENDERING - DISABLED
+        if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {
+            if (plugin->callbacks.wants_full_window(manager->editor)) {
+                // Let plugin render to the texture
+                if (plugin->callbacks.render_to_texture(manager->editor, manager->sdl_renderer, 
+                                                       manager->plugin_texture, width, height)) {
+                    return manager->plugin_texture;
+                }
+            }
+        }
+        OLD SDL RENDERING - DISABLED */
+    }
+    
+    return NULL;
+}
+
+/*  OLD SDL RENDERING FUNCTION - DISABLED
+int vizero_plugin_manager_render_and_present(vizero_plugin_manager_t* manager, int width, int height) {
+    if (!manager || !manager->sdl_renderer) {
+        return 0;
+    }
+    
+    static int debug_count = 0;
+    if (debug_count < 3) {
+        printf("[PLUGIN] render_and_present called: %dx%d\n", width, height);
+        debug_count++;
+    }
+    
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {
+            if (plugin->callbacks.wants_full_window(manager->editor)) {
+                if (!manager->plugin_texture || manager->texture_width != width || manager->texture_height != height) {
+                    if (manager->plugin_texture) {
+                        SDL_DestroyTexture(manager->plugin_texture);
+                    }
+                    
+                    manager->plugin_texture = SDL_CreateTexture(manager->sdl_renderer, SDL_PIXELFORMAT_RGBA8888,
+                                                               SDL_TEXTUREACCESS_TARGET, width, height);
+                    if (!manager->plugin_texture) {
+                        return 0;
+                    }
+                    
+                    manager->texture_width = width;
+                    manager->texture_height = height;
+                }
+                
+                if (plugin->callbacks.render_to_texture(manager->editor, manager->sdl_renderer, 
+                                                       manager->plugin_texture, width, height)) {
+                    SDL_SetRenderTarget(manager->sdl_renderer, NULL);
+                    SDL_SetRenderDrawColor(manager->sdl_renderer, 0, 0, 0, 255);
+                    SDL_RenderClear(manager->sdl_renderer);
+                    
+                    SDL_RenderCopy(manager->sdl_renderer, manager->plugin_texture, NULL, NULL);
+                    
+                    SDL_RenderPresent(manager->sdl_renderer);
+                    
+                    return 1;
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+OLD SDL RENDERING FUNCTION - DISABLED */
+
+/* Render plugin UI using OpenGL renderer */
+int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, vizero_renderer_t* renderer, int width, int height) {
+    if (!manager || !renderer) {
+        return 0;
+    }
+    
+    /* Find plugin that wants to render */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.render_full_window && plugin->callbacks.wants_full_window) {
+            if (plugin->callbacks.wants_full_window(manager->editor)) {
+                /* Let plugin render using OpenGL */
+                return plugin->callbacks.render_full_window(manager->editor, renderer, width, height);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+/* OLD SDL CLEANUP FUNCTION - DISABLED
+void vizero_plugin_manager_cleanup_renderer(vizero_plugin_manager_t* manager) {
+    if (!manager) {
+        return;
+    }
+    
+    if (manager->plugin_texture) {
+        SDL_DestroyTexture(manager->plugin_texture);
+        manager->plugin_texture = NULL;
+    }
+    
+    if (manager->sdl_renderer) {
+        SDL_DestroyRenderer(manager->sdl_renderer);
+        manager->sdl_renderer = NULL;
+    }
+    
+    manager->texture_width = 0;
+    manager->texture_height = 0;
+}
+OLD SDL CLEANUP FUNCTION - DISABLED */
+
+

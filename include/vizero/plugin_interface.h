@@ -8,6 +8,7 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <SDL.h>
 
 /* Version information */
 #define VIZERO_PLUGIN_API_VERSION_MAJOR 1
@@ -30,6 +31,7 @@ typedef struct vizero_editor_t vizero_editor_t;
 typedef struct vizero_buffer_t vizero_buffer_t;
 typedef struct vizero_cursor_t vizero_cursor_t;
 typedef struct vizero_plugin_t vizero_plugin_t;
+typedef struct vizero_renderer_t vizero_renderer_t;
 
 /* Plugin types */
 typedef enum {
@@ -152,6 +154,8 @@ typedef struct {
     size_t (*get_buffer_line_length)(vizero_buffer_t* buffer, size_t line_num);
     int (*insert_text)(vizero_buffer_t* buffer, vizero_position_t pos, const char* text);
     int (*delete_text)(vizero_buffer_t* buffer, vizero_range_t range);
+    int (*is_buffer_readonly)(vizero_buffer_t* buffer);
+    void (*set_buffer_readonly)(vizero_buffer_t* buffer, int readonly);
     
     /* Cursor operations */
     vizero_position_t (*get_cursor_position)(vizero_cursor_t* cursor);
@@ -220,6 +224,12 @@ typedef struct {
     /* Command registration - plugins can register custom commands */
     vizero_plugin_command_t* commands;     /* Array of commands this plugin provides */
     size_t command_count;                  /* Number of commands */
+    
+    /* Optional: Custom rendering using Vizero's OpenGL renderer - plugin can provide its own UI */
+    int (*render_full_window)(vizero_editor_t* editor, vizero_renderer_t* renderer, int width, int height);
+    
+    /* Optional: Called to check if plugin wants to take over full window */
+    int (*wants_full_window)(vizero_editor_t* editor);
 } vizero_plugin_callbacks_t;
 
 /* Main plugin structure */

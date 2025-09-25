@@ -67,6 +67,15 @@ static int api_set_status_message(vizero_editor_t* editor, const char* message) 
     return 0;
 }
 
+/* Buffer readonly operations */
+static int api_is_buffer_readonly(vizero_buffer_t* buffer) {
+    return vizero_buffer_is_readonly(buffer);
+}
+
+static void api_set_buffer_readonly(vizero_buffer_t* buffer, int readonly) {
+    vizero_buffer_set_readonly(buffer, readonly);
+}
+
 /* File operations */
 static int api_open_file(vizero_editor_t* editor, const char* filename) {
     return vizero_editor_open_buffer((vizero_editor_state_t*)editor, filename);
@@ -107,6 +116,8 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     api->get_buffer_line_length = api_get_buffer_line_length;
     api->insert_text = api_insert_text;
     api->delete_text = api_delete_text;
+    api->is_buffer_readonly = api_is_buffer_readonly;
+    api->set_buffer_readonly = api_set_buffer_readonly;
     
     /* Cursor operations */
     api->get_cursor_position = api_get_cursor_position;

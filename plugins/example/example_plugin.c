@@ -100,7 +100,10 @@ static int on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifier
     (void)modifiers; /* Unused parameter */
     
     /* Example: Handle F1 key to show plugin info */
-    if (key == 0x3A) { /* F1 key (SDL scancode) */
+    /* Note: F1 key code is much higher than 58. 0x3A (58) is the colon ':' character! */
+    /* For now, disable this functionality to avoid consuming colon characters */
+    /* TODO: Use proper SDL key code for F1 if this functionality is needed */
+    if (0) { /* Disabled - was incorrectly checking key == 0x3A which is ':' not F1 */
         if (plugin_state.api && plugin_state.api->set_status_message) {
             const vizero_plugin_info_t* info = vizero_plugin_get_info();
             char message[256];

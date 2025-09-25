@@ -1,3 +1,4 @@
+#define SDL_MAIN_HANDLED
 #include "test_framework.h"
 
 int run_test_suite(const char* suite_name, test_case_t* tests, size_t count) {

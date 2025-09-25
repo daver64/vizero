@@ -1,3 +1,4 @@
+#define SDL_MAIN_HANDLED
 #include "test_framework.h"
 #include "../include/vizero/editor_state.h"
 #include "../include/vizero/buffer.h"

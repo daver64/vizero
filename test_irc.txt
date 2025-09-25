@@ -1,0 +1,48 @@
+IRC Client Test Script for Vizero
+=====================================
+
+1. Start Vizero: .\vizero.exe
+
+2. Basic Connection Test:
+   :connect irc.libera.chat:6667 VizeroTest123
+   
+3. Join Test Channel:
+   :join #test
+   
+4. Send Test Message:  
+   :msg #test Hello from Vizero IRC client!
+   
+5. Test Buffer Switching:
+   :next
+   :prev
+   :buffer #test
+   
+6. Test Private Message:
+   :msg NickServ HELP
+   
+7. List Available Buffers:
+   :buffer
+   
+8. Test Channel Operations:
+   :part #test Goodbye!
+   
+9. Disconnect:
+   :disconnect
+
+Alternative Test Servers:
+- irc.libera.chat:6667 (SSL: 6697)
+- irc.oftc.net:6667 (SSL: 6697)
+- chat.freenode.net:6667
+
+Test Channels:
+- #test (usually exists on most servers)
+- #help (help channel)
+- #libera (on Libera.Chat)
+
+Expected Behavior:
+- Should see connection messages
+- Channel list should show joined channels
+- Messages should appear in message area
+- Nick list should show users
+- Simple text rendering (no fancy fonts)
+- Quassel-like UI layout with panels

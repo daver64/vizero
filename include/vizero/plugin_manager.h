@@ -9,6 +9,10 @@ extern "C" {
 #include "plugin_registry.h"
 #include <stddef.h>
 #include <stdbool.h>
+#include <SDL.h>
+
+/* Forward declarations */
+typedef struct vizero_renderer_t vizero_renderer_t;
 
 /* Plugin manager structure */
 typedef struct vizero_plugin_manager_t vizero_plugin_manager_t;
@@ -96,6 +100,10 @@ void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager
 int vizero_plugin_manager_check_completion_results(
     vizero_plugin_manager_t* manager,
     vizero_completion_list_t** result);
+
+/* Plugin rendering support */
+int vizero_plugin_manager_wants_full_window(vizero_plugin_manager_t* manager);
+int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, vizero_renderer_t* renderer, int width, int height);
 
 #ifdef __cplusplus
 }

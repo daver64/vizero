@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <SDL.h>
+
+#ifdef HAVE_SDL2_TTF
+#include <SDL_ttf.h>
+#endif
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -19,16 +24,23 @@
     #define INVALID_SOCKET_VALUE INVALID_SOCKET
     #define close_socket closesocket
     #define strtok_r strtok_s
+    typedef int socklen_t;
 #else
     #include <sys/socket.h>
+    #include <sys/select.h>
     #include <netinet/in.h>
     #include <arpa/inet.h>
     #include <netdb.h>
     #include <unistd.h>
+    #include <fcntl.h>
+    #include <errno.h>
     typedef int socket_t;
     #define INVALID_SOCKET_VALUE -1
     #define close_socket close
 #endif
+
+/* Forward declarations */
+static void irc_set_active_buffer(const char* buffer_name);
 
 /* IRC User structure */
 typedef struct {
@@ -64,7 +76,8 @@ typedef struct {
         IRC_MSG_NICK,
         IRC_MSG_TOPIC,
         IRC_MSG_ERROR,
-        IRC_MSG_NOTICE
+        IRC_MSG_NOTICE,
+        IRC_MSG_SERVER
     } type;
     vizero_colour_t nick_colour;
 } irc_message_t;
@@ -101,6 +114,7 @@ typedef struct {
     char realname[64];
     bool connected;
     bool registered;
+    bool connecting; /* For non-blocking connect */
     
     /* Receive buffer */
     char recv_buffer[4096];
@@ -141,10 +155,27 @@ typedef struct {
     
     /* Theme colors for IRC-specific elements */
     vizero_colour_t nick_colors[16];
+    
+    /* SDL rendering context for custom UI */
+    SDL_Renderer* sdl_renderer;
+    SDL_Texture* render_texture;
+#ifdef HAVE_SDL2_TTF
+    TTF_Font* font;
+#endif
+    int texture_width;
+    int texture_height;
+    bool wants_full_window;
+    
+    /* Buffer management for new approach */
+    vizero_buffer_t* original_buffer;  /* Buffer that was active when IRC loaded */
+    vizero_buffer_t* irc_buffer;       /* Dedicated IRC buffer created on connect */
 } irc_state_t;
 
 /* Global IRC state */
 static irc_state_t* g_irc_state = NULL;
+
+/* Forward declarations */
+static void irc_send_raw(const char* message);
 
 /* Utility functions */
 static void irc_initialize_networking(void) {
@@ -313,6 +344,25 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
         return -1;
     }
     
+    /* Make socket non-blocking to prevent freezing */
+#ifdef _WIN32
+    u_long mode = 1;
+    if (ioctlsocket(conn->socket, FIONBIO, &mode) != 0) {
+        printf("[IRC] Failed to set socket non-blocking\n");
+        close_socket(conn->socket);
+        conn->socket = INVALID_SOCKET_VALUE;
+        return -1;
+    }
+#else
+    int flags = fcntl(conn->socket, F_GETFL, 0);
+    if (flags == -1 || fcntl(conn->socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+        printf("[IRC] Failed to set socket non-blocking\n");
+        close_socket(conn->socket);
+        conn->socket = INVALID_SOCKET_VALUE;
+        return -1;
+    }
+#endif
+    
     /* Resolve server */
     struct hostent* host_entry = gethostbyname(server);
     if (!host_entry) {
@@ -328,10 +378,30 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     server_addr.sin_port = htons(port);
     memcpy(&server_addr.sin_addr, host_entry->h_addr_list[0], host_entry->h_length);
     
-    if (connect(conn->socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) != 0) {
-        close_socket(conn->socket);
-        conn->socket = INVALID_SOCKET_VALUE;
-        return -1;
+    int connect_result = connect(conn->socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    if (connect_result != 0) {
+#ifdef _WIN32
+        int error = WSAGetLastError();
+        if (error != WSAEWOULDBLOCK) {
+            printf("[IRC] Connect failed with error: %d\n", error);
+            close_socket(conn->socket);
+            conn->socket = INVALID_SOCKET_VALUE;
+            return -1;
+        }
+        /* Connection in progress, continue */
+        printf("[IRC] Connection in progress...\n");
+#else
+        if (errno != EINPROGRESS) {
+            printf("[IRC] Connect failed with error: %s\n", strerror(errno));
+            close_socket(conn->socket);
+            conn->socket = INVALID_SOCKET_VALUE;
+            return -1;
+        }
+        /* Connection in progress, continue */
+        printf("[IRC] Connection in progress...\n");
+#endif
+    } else {
+        printf("[IRC] Connected immediately\n");
     }
     
     /* Store connection info */
@@ -340,18 +410,23 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     strncpy(conn->nickname, nick, sizeof(conn->nickname) - 1);
     strncpy(conn->username, user, sizeof(conn->username) - 1);
     strncpy(conn->realname, real, sizeof(conn->realname) - 1);
-    conn->connected = true;
+    conn->connecting = (connect_result != 0); /* True if connection in progress */
+    conn->connected = (connect_result == 0);  /* True if connected immediately */
     conn->registered = false;
     conn->recv_pos = 0;
     conn->connect_time = time(NULL);
     
-    /* Send registration */
-    char buffer[512];
-    snprintf(buffer, sizeof(buffer), "NICK %s\r\n", nick);
-    send(conn->socket, buffer, strlen(buffer), 0);
-    
-    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", user, real);
-    send(conn->socket, buffer, strlen(buffer), 0);
+    /* Send registration only if connected immediately */
+    if (conn->connected) {
+        char buffer[512];
+        printf("[IRC] Registering with server...\n");
+        
+        snprintf(buffer, sizeof(buffer), "NICK %s", nick);
+        irc_send_raw(buffer);
+        
+        snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s", user, real);
+        irc_send_raw(buffer);
+    }
     
     return 0;
 }
@@ -368,22 +443,42 @@ static void irc_disconnect(void) {
         conn->socket = INVALID_SOCKET_VALUE;
     }
     conn->connected = false;
+    conn->connecting = false;
     conn->registered = false;
 }
 
 static void irc_send_raw(const char* message) {
-    if (!g_irc_state || !message) return;
+    if (!g_irc_state || !message) {
+        printf("[IRC] send_raw: null state or message\n");
+        return;
+    }
     
     irc_connection_t* conn = &g_irc_state->connection;
-    if (conn->socket == INVALID_SOCKET_VALUE || !conn->connected) return;
+    if (conn->socket == INVALID_SOCKET_VALUE) {
+        printf("[IRC] send_raw: invalid socket\n");
+        return;
+    }
+    if (!conn->connected) {
+        printf("[IRC] send_raw: not connected\n");
+        return;
+    }
     
     char buffer[512];
     snprintf(buffer, sizeof(buffer), "%s\r\n", message);
-    send(conn->socket, buffer, strlen(buffer), 0);
+    printf("[IRC] Sending raw: %s", buffer); /* buffer already has \r\n */
+    
+    int bytes_sent = send(conn->socket, buffer, (int)strlen(buffer), 0);
+    if (bytes_sent < 0) {
+        printf("[IRC] Send failed: %d\n", bytes_sent);
+    } else {
+        printf("[IRC] Sent %d bytes\n", bytes_sent);
+    }
 }
 
 static void irc_send_message(const char* target, const char* message) {
     if (!target || !message) return;
+    
+    printf("[IRC] Sending message to %s: %s\n", target, message);
     
     char buffer[512];
     snprintf(buffer, sizeof(buffer), "PRIVMSG %s :%s", target, message);
@@ -403,8 +498,9 @@ static void irc_join_channel(const char* channel) {
     snprintf(buffer, sizeof(buffer), "JOIN %s", channel);
     irc_send_raw(buffer);
     
-    /* Create buffer for channel */
+    /* Create buffer for channel and switch to it */
     irc_get_or_create_buffer(channel);
+    irc_set_active_buffer(channel);
 }
 
 static void irc_part_channel(const char* channel, const char* reason) {
@@ -423,11 +519,14 @@ static void irc_part_channel(const char* channel, const char* reason) {
 static void irc_parse_message(const char* line) {
     if (!line || !g_irc_state) return;
     
+    printf("[IRC] Received: %s\n", line);
+    
     /* Simple IRC message parsing - handle basic commands */
     if (strncmp(line, "PING ", 5) == 0) {
         /* Respond to PING */
         char pong[512];
         snprintf(pong, sizeof(pong), "PONG %s", line + 5);
+        printf("[IRC] Responding to PING\n");
         irc_send_raw(pong);
         return;
     }
@@ -498,6 +597,34 @@ static void irc_parse_message(const char* line) {
                 irc_add_message(buffer, NULL, part_msg, IRC_MSG_PART);
             }
         }
+    } else {
+        /* Handle numeric server messages */
+        int numeric = atoi(command);
+        if (numeric >= 001 && numeric <= 999) {
+            /* Add server messages to the server buffer */
+            irc_buffer_t* server_buffer = NULL;
+            if (g_irc_state->buffer_count > 0) {
+                server_buffer = g_irc_state->buffers[0]; /* First buffer is usually server */
+            }
+            
+            if (!server_buffer) {
+                server_buffer = irc_get_or_create_buffer(g_irc_state->connection.server);
+            }
+            
+            if (server_buffer) {
+                /* Extract the message part after the nick */
+                char* rest = strtok_r(NULL, "", &saveptr);
+                if (rest) {
+                    /* Skip our nick and get the actual message */
+                    char* msg_start = strchr(rest, ':');
+                    if (msg_start) {
+                        irc_add_message(server_buffer, NULL, msg_start + 1, IRC_MSG_SERVER);
+                    } else {
+                        irc_add_message(server_buffer, NULL, rest, IRC_MSG_SERVER);
+                    }
+                }
+            }
+        }
     }
     
     free(line_copy);
@@ -508,13 +635,76 @@ static void irc_process_incoming(void) {
     if (!g_irc_state) return;
     
     irc_connection_t* conn = &g_irc_state->connection;
-    if (conn->socket == INVALID_SOCKET_VALUE || !conn->connected) return;
+    if (conn->socket == INVALID_SOCKET_VALUE) return;
     
-    /* Receive data */
+    /* Check if connection is still in progress */
+    if (conn->connecting) {
+        /* Check if connection completed */
+        fd_set write_fds;
+        fd_set error_fds;
+        struct timeval timeout = {0, 0}; /* Non-blocking */
+        
+        FD_ZERO(&write_fds);
+        FD_ZERO(&error_fds);
+        FD_SET(conn->socket, &write_fds);
+        FD_SET(conn->socket, &error_fds);
+        
+        int result = select(conn->socket + 1, NULL, &write_fds, &error_fds, &timeout);
+        if (result > 0) {
+            if (FD_ISSET(conn->socket, &error_fds)) {
+                /* Connection failed */
+                printf("[IRC] Connection failed during select\n");
+                irc_disconnect();
+                return;
+            } else if (FD_ISSET(conn->socket, &write_fds)) {
+                /* Connection completed - check if successful */
+                int error = 0;
+                socklen_t len = sizeof(error);
+                if (getsockopt(conn->socket, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == 0 && error == 0) {
+                    printf("[IRC] Connection established!\n");
+                    conn->connecting = false;
+                    conn->connected = true;
+                    
+                    /* Send registration */
+                    char buffer[512];
+                    printf("[IRC] Registering with server...\n");
+                    snprintf(buffer, sizeof(buffer), "NICK %s\r\n", conn->nickname);
+                    send(conn->socket, buffer, strlen(buffer), 0);
+                    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", conn->username, conn->realname);
+                    send(conn->socket, buffer, strlen(buffer), 0);
+                } else {
+                    printf("[IRC] Connection failed with socket error: %d\n", error);
+                    irc_disconnect();
+                    return;
+                }
+            }
+        }
+        /* If still connecting, return and try again later */
+        if (conn->connecting) return;
+    }
+    
+    if (!conn->connected) return;
+    
+    /* Receive data (non-blocking) */
     char temp_buffer[1024];
     int bytes_received = recv(conn->socket, temp_buffer, sizeof(temp_buffer) - 1, 0);
-    if (bytes_received <= 0) {
-        /* Connection lost */
+    if (bytes_received < 0) {
+#ifdef _WIN32
+        if (WSAGetLastError() == WSAEWOULDBLOCK) {
+            /* No data available, not an error */
+            return;
+        }
+#else
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            /* No data available, not an error */
+            return;
+        }
+#endif
+        /* Real error - connection lost */
+        irc_disconnect();
+        return;
+    } else if (bytes_received == 0) {
+        /* Connection closed by server */
         irc_disconnect();
         return;
     }
@@ -597,7 +787,510 @@ static void irc_prev_buffer(void) {
     irc_set_active_buffer(g_irc_state->buffers[prev_index]->name);
 }
 
-/* IRC UI Rendering Functions - TODO: Implement with proper renderer API */
+/* SDL Color conversion helper */
+static SDL_Color irc_to_sdl_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    SDL_Color color = {r, g, b, a};
+    return color;
+}
+
+/* Simple text rendering without TTF - draws colored rectangles as placeholders */
+static void irc_draw_simple_text(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color) {
+    if (!renderer || !text) return;
+    
+    /* Set text color */
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    
+    /* Draw a simple rectangle as text placeholder */
+    int text_len = strlen(text);
+    if (text_len > 0) {
+        SDL_Rect text_rect = {x, y, text_len * 6, 12}; /* Approximate text size */
+        SDL_RenderFillRect(renderer, &text_rect);
+        
+        /* Draw text outline in different color */
+        SDL_SetRenderDrawColor(renderer, 255 - color.r, 255 - color.g, 255 - color.b, color.a);
+        SDL_RenderDrawRect(renderer, &text_rect);
+    }
+}
+
+#ifdef HAVE_SDL2_TTF
+/* TTF text rendering when available */
+static void irc_draw_ttf_text(SDL_Renderer* renderer, TTF_Font* font, const char* text, int x, int y, SDL_Color color) {
+    if (!renderer || !font || !text) return;
+    
+    SDL_Surface* text_surface = TTF_RenderText_Solid(font, text, color);
+    if (text_surface) {
+        SDL_Texture* text_texture = SDL_CreateTextureFromSurface(renderer, text_surface);
+        if (text_texture) {
+            SDL_Rect dest_rect = {x, y, text_surface->w, text_surface->h};
+            SDL_RenderCopy(renderer, text_texture, NULL, &dest_rect);
+            SDL_DestroyTexture(text_texture);
+        }
+        SDL_FreeSurface(text_surface);
+    }
+}
+#endif
+
+/* IRC UI Rendering Functions using OpenGL */
+
+static void irc_render_channel_list_gl(vizero_renderer_t* renderer, int x, int y, int width, int height) {
+    if (!g_irc_state || !renderer) return;
+    
+    /* Process incoming IRC messages during rendering */
+    static int render_counter = 0;
+    if ((render_counter++ % 10) == 0) { /* Only process every 10th frame to avoid spam */
+        irc_process_incoming();
+    }
+    
+    /* Channel list background */
+    vizero_colour_t bg_color = {0.1f, 0.1f, 0.15f, 1.0f};
+    vizero_renderer_fill_rect(renderer, (float)x, (float)y, (float)width, (float)height, bg_color);
+    
+    /* Border */
+    vizero_colour_t border_color = {0.3f, 0.3f, 0.3f, 1.0f};
+    vizero_renderer_draw_line(renderer, (float)(x + width), (float)y, (float)(x + width), (float)(y + height), border_color);
+    
+    /* Title */
+    vizero_text_info_t text_info = {0};
+    text_info.x = (float)(x + 5);
+    text_info.y = (float)(y + 5);
+    text_info.colour = (vizero_colour_t){1.0f, 1.0f, 1.0f, 1.0f};
+    text_info.font = NULL;
+    vizero_renderer_draw_text(renderer, "Channels", &text_info);
+    
+    /* Render buffer list */
+    int line_y = y + 25;
+    int line_height = 20;
+    
+    for (size_t i = 0; i < g_irc_state->buffer_count && line_y < y + height - line_height; i++) {
+        irc_buffer_t* buffer = g_irc_state->buffers[i];
+        if (!buffer) continue;
+        
+        /* Highlight active buffer */
+        if (buffer->is_active) {
+            vizero_colour_t active_bg = {0.2f, 0.3f, 0.5f, 1.0f};
+            vizero_renderer_fill_rect(renderer, (float)x, (float)line_y, (float)width, (float)line_height, active_bg);
+        }
+        
+        /* Buffer name */
+        text_info.x = (float)(x + 10);
+        text_info.y = (float)(line_y + 2);
+        text_info.colour = buffer->has_unread ? 
+            (vizero_colour_t){1.0f, 1.0f, 0.5f, 1.0f} : /* Yellow for unread */
+            (vizero_colour_t){0.9f, 0.9f, 0.9f, 1.0f};   /* Light gray for normal */
+        
+        vizero_renderer_draw_text(renderer, buffer->name, &text_info);
+        
+        line_y += line_height;
+    }
+}
+
+static void irc_render_nick_list_gl(vizero_renderer_t* renderer, int x, int y, int width, int height) {
+    /* Nick list background */
+    vizero_colour_t bg_color = {0.1f, 0.1f, 0.15f, 1.0f};
+    vizero_renderer_fill_rect(renderer, (float)x, (float)y, (float)width, (float)height, bg_color);
+    
+    /* Border */
+    vizero_colour_t border_color = {0.3f, 0.3f, 0.3f, 1.0f};
+    vizero_renderer_draw_line(renderer, (float)x, (float)y, (float)x, (float)(y + height), border_color);
+    
+    /* Title */
+    vizero_text_info_t text_info = {0};
+    text_info.x = (float)(x + 5);
+    text_info.y = (float)(y + 5);
+    text_info.colour = (vizero_colour_t){1.0f, 1.0f, 1.0f, 1.0f};
+    text_info.font = NULL;
+    vizero_renderer_draw_text(renderer, "Users", &text_info);
+    
+    /* Find current buffer and render its users */
+    irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+    if (!current_buffer) return;
+    
+    int line_y = y + 25;
+    int line_height = 18;
+    
+    for (int i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
+        irc_user_t* user = &current_buffer->channel_info.users[i];
+        
+        /* Choose color based on operator status */
+        vizero_colour_t text_color;
+        if (user->is_op) {
+            text_color = (vizero_colour_t){1.0f, 0.5f, 0.5f, 1.0f}; /* Red for ops */
+        } else if (user->has_voice) {
+            text_color = (vizero_colour_t){0.5f, 1.0f, 0.5f, 1.0f}; /* Green for voice */
+        } else {
+            text_color = (vizero_colour_t){0.9f, 0.9f, 0.9f, 1.0f}; /* Light gray for normal */
+        }
+        
+        /* Format nick with prefix */
+        char display_nick[64];
+        char prefix = ' ';
+        if (user->is_op) prefix = '@';
+        else if (user->has_voice) prefix = '+';
+        
+        snprintf(display_nick, sizeof(display_nick), "%c%s", prefix, user->nick);
+        
+        text_info.x = (float)(x + 5);
+        text_info.y = (float)(line_y + 2);
+        text_info.colour = text_color;
+        
+        vizero_renderer_draw_text(renderer, display_nick, &text_info);
+        
+        line_y += line_height;
+    }
+}
+
+static void irc_render_message_area_gl(vizero_renderer_t* renderer, int x, int y, int width, int height) {
+    /* Message area background */
+    vizero_colour_t bg_color = {0.05f, 0.05f, 0.1f, 1.0f};
+    vizero_renderer_fill_rect(renderer, (float)x, (float)y, (float)width, (float)height, bg_color);
+    
+    /* Find current buffer */
+    irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+    if (!current_buffer) {
+        /* Show "No active buffer" message */
+        vizero_text_info_t text_info = {0};
+        text_info.x = (float)(x + 10);
+        text_info.y = (float)(y + 10);
+        text_info.colour = (vizero_colour_t){0.5f, 0.5f, 0.5f, 1.0f};
+        text_info.font = NULL;
+        vizero_renderer_draw_text(renderer, "No active buffer", &text_info);
+        return;
+    }
+    
+    /* Render messages */
+    int line_y = y + height - 20; /* Start from bottom */
+    int line_height = 18;
+    int max_line_width = width - 10; /* Leave margin */
+    
+    for (int i = (int)current_buffer->message_count - 1; i >= 0 && line_y > y; i--) {
+        irc_message_t* msg = &current_buffer->messages[i];
+        
+        vizero_text_info_t text_info = {0};
+        text_info.x = (float)(x + 5);
+        text_info.y = (float)line_y;
+        text_info.font = NULL;
+        
+        /* Format message line */
+        char line[1024];
+        if (strlen(msg->nick) > 0) {
+            snprintf(line, sizeof(line), "[%s] <%s> %s", msg->timestamp, msg->nick, msg->message);
+            text_info.colour = (vizero_colour_t){0.9f, 0.9f, 0.9f, 1.0f};
+        } else {
+            snprintf(line, sizeof(line), "[%s] %s", msg->timestamp, msg->message);
+            /* Different colors for different message types */
+            switch (msg->type) {
+                case IRC_MSG_SERVER:
+                    text_info.colour = (vizero_colour_t){0.7f, 0.7f, 1.0f, 1.0f}; /* Light blue for server */
+                    break;
+                case IRC_MSG_JOIN:
+                case IRC_MSG_PART:
+                    text_info.colour = (vizero_colour_t){0.7f, 1.0f, 0.7f, 1.0f}; /* Light green for join/part */
+                    break;
+                default:
+                    text_info.colour = (vizero_colour_t){0.8f, 0.8f, 0.8f, 1.0f};
+                    break;
+            }
+        }
+        
+        /* Simple word wrapping - break long lines */
+        int line_len = (int)strlen(line);
+        int chars_per_line = max_line_width / 8; /* Rough estimate: 8 pixels per character */
+        if (chars_per_line < 20) chars_per_line = 20; /* Minimum line length */
+        
+        if (line_len <= chars_per_line) {
+            /* Line fits, render normally */
+            vizero_renderer_draw_text(renderer, line, &text_info);
+            line_y -= line_height;
+        } else {
+            /* Line too long, break it up */
+            char temp_line[1024];
+            int pos = 0;
+            while (pos < line_len && line_y > y) {
+                int chunk_len = chars_per_line;
+                if (pos + chunk_len > line_len) {
+                    chunk_len = line_len - pos;
+                }
+                
+                /* Try to break at word boundary */
+                if (pos + chunk_len < line_len) {
+                    while (chunk_len > 0 && line[pos + chunk_len] != ' ') {
+                        chunk_len--;
+                    }
+                    if (chunk_len == 0) chunk_len = chars_per_line; /* Force break if no spaces */
+                }
+                
+                strncpy(temp_line, line + pos, chunk_len);
+                temp_line[chunk_len] = '\0';
+                
+                text_info.y = (float)line_y;
+                vizero_renderer_draw_text(renderer, temp_line, &text_info);
+                
+                pos += chunk_len;
+                if (pos < line_len && line[pos] == ' ') pos++; /* Skip space */
+                line_y -= line_height;
+            }
+        }
+    }
+}
+
+static void irc_render_input_box_gl(vizero_renderer_t* renderer, int x, int y, int width, int height) {
+    /* Input box background */
+    vizero_colour_t bg_color = {0.15f, 0.15f, 0.2f, 1.0f};
+    vizero_renderer_fill_rect(renderer, (float)x, (float)y, (float)width, (float)height, bg_color);
+    
+    /* Border */
+    vizero_colour_t border_color = {0.3f, 0.3f, 0.3f, 1.0f};
+    vizero_renderer_draw_line(renderer, (float)x, (float)y, (float)(x + width), (float)y, border_color);
+    
+    /* Input prompt */
+    vizero_text_info_t text_info = {0};
+    text_info.x = (float)(x + 5);
+    text_info.y = (float)(y + 8);
+    text_info.colour = (vizero_colour_t){0.7f, 0.7f, 0.7f, 1.0f};
+    text_info.font = NULL;
+    
+    char prompt[256];
+    snprintf(prompt, sizeof(prompt), "[%s] %s", g_irc_state->current_buffer, g_irc_state->input_buffer);
+    vizero_renderer_draw_text(renderer, prompt, &text_info);
+}
+
+/* Legacy SDL Rendering Functions (unused now) */
+
+static void irc_render_channel_list(SDL_Renderer* renderer, int x, int y, int width, int height) {
+    if (!g_irc_state || !renderer) return;
+    
+    /* Process incoming IRC messages during rendering */
+    static int render_counter = 0;
+    if ((render_counter++ % 10) == 0) { /* Only process every 10th frame to avoid spam */
+        irc_process_incoming();
+    }
+    
+    /* Background */
+    SDL_SetRenderDrawColor(renderer, 32, 32, 32, 255);
+    SDL_Rect bg_rect = {x, y, width, height};
+    SDL_RenderFillRect(renderer, &bg_rect);
+    
+    /* Border */
+    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255);
+    SDL_Rect border_rect = {x + width - 1, y, 1, height};
+    SDL_RenderFillRect(renderer, &border_rect);
+    
+    int line_y = y + 5;
+    int line_height = 20;
+    
+    /* Render buffer list */
+    for (int i = 0; i < g_irc_state->buffer_count && line_y < y + height - line_height; i++) {
+        irc_buffer_t* buffer = g_irc_state->buffers[i];
+        if (!buffer) continue;
+        
+        /* Highlight active buffer */
+        if (buffer->is_active) {
+            SDL_SetRenderDrawColor(renderer, 64, 64, 128, 128);
+            SDL_Rect highlight_rect = {x, line_y - 2, width - 1, line_height};
+            SDL_RenderFillRect(renderer, &highlight_rect);
+        }
+        
+        /* Choose text color based on activity */
+        SDL_Color text_color;
+        if (buffer->has_unread) {
+            text_color = irc_to_sdl_color(128, 255, 128, 255); /* Green for unread */
+        } else if (buffer->is_active) {
+            text_color = irc_to_sdl_color(255, 255, 255, 255); /* White for active */
+        } else {
+            text_color = irc_to_sdl_color(192, 192, 192, 255); /* Gray for inactive */
+        }
+        
+        /* Format buffer name with unread count */
+        char display_name[64];
+        if (buffer->unread_count > 0) {
+            snprintf(display_name, sizeof(display_name), "%s (%d)", buffer->name, buffer->unread_count);
+        } else {
+            strncpy(display_name, buffer->name, sizeof(display_name) - 1);
+            display_name[sizeof(display_name) - 1] = '\0';
+        }
+        
+        /* Render text */
+#ifdef HAVE_SDL2_TTF
+        if (g_irc_state->font) {
+            irc_draw_ttf_text(renderer, g_irc_state->font, display_name, x + 5, line_y, text_color);
+        } else
+#endif
+        {
+            irc_draw_simple_text(renderer, display_name, x + 5, line_y, text_color);
+        }
+        
+        line_y += line_height;
+    }
+}
+
+static void irc_render_nick_list(SDL_Renderer* renderer, int x, int y, int width, int height) {
+    if (!g_irc_state || !renderer) return;
+    
+    /* Background */
+    SDL_SetRenderDrawColor(renderer, 32, 32, 32, 255);
+    SDL_Rect bg_rect = {x, y, width, height};
+    SDL_RenderFillRect(renderer, &bg_rect);
+    
+    /* Border */
+    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255);
+    SDL_Rect border_rect = {x, y, 1, height};
+    SDL_RenderFillRect(renderer, &border_rect);
+    
+    /* Find current buffer */
+    irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+    if (!current_buffer) return;
+    
+    int line_y = y + 5;
+    int line_height = 18;
+    
+    /* Render nick list for current channel */
+    for (int i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
+        irc_user_t* user = &current_buffer->channel_info.users[i];
+        
+        /* Choose color based on operator status */
+        SDL_Color text_color;
+        if (user->is_op) {
+            text_color = irc_to_sdl_color(255, 128, 128, 255); /* Red for ops */
+        } else if (user->has_voice) {
+            text_color = irc_to_sdl_color(128, 255, 128, 255); /* Green for voice */
+        } else {
+            text_color = irc_to_sdl_color(255, 255, 255, 255); /* White for normal */
+        }
+        
+        /* Format nick with prefix */
+        char display_nick[64];
+        char prefix = ' ';
+        if (user->is_op) prefix = '@';
+        else if (user->has_voice) prefix = '+';
+        
+        if (prefix != ' ') {
+            snprintf(display_nick, sizeof(display_nick), "%c%s", prefix, user->nick);
+        } else {
+            strncpy(display_nick, user->nick, sizeof(display_nick) - 1);
+            display_nick[sizeof(display_nick) - 1] = '\0';
+        }
+        
+        /* Render text */
+#ifdef HAVE_SDL2_TTF
+        if (g_irc_state->font) {
+            irc_draw_ttf_text(renderer, g_irc_state->font, display_nick, x + 5, line_y, text_color);
+        } else
+#endif
+        {
+            irc_draw_simple_text(renderer, display_nick, x + 5, line_y, text_color);
+        }
+        
+        line_y += line_height;
+    }
+}
+
+static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int width, int height) {
+    if (!g_irc_state || !renderer) return;
+    
+    /* Background */
+    SDL_SetRenderDrawColor(renderer, 16, 16, 16, 255);
+    SDL_Rect bg_rect = {x, y, width, height};
+    SDL_RenderFillRect(renderer, &bg_rect);
+    
+    /* Find current buffer */
+    irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+    if (!current_buffer) return;
+    
+    int line_height = 16;
+    int max_lines = height / line_height;
+    int start_index = (current_buffer->message_count > max_lines) ? 
+                     current_buffer->message_count - max_lines : 0;
+    
+    int line_y = y + 5;
+    
+    /* Render messages */
+    for (int i = start_index; i < current_buffer->message_count && line_y < y + height - line_height; i++) {
+        irc_message_t* msg = &current_buffer->messages[i];
+        
+        char formatted_msg[1024];
+        
+        /* Format timestamp */
+        if (strlen(msg->timestamp) > 0) {
+            snprintf(formatted_msg, sizeof(formatted_msg), "[%s]", msg->timestamp);
+        } else {
+            strcpy(formatted_msg, "[??:??:??]");
+        }
+        
+        /* Choose colors based on message type */
+        SDL_Color msg_color;
+        
+        if (msg->type == IRC_MSG_JOIN || msg->type == IRC_MSG_PART) {
+            /* System messages in gray */
+            msg_color = irc_to_sdl_color(128, 128, 128, 255);
+            strncat(formatted_msg, " ", sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+            strncat(formatted_msg, msg->message, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+        } else {
+            /* Regular chat messages */
+            if (msg->nick && strlen(msg->nick) > 0) {
+                /* Generate nick color */
+                uint32_t nick_color = irc_generate_nick_color(msg->nick);
+                uint8_t nick_r = (nick_color >> 16) & 0xFF;
+                uint8_t nick_g = (nick_color >> 8) & 0xFF;
+                uint8_t nick_b = nick_color & 0xFF;
+                
+                /* Add nick part */
+                char nick_part[128];
+                snprintf(nick_part, sizeof(nick_part), " <%s> ", msg->nick);
+                strncat(formatted_msg, nick_part, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+                
+                /* For now, use white for message text */
+                msg_color = irc_to_sdl_color(255, 255, 255, 255);
+            } else {
+                /* Message without nick */
+                msg_color = irc_to_sdl_color(255, 255, 255, 255);
+                strncat(formatted_msg, " ", sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+            }
+            strncat(formatted_msg, msg->message, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+        }
+        
+        /* Render text */
+#ifdef HAVE_SDL2_TTF
+        if (g_irc_state->font) {
+            irc_draw_ttf_text(renderer, g_irc_state->font, formatted_msg, x + 5, line_y, msg_color);
+        } else
+#endif
+        {
+            irc_draw_simple_text(renderer, formatted_msg, x + 5, line_y, msg_color);
+        }
+        
+        line_y += line_height;
+    }
+}
+
+static void irc_render_input_box(SDL_Renderer* renderer, int x, int y, int width, int height) {
+    if (!g_irc_state || !renderer) return;
+    
+    /* Background */
+    SDL_SetRenderDrawColor(renderer, 48, 48, 48, 255);
+    SDL_Rect bg_rect = {x, y, width, height};
+    SDL_RenderFillRect(renderer, &bg_rect);
+    
+    /* Border */
+    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255);
+    SDL_Rect border_rect = {x, y, width, 1};
+    SDL_RenderFillRect(renderer, &border_rect);
+    
+    /* Draw prompt */
+    char prompt[256];
+    snprintf(prompt, sizeof(prompt), "[%s] > %s", 
+             strlen(g_irc_state->current_buffer) > 0 ? g_irc_state->current_buffer : "no-buffer",
+             g_irc_state->input_buffer);
+    
+    SDL_Color text_color = irc_to_sdl_color(255, 255, 255, 255);
+#ifdef HAVE_SDL2_TTF
+    if (g_irc_state->font) {
+        irc_draw_ttf_text(renderer, g_irc_state->font, prompt, x + 5, y + 5, text_color);
+    } else
+#endif
+    {
+        irc_draw_simple_text(renderer, prompt, x + 5, y + 5, text_color);
+    }
+}
 
 
 
@@ -608,10 +1301,17 @@ static void irc_prev_buffer(void) {
 
 
 /* IRC Command Implementations */
-static int irc_cmd_connect(const char* args) {
+static int irc_cmd_connect(vizero_editor_t* editor, const char* args) {
     if (!args || strlen(args) == 0) {
-        return -1; /* Usage: /connect server[:port] [nick] */
+        printf("[IRC] Usage: connect server[:port] [nick]\n");
+        return -1;
     }
+    
+    /* Try to force normal mode before starting IRC */
+    printf("[IRC] Attempting to set normal mode before starting IRC...\n");
+    
+    /* Store editor reference for later use */
+    g_irc_state->editor = editor;
     
     char server[256] = {0};
     int port = 6667;
@@ -635,13 +1335,39 @@ static int irc_cmd_connect(const char* args) {
     }
     
     if (nick_part) {
-        strncpy(nick, nick_part, sizeof(nick) - 1);
+        /* Validate nickname - can't start with # or other invalid characters */
+        if (nick_part[0] == '#' || nick_part[0] == '&' || nick_part[0] == '!' || nick_part[0] == '+') {
+            printf("[IRC] Error: Invalid nickname '%s' - nicknames cannot start with #, &, !, or +\n", nick_part);
+            printf("[IRC] Using default nickname 'vizero_user' instead\n");
+        } else {
+            strncpy(nick, nick_part, sizeof(nick) - 1);
+        }
     }
-    
+
     free(args_copy);
-    
+
+    printf("[IRC] Attempting to connect to %s:%d as %s\n", server, port, nick);
     int result = irc_connect(server, port, nick, user, real);
     if (result == 0) {
+        printf("[IRC] Connected successfully!\n");
+        
+        /* Create dedicated IRC buffer using :enew command */
+        if (g_irc_state && g_irc_state->api && g_irc_state->api->execute_command) {
+            printf("[IRC] Creating dedicated IRC buffer...\n");
+            int enew_result = g_irc_state->api->execute_command(editor, "enew");
+            if (enew_result == 0) {
+                /* Get the newly created buffer */
+                if (g_irc_state->api->get_current_buffer) {
+                    g_irc_state->irc_buffer = g_irc_state->api->get_current_buffer(editor);
+                    printf("[IRC] Dedicated IRC buffer created and active\n");
+                } else {
+                    printf("[IRC] Warning: Could not get reference to new IRC buffer\n");
+                }
+            } else {
+                printf("[IRC] Warning: Failed to create dedicated IRC buffer (error %d)\n", enew_result);
+            }
+        }
+        
         /* Create server buffer */
         irc_buffer_t* server_buffer = irc_get_or_create_buffer(server);
         if (server_buffer) {
@@ -650,20 +1376,38 @@ static int irc_cmd_connect(const char* args) {
             irc_add_message(server_buffer, NULL, connect_msg, IRC_MSG_NORMAL);
             irc_set_active_buffer(server);
         }
+    } else {
+        printf("[IRC] Connection failed with error: %d\n", result);
     }
     
     return result;
 }
 
-static int irc_cmd_disconnect(const char* args) {
+static int irc_cmd_disconnect(vizero_editor_t* editor, const char* args) {
     (void)args; /* Unused */
+    printf("[IRC] Disconnecting from server...\n");
+    
+    /* Switch back to original buffer */
+    if (g_irc_state && g_irc_state->original_buffer && g_irc_state->api && g_irc_state->api->execute_command) {
+        printf("[IRC] Returning to original buffer...\n");
+        g_irc_state->api->execute_command(editor, "bp");
+        printf("[IRC] Returned to previous buffer after disconnect\n");
+    }
+    
+    /* Clear IRC buffer reference */
+    if (g_irc_state) {
+        g_irc_state->irc_buffer = NULL;
+    }
+    
     irc_disconnect();
     return 0;
 }
 
-static int irc_cmd_join(const char* args) {
+static int irc_cmd_join(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        return -1; /* Usage: /join #channel */
+        printf("[IRC] Usage: join #channel\n");
+        return -1;
     }
     
     char channel[64];
@@ -680,7 +1424,8 @@ static int irc_cmd_join(const char* args) {
     return 0;
 }
 
-static int irc_cmd_part(const char* args) {
+static int irc_cmd_part(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused */
     const char* channel = g_irc_state ? g_irc_state->current_buffer : NULL;
     const char* reason = NULL;
     
@@ -710,9 +1455,11 @@ static int irc_cmd_part(const char* args) {
     return channel ? 0 : -1;
 }
 
-static int irc_cmd_msg(const char* args) {
+static int irc_cmd_msg(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        return -1; /* Usage: /msg target message */
+        printf("[IRC] Usage: msg target message\n");
+        return -1;
     }
     
     char* args_copy = strdup(args);
@@ -730,21 +1477,23 @@ static int irc_cmd_msg(const char* args) {
     return -1;
 }
 
-static int irc_cmd_next(const char* args) {
-    (void)args; /* Unused */
+static int irc_cmd_next(vizero_editor_t* editor, const char* args) {
+    (void)editor; (void)args; /* Unused */
     irc_next_buffer();
     return 0;
 }
 
-static int irc_cmd_prev(const char* args) {
-    (void)args; /* Unused */
+static int irc_cmd_prev(vizero_editor_t* editor, const char* args) {
+    (void)editor; (void)args; /* Unused */
     irc_prev_buffer();
     return 0;
 }
 
-static int irc_cmd_buffer(const char* args) {
+static int irc_cmd_buffer(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        return -1; /* Usage: /buffer name */
+        printf("[IRC] Usage: buffer name\n");
+        return -1;
     }
     
     char buffer_name[64];
@@ -758,6 +1507,46 @@ static int irc_cmd_buffer(const char* args) {
     return -1;
 }
 
+/* Command to disable IRC protection and restore buffer writability */
+static int irc_cmd_disable(vizero_editor_t* editor, const char* args) {
+    (void)args; /* Unused */
+    
+    printf("[IRC] Disabling IRC plugin and restoring buffer writability\n");
+    
+    /* Disconnect if connected */
+    irc_disconnect();
+    
+    /* Clear all buffers */
+    if (g_irc_state) {
+        for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
+            if (g_irc_state->buffers[i]) {
+                free(g_irc_state->buffers[i]);
+                g_irc_state->buffers[i] = NULL;
+            }
+        }
+        g_irc_state->buffer_count = 0;
+        g_irc_state->current_buffer[0] = '\0';
+    }
+    
+    /* Switch back to original buffer if we have a reference to it */
+    if (g_irc_state && g_irc_state->original_buffer && g_irc_state->api && g_irc_state->api->execute_command) {
+        /* Note: We can't directly switch to a buffer pointer, so we'll use :bp to go back */
+        /* This is a limitation - ideally we'd need a "switch_to_buffer" API function */
+        printf("[IRC] Attempting to return to original buffer...\n");
+        g_irc_state->api->execute_command(editor, "bp");
+        printf("[IRC] Returned to previous buffer - IRC disabled\n");
+    } else {
+        printf("[IRC] IRC disabled - original buffer reference not available\n");
+    }
+    
+    /* Clear IRC buffer reference */
+    if (g_irc_state) {
+        g_irc_state->irc_buffer = NULL;
+    }
+    
+    return 0;
+}
+
 
 
 /* Plugin update callback for networking and UI */
@@ -768,28 +1557,342 @@ static void irc_plugin_update(void) {
     irc_process_incoming();
 }
 
-/* Plugin rendering callback - TODO: Implement custom UI rendering */
-static void irc_plugin_render(vizero_renderer_t* renderer, int window_width, int window_height) {
-    (void)renderer; /* Unused for now */
-    (void)window_width;
-    (void)window_height;
-    /* TODO: Implement IRC-specific UI rendering */
+/* Main IRC UI Rendering Function */
+static int irc_render_full_window(vizero_editor_t* editor, vizero_renderer_t* renderer, int width, int height) {
+    (void)editor; /* Unused */
+    
+    if (!g_irc_state || !renderer) return 0;
+    
+    /* Only render if we have buffers (IRC is active) */
+    if (g_irc_state->buffer_count == 0) return 0;
+    
+    /* Quassel-like layout:
+     * - Left panel: Channel list (150px wide)
+     * - Right panel: Nick list (120px wide)
+     * - Bottom: Input box (30px high)
+     * - Center: Message area (remaining space)
+     */
+    
+    int channel_list_width = 150;
+    int nick_list_width = 120;
+    int input_height = 30;
+    
+    int message_x = channel_list_width;
+    int message_y = 0;
+    int message_width = width - channel_list_width - nick_list_width;
+    int message_height = height - input_height;
+    
+    /* Render panels using OpenGL */
+    irc_render_channel_list_gl(renderer, 0, 0, channel_list_width, height);
+    irc_render_nick_list_gl(renderer, width - nick_list_width, 0, nick_list_width, height - input_height);
+    irc_render_message_area_gl(renderer, message_x, message_y, message_width, message_height);
+    irc_render_input_box_gl(renderer, message_x, height - input_height, message_width, input_height);
+    
+    return 1; /* Successfully rendered */
 }
 
-/* Handle input in IRC mode */
-static int irc_handle_input(const char* input) {
-    if (!g_irc_state || !input) return 0;
+/* Check if IRC plugin wants full window control */
+static int irc_wants_full_window(vizero_editor_t* editor) {
+    (void)editor; /* Unused */
     
-    /* Handle regular chat messages (not commands) */
-    if (strlen(input) > 0 && input[0] != '/') {
-        /* Send to current buffer */
-        if (strlen(g_irc_state->current_buffer) > 0) {
-            irc_send_message(g_irc_state->current_buffer, input);
-            return 1; /* Consumed input */
+    if (!g_irc_state) {
+        printf("[IRC] wants_full_window: no state\n");
+        return 0;
+    }
+    
+    /* Take over full window when we have IRC buffers */
+    int wants = g_irc_state->buffer_count > 0 ? 1 : 0;
+    static int last_wants = -1;
+    if (wants != last_wants) {
+        printf("[IRC] wants_full_window: buffer_count=%zu, wants=%d\n", g_irc_state->buffer_count, wants);
+        last_wants = wants;
+    }
+    return wants;
+}
+
+/* Track if we're in command mode for buffer protection */
+static int g_in_command_mode = 0;
+
+/* Handle any command execution - permanently protect buffer when IRC plugin is active */
+static int irc_on_any_command(vizero_editor_t* editor, const char* command, const char* args) {
+    (void)args; /* Unused */
+    
+    if (!g_irc_state) return 0;
+    
+    printf("[IRC] Command executed: '%s'\n", command ? command : "NULL");
+    
+    /* AGGRESSIVE PROTECTION: Keep buffer readonly as long as IRC plugin is loaded */
+    /* Only restore writability if user explicitly disables IRC */
+    if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+        vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
+        if (current_buffer) {
+            printf("[IRC] Ensuring buffer remains readonly (aggressive protection)\n");
+            g_irc_state->api->set_buffer_readonly(current_buffer, 1);
         }
     }
     
-    return 0; /* Let Vizero handle commands */
+    g_in_command_mode = 0; /* Reset command mode */
+    return 0; /* Don't consume the command */
+}
+
+/* Handle key input in IRC mode */
+static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
+    (void)editor; /* Unused */
+    
+    if (!g_irc_state) return 0;
+    
+    /* ONLY intercept the initial colon when IRC is inactive to set buffer readonly */
+    if (key == ':' && !g_in_command_mode && g_irc_state->buffer_count == 0) {
+        printf("[IRC] Initial colon detected - making buffer readonly to prevent text bleeding\n");
+        g_in_command_mode = 1;
+        
+        /* Make buffer readonly immediately */
+        if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+            vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
+            if (current_buffer) {
+                printf("[IRC] Setting buffer readonly for command mode protection\n");
+                g_irc_state->api->set_buffer_readonly(current_buffer, 1);
+            }
+        }
+        
+        /* Let colon pass through to enter command mode */
+        return 0;
+    }
+    
+    /* When in command mode and IRC is inactive, DON'T intercept anything - let vim handle command building */
+    if (g_in_command_mode && g_irc_state->buffer_count == 0) {
+        /* Check for Enter to detect command completion */
+        if (key == 13) { /* Enter key */
+            printf("[IRC] Command completed - IRC will check if it's an IRC command\n");
+            g_in_command_mode = 0;
+            /* Don't restore buffer writability yet - let the command handler decide */
+            return 0; /* Let Enter pass through */
+        }
+        
+        /* Check for Escape to cancel command mode */
+        if (key == 27) { /* Escape */
+            printf("[IRC] Command mode cancelled - restoring buffer writability\n");
+            g_in_command_mode = 0;
+            
+            /* Restore buffer writability since command was cancelled */
+            if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+                vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
+                if (current_buffer) {
+                    g_irc_state->api->set_buffer_readonly(current_buffer, 0);
+                }
+            }
+            return 0; /* Let Escape pass through */
+        }
+        
+        /* For all other keys in command mode when IRC inactive, let vim handle it */
+        return 0;
+    }
+    
+    /* CRITICAL: If IRC is completely inactive and not in command mode, let vim handle everything */
+    if (g_irc_state->buffer_count == 0 && !g_in_command_mode) {
+        /* Let ALL keys pass through to vim - no interference when IRC is inactive */
+        return 0; /* Not consumed - let vim handle normally */
+    }
+    
+    /* Process incoming IRC messages on every input event */
+    irc_process_incoming();
+    
+    printf("[IRC] Handling key %d ('%c') in IRC mode\n", key, (char)key);
+    
+    /* Check if IRC is currently active (has buffers) */
+    if (g_irc_state->buffer_count > 0) {
+        /* IRC is active - consume ALL keys to prevent text from reaching editor buffer */
+        
+        /* Handle Escape key to exit IRC mode */
+        if (key == 27) {
+            printf("[IRC] Exiting IRC mode\n");
+            
+            /* Restore original buffer to be writable */
+            if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+                vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(g_irc_state->editor);
+                if (current_buffer) {
+                    printf("[IRC] Restoring original buffer to writable state\n");
+                    g_irc_state->api->set_buffer_readonly(current_buffer, 0);
+                }
+            }
+            
+            /* Clear all buffers to exit IRC mode */
+            for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
+                if (g_irc_state->buffers[i]) {
+                    free(g_irc_state->buffers[i]);
+                    g_irc_state->buffers[i] = NULL;
+                }
+            }
+            g_irc_state->buffer_count = 0;
+            g_irc_state->current_buffer[0] = '\0';
+            g_irc_state->input_buffer[0] = '\0'; /* Clear input buffer */
+            /* Disconnect from IRC */
+            irc_disconnect();
+            
+            /* Try to clear any pending editor input */
+            if (g_irc_state->api && g_irc_state->api->execute_command && g_irc_state->editor) {
+                printf("[IRC] Trying to clear editor state\n");
+                /* Try to execute an empty command to clear any pending state */
+                g_irc_state->api->execute_command(g_irc_state->editor, "");
+            }
+            
+            /* Set a status message indicating IRC has exited */
+            if (g_irc_state->api && g_irc_state->api->set_status_message) {
+                printf("[IRC] Setting status message about IRC exit\n");
+                g_irc_state->api->set_status_message(g_irc_state->editor, "IRC disconnected - Press ESC if in insert mode");
+            }
+            
+            /* CRITICAL: Let this Escape pass through AND queue another Escape to guarantee normal mode */
+            printf("[IRC] Escape #1: Letting first Escape pass through to vim\n");
+            
+            /* Return 0 to let the current Escape pass through to vim */
+            return 0; /* Not consumed - let vim handle the Escape */
+        }
+        
+        /* All other keys are consumed when IRC is active */
+        printf("[IRC] IRC active - consuming key %d to prevent buffer contamination\n", key);
+        /* Process the key for IRC functionality below */
+        
+    }
+    
+    /* === IRC KEY PROCESSING (only runs when IRC is active) === */
+    
+    /* Handle regular character input */
+    if (key >= 32 && key <= 126) { /* Printable ASCII */
+        char input_char = (char)key;
+        
+        /* DEBUG: Print key and modifiers for testing */
+        static int debug_key_count = 0;
+        if (debug_key_count < 5) {
+            printf("[IRC] Key: %d ('%c'), Modifiers: 0x%x, KMOD_SHIFT: 0x%x\n", 
+                   key, (char)key, modifiers, KMOD_SHIFT);
+            debug_key_count++;
+        }
+        
+        /* Handle Shift key for uppercase and symbols */
+        if (modifiers & KMOD_SHIFT) { /* Shift key pressed */
+            if (key >= 'a' && key <= 'z') {
+                /* Convert to uppercase */
+                input_char = (char)(key - 32);
+            } else {
+                /* Handle shifted symbols */
+                switch (key) {
+                    case '1': input_char = '!'; break;
+                    case '2': input_char = '@'; break;
+                    case '3': input_char = '#'; break;
+                    case '4': input_char = '$'; break;
+                    case '5': input_char = '%'; break;
+                    case '6': input_char = '^'; break;
+                    case '7': input_char = '&'; break;
+                    case '8': input_char = '*'; break;
+                    case '9': input_char = '('; break;
+                    case '0': input_char = ')'; break;
+                    case '-': input_char = '_'; break;
+                    case '=': input_char = '+'; break;
+                    case '[': input_char = '{'; break;
+                    case ']': input_char = '}'; break;
+                    case '\\': input_char = '|'; break;
+                    case ';': input_char = ':'; break;
+                    case '\'': input_char = '"'; break;
+                    case ',': input_char = '<'; break;
+                    case '.': input_char = '>'; break;
+                    case '/': input_char = '?'; break;
+                    case '`': input_char = '~'; break;
+                    /* Keep original character for others */
+                }
+            }
+        }
+        
+        /* Add character to input buffer */
+        size_t len = strlen(g_irc_state->input_buffer);
+        if (len < sizeof(g_irc_state->input_buffer) - 1) {
+            g_irc_state->input_buffer[len] = input_char;
+            g_irc_state->input_buffer[len + 1] = '\0';
+        }
+        return 1; /* Consumed */
+    }
+    
+    /* Handle special keys */
+    switch (key) {
+        case 13: /* Enter */
+            if (strlen(g_irc_state->input_buffer) > 0) {
+                printf("[IRC] Input received: '%s'\n", g_irc_state->input_buffer);
+                
+                /* Check if input is a command (starts with /) */
+                if (g_irc_state->input_buffer[0] == '/') {
+                    /* Parse and execute IRC command */
+                    char* command = g_irc_state->input_buffer + 1; /* Skip the '/' */
+                    char* args = strchr(command, ' ');
+                    if (args) {
+                        *args = '\0'; /* Terminate command */
+                        args++; /* Move to arguments */
+                    }
+                    
+                    printf("[IRC] Executing command: '%s' with args: '%s'\n", command, args ? args : "");
+                    
+                    /* Execute the command */
+                    if (strcmp(command, "join") == 0) {
+                        irc_cmd_join(g_irc_state->editor, args);
+                    } else if (strcmp(command, "part") == 0) {
+                        irc_cmd_part(g_irc_state->editor, args);
+                    } else if (strcmp(command, "msg") == 0) {
+                        irc_cmd_msg(g_irc_state->editor, args);
+                    } else if (strcmp(command, "quit") == 0) {
+                        irc_disconnect();
+                    } else {
+                        printf("[IRC] Unknown command: %s\n", command);
+                    }
+                } else {
+                    /* Check if input looks like a command without / prefix */
+                    char input_copy[512];
+                    strncpy(input_copy, g_irc_state->input_buffer, sizeof(input_copy) - 1);
+                    input_copy[sizeof(input_copy) - 1] = '\0';
+                    
+                    char* first_word = strtok(input_copy, " ");
+                    char* rest = strtok(NULL, "");
+                    
+                    if (first_word && (strcmp(first_word, "join") == 0 || 
+                                      strcmp(first_word, "part") == 0 ||
+                                      strcmp(first_word, "msg") == 0 ||
+                                      strcmp(first_word, "quit") == 0)) {
+                        printf("[IRC] Executing command without /: '%s' with args: '%s'\n", first_word, rest ? rest : "");
+                        
+                        if (strcmp(first_word, "join") == 0) {
+                            irc_cmd_join(g_irc_state->editor, rest);
+                        } else if (strcmp(first_word, "part") == 0) {
+                            irc_cmd_part(g_irc_state->editor, rest);
+                        } else if (strcmp(first_word, "msg") == 0) {
+                            irc_cmd_msg(g_irc_state->editor, rest);
+                        } else if (strcmp(first_word, "quit") == 0) {
+                            irc_disconnect();
+                        }
+                    } else {
+                        /* Regular message - send to current buffer */
+                        if (strlen(g_irc_state->current_buffer) > 0) {
+                            printf("[IRC] Current buffer: %s\n", g_irc_state->current_buffer);
+                            irc_send_message(g_irc_state->current_buffer, g_irc_state->input_buffer);
+                        } else {
+                            printf("[IRC] No current buffer to send to\n");
+                        }
+                    }
+                }
+                
+                /* Clear input buffer */
+                g_irc_state->input_buffer[0] = '\0';
+            }
+            return 1; /* Consumed */
+            
+        case 8: /* Backspace */
+            {
+                size_t len = strlen(g_irc_state->input_buffer);
+                if (len > 0) {
+                    g_irc_state->input_buffer[len - 1] = '\0';
+                }
+            }
+            return 1; /* Consumed */
+    }
+    
+    return 0; /* Let Vizero handle special keys (arrows, F-keys, etc.) */
 }
 
 /* Command registration array */
@@ -797,49 +1900,55 @@ static vizero_plugin_command_t irc_commands[] = {
     {
         .command = "connect",
         .description = "Connect to IRC server: /connect <server[:port]> [nick]",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_connect,
+        .handler = irc_cmd_connect,
         .user_data = NULL
     },
     {
         .command = "disconnect",
         .description = "Disconnect from IRC server",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_disconnect,
+        .handler = irc_cmd_disconnect,
         .user_data = NULL
     },
     {
         .command = "join",
         .description = "Join IRC channel: /join <#channel>",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_join,
+        .handler = irc_cmd_join,
         .user_data = NULL
     },
     {
         .command = "part",
         .description = "Leave IRC channel: /part [#channel] [reason]",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_part,
+        .handler = irc_cmd_part,
         .user_data = NULL
     },
     {
         .command = "msg",
         .description = "Send private message: /msg <target> <message>",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_msg,
+        .handler = irc_cmd_msg,
         .user_data = NULL
     },
     {
         .command = "next",
         .description = "Switch to next IRC buffer",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_next,
+        .handler = irc_cmd_next,
         .user_data = NULL
     },
     {
         .command = "prev",
         .description = "Switch to previous IRC buffer",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_prev,
+        .handler = irc_cmd_prev,
         .user_data = NULL
     },
     {
         .command = "buffer",
         .description = "Switch to specific IRC buffer: /buffer <name>",
-        .handler = (int(*)(vizero_editor_t*, const char*))irc_cmd_buffer,
+        .handler = irc_cmd_buffer,
+        .user_data = NULL
+    },
+    {
+        .command = "disable",
+        .description = "Disable IRC plugin and restore buffer writability",
+        .handler = irc_cmd_disable,
         .user_data = NULL
     }
 };
@@ -863,12 +1972,35 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
         return -1;
     }
 #endif
+
+#ifdef HAVE_SDL2_TTF
+    /* Initialize SDL_ttf */
+    if (TTF_Init() != 0) {
+        printf("[IRC] Failed to initialize SDL_ttf: %s\n", TTF_GetError());
+        return -1;
+    }
+#endif
     
     /* Create global IRC state */
     g_irc_state = calloc(1, sizeof(irc_state_t));
     if (!g_irc_state) {
         return -1;
     }
+    
+    /* Store editor and API references */
+    g_irc_state->editor = editor;
+    g_irc_state->api = api;
+    
+    /* Store reference to original buffer for later restoration */
+    g_irc_state->original_buffer = NULL;
+    g_irc_state->irc_buffer = NULL;
+    
+    if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
+        g_irc_state->original_buffer = g_irc_state->api->get_current_buffer(editor);
+        printf("[IRC] Original buffer stored - will remain writable\n");
+    }
+    
+    printf("[IRC] IRC plugin loaded - will create dedicated buffer on connect\n");
     
     /* Initialize connection state */
     g_irc_state->connection.socket = INVALID_SOCKET_VALUE;
@@ -878,6 +2010,42 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     strcpy(g_irc_state->current_buffer, "");
     strcpy(g_irc_state->input_buffer, "");
     
+    /* Initialize SDL rendering context */
+    g_irc_state->sdl_renderer = NULL;
+    g_irc_state->render_texture = NULL;
+#ifdef HAVE_SDL2_TTF
+    g_irc_state->font = NULL;
+#endif
+    g_irc_state->texture_width = 0;
+    g_irc_state->texture_height = 0;
+    g_irc_state->wants_full_window = false;
+    
+#ifdef HAVE_SDL2_TTF
+    /* Try to load a default font - check common locations */
+    const char* font_paths[] = {
+        "fonts/DejaVuSansMono.ttf",
+        "C:/Windows/Fonts/consola.ttf",      /* Windows Consolas */
+        "C:/Windows/Fonts/cour.ttf",         /* Windows Courier New */
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",  /* Linux */
+        "/System/Library/Fonts/Monaco.ttf",  /* macOS */
+        NULL
+    };
+    
+    for (int i = 0; font_paths[i] != NULL; i++) {
+        g_irc_state->font = TTF_OpenFont(font_paths[i], 12);
+        if (g_irc_state->font) {
+            printf("[IRC] Loaded font: %s\n", font_paths[i]);
+            break;
+        }
+    }
+    
+    if (!g_irc_state->font) {
+        printf("[IRC] Warning: Could not load any font, text rendering will be disabled\n");
+    }
+#else
+    printf("[IRC] Built without SDL2_ttf, using simple text rendering\n");
+#endif
+    
     /* Store state in plugin */
     plugin->user_data = g_irc_state;
     
@@ -885,7 +2053,11 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     plugin->callbacks.commands = irc_commands;
     plugin->callbacks.command_count = sizeof(irc_commands) / sizeof(irc_commands[0]);
     
-    /* Note: Custom update/render callbacks not available in current plugin API */
+    /* Register custom rendering callbacks */
+    plugin->callbacks.render_full_window = irc_render_full_window;
+    plugin->callbacks.wants_full_window = irc_wants_full_window;
+    plugin->callbacks.on_key_input = irc_on_key_input;
+    plugin->callbacks.on_command = irc_on_any_command;
     
     printf("[IRC] Full IRC client initialized with %zu commands\n", plugin->callbacks.command_count);
     
@@ -904,10 +2076,33 @@ void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
         /* Disconnect if connected */
         irc_disconnect();
         
+        /* Clean up SDL resources */
+        if (g_irc_state->render_texture) {
+            SDL_DestroyTexture(g_irc_state->render_texture);
+        }
+        
+#ifdef HAVE_SDL2_TTF
+        if (g_irc_state->font) {
+            TTF_CloseFont(g_irc_state->font);
+        }
+#endif
+        
+        /* Clean up buffers */
+        for (int i = 0; i < g_irc_state->buffer_count; i++) {
+            if (g_irc_state->buffers[i]) {
+                irc_destroy_buffer(g_irc_state->buffers[i]);
+            }
+        }
+        
         /* Free global state */
         free(g_irc_state);
         g_irc_state = NULL;
     }
+    
+#ifdef HAVE_SDL2_TTF
+    /* Clean up SDL_ttf */
+    TTF_Quit();
+#endif
     
 #ifdef _WIN32
     WSACleanup();
