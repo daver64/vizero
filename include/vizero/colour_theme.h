@@ -1,6 +1,7 @@
 #ifndef VIZERO_COLOUR_THEME_H
 #define VIZERO_COLOUR_THEME_H
 
+#include <stddef.h>
 #include "renderer.h"
 
 #ifdef __cplusplus
