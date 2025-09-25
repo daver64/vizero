@@ -110,8 +110,11 @@ else()
     # Unix SDL2 setup
     if(PKG_CONFIG_FOUND)
         pkg_check_modules(SDL2 REQUIRED sdl2)
+        pkg_check_modules(SDL2_IMAGE REQUIRED SDL2_image)
     else()
         find_package(SDL2 REQUIRED)
+        find_package(SDL2_image REQUIRED)
+        set(SDL2_IMAGE_LIBRARIES SDL2_image)
     endif()
 endif()
 
@@ -258,6 +261,7 @@ add_library(vizero_core STATIC
 target_include_directories(vizero_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${SDL2_INCLUDE_DIRS}
+    ${SDL2_IMAGE_INCLUDE_DIRS}
     ${GLEW_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIRS}
@@ -265,6 +269,7 @@ target_include_directories(vizero_core PUBLIC
 
 target_link_libraries(vizero_core PUBLIC
     ${SDL2_LIBRARIES}
+    ${SDL2_IMAGE_LIBRARIES}
     ${GLEW_LIBRARIES}
     Boost::system
     Boost::filesystem
