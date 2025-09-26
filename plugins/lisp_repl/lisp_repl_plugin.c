@@ -6,7 +6,7 @@
  * enabling interactive Lisp development with direct buffer typing, automatic expression 
  * evaluation, and comprehensive vi-style integration.
  * 
- * Features:
+ * Current Features (Phase 2):
  * - Interactive buffer typing with real-time expression evaluation
  * - Automatic SBCL detection across Windows and Unix platforms
  * - Robust process management with proper I/O redirection
@@ -15,9 +15,20 @@
  * - Graceful error handling when SBCL is unavailable
  * - Cross-platform compatibility (Windows, Linux, macOS)
  * 
+ * Planned Features (Phase 3):
+ * - SLIME protocol integration via :lisp-slime-connect command
+ * - Interactive debugger with stack traces and condition handling
+ * - Advanced code completion through SLIME backend
+ * - Object inspection and modification capabilities
+ * - Remote REPL connections for distributed development
+ * 
  * @version 2.0.0
  * @date September 2025
  * @author Vizero Development Team
+ * 
+ * @todo Phase 3: Implement SLIME protocol support with separate connection pathway
+ * @todo Add :lisp-slime-connect command handler for SLIME-based connections
+ * @todo Integrate Swank server communication for advanced debugging features
  */
 
 #include "vizero/plugin_interface.h"
@@ -2578,6 +2589,14 @@ static vizero_plugin_command_t lisp_commands[] = {
         .handler = lisp_cmd_help,
         .user_data = NULL
     },
+    /* TODO Phase 3: Add SLIME protocol integration
+    {
+        .command = "lisp-slime-connect",
+        .description = "Connect to SBCL via SLIME protocol for advanced features",
+        .handler = lisp_cmd_slime_connect,
+        .user_data = NULL
+    },
+    */
     {
         .command = "lisp-interactive",
         .description = "Re-enable interactive REPL mode for direct expression typing",

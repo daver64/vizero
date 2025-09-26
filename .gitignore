@@ -12,7 +12,7 @@ plugins/*.so
 plugins/*.dylib
 docs/html
 sbcl
-
+quicklisp.lisp
 # Visual Studio
 .vs/
 *.vcxproj.user

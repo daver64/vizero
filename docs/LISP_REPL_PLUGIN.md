@@ -203,15 +203,22 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 
 ## Future Enhancements
 
-### Planned Features
-- **Code Completion**: Context-aware Lisp symbol completion
-- **SLIME Protocol**: Full SLIME integration for advanced debugging
+### Phase 3: SLIME Protocol Integration
+- **`:lisp-slime-connect` Command**: Alternative connection method using SLIME protocol
+- **Advanced Debugging**: Interactive debugger with stack traces and condition handling
+- **Code Completion**: Context-aware Lisp symbol completion via SLIME
+- **Inspector Integration**: Object inspection and modification capabilities
+- **Macro Expansion**: Interactive macro expansion and analysis
+- **Multiple Connection Types**: Choose between direct SBCL or SLIME connection modes
+
+### Additional Planned Features
 - **Multiple REPL Sessions**: Support for concurrent Lisp environments
 - **Enhanced Error Display**: Syntax highlighting for error messages and stack traces
 - **Package Browser**: Visual package exploration and symbol lookup
 - **Quicklisp Integration**: Automatic library loading and management
-- **Remote REPL**: Connection to remote Lisp instances
+- **Remote REPL**: Connection to remote Lisp instances via SLIME protocol
 - **History Search**: Searchable command history with regex support
+- **Thread Management**: Support for multi-threaded Lisp applications
 
 ## Examples
 
@@ -279,6 +286,17 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 
 ; Switch back
 (in-package :cl-user)
+```
+
+### Future SLIME Integration
+```lisp
+; Planned for Phase 3:
+:lisp-slime-connect    ; Alternative connection using SLIME protocol
+; This will enable advanced features like:
+; - Interactive debugger
+; - Object inspection
+; - Advanced completion
+; - Remote connections
 ```
 
 ## Technical Details
