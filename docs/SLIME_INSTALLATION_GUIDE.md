@@ -140,10 +140,32 @@ Vizero REPL Plugin → SLIME Connection → Swank Server → SBCL Process
 ## SLIME Protocol Overview
 
 ### Connection Process
-1. **Start SBCL with Swank**: `(swank:create-server :port 4005)`
-2. **Connect via TCP**: Vizero connects to localhost:4005
-3. **Protocol Handshake**: Exchange version and capability info
-4. **Command Processing**: Send/receive S-expressions over TCP
+1. **Start SBCL with Swank**: `(swank:create-server :port 4005 :dont-close t)`
+2. **Start Vizero**: `vizero.exe`
+3. **Connect via SLIME**: `:lisp-slime-connect localhost 4005`
+4. **Protocol Handshake**: Exchange version and capability info
+5. **Command Processing**: Send/receive S-expressions over TCP
+
+### Typical Workflow
+```bash
+# Terminal 1: Start SBCL with Swank
+sbcl\sbcl.exe
+```
+```lisp
+(ql:quickload :swank)
+(swank:create-server :port 4005 :dont-close t)
+; Server starts, shows: "Swank started at port: 4005"
+```
+
+```bash
+# Terminal 2: Start Vizero and connect
+vizero.exe
+```
+```
+:lisp-slime-connect localhost 4005
+; Vizero connects to running Swank server
+; Now you have full SLIME features!
+```
 
 ### Key SLIME Features for Integration
 
@@ -209,7 +231,23 @@ typedef struct {
     int connection_id;
     char read_buffer[8192];
     bool swank_server_running;
+    char host[256];
+    int port;
 } slime_connection_t;
+
+// Command handler for :lisp-slime-connect
+static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
+    // Parse args: "localhost 4005" or just "4005" (defaults to localhost)
+    char host[256] = "localhost";
+    int port = 4005;
+    
+    if (args && strlen(args) > 0) {
+        sscanf(args, "%255s %d", host, &port);
+    }
+    
+    // Connect to Swank server via TCP
+    return connect_to_swank_server(host, port);
+}
 ```
 
 ### Phase 3.2: Enhanced Features
@@ -290,11 +328,32 @@ void test_slime_evaluation();
 - **Remote Development**: Connect to Lisp processes anywhere
 - **Advanced Features**: Profiling, tracing, inspection built-in
 
+## Connection Management Features
+
+### Automatic Disconnection Detection
+Vizero's SLIME integration includes robust connection loss detection:
+
+- **Process Termination**: When you run `(quit)` in the SLIME REPL, Vizero automatically detects the connection loss
+- **Network Errors**: TCP connection drops are detected during both send and receive operations
+- **Graceful Cleanup**: The REPL buffer displays a disconnection message and automatically closes
+- **No Hanging State**: Prevents the editor from getting stuck with a dead SLIME connection
+
+### Usage Example
+```lisp
+* (+ 2 3)
+5
+* (quit)
+
+*** SLIME connection lost - REPL closed ***
+```
+
+The buffer will then automatically close, returning you to your previous editing session.
+
 ## Conclusion
 
 **Installation**: Straightforward with Quicklisp (30 minutes)
-**Integration**: Moderate complexity, but well-architected current code makes it manageable
-**Timeline**: 2-3 months for full implementation
-**Benefits**: Significant enhancement to Lisp development experience
+**Integration**: Complete with robust connection management
+**Timeline**: Fully implemented with connection loss detection
+**Benefits**: Production-ready SLIME integration with automatic cleanup
 
-The current Vizero REPL plugin architecture is excellent for this extension - the separation between connection management and UI means SLIME integration can be added alongside the existing direct SBCL connection without major refactoring.
+The Vizero SLIME integration provides the same user experience as direct SBCL connection but with the full power of the SLIME protocol, including automatic disconnection detection and graceful cleanup.

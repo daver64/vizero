@@ -55,6 +55,24 @@ Shows detailed connection and process status information.
 :lisp-status
 ```
 
+### `:lisp-slime-connect`
+Connects to a SLIME/Swank server via TCP socket for remote REPL interaction.
+- Establishes TCP connection to running Swank server
+- Uses SLIME :emacs-rex protocol for evaluation
+- Intelligent response parsing from S-expressions
+- Creates interactive REPL buffer with proper formatting
+- Cross-platform socket support (Windows/Unix)
+
+**Usage:**
+```
+:lisp-slime-connect hostname port
+:lisp-slime-connect localhost 4005    ; Example with local Swank server
+```
+
+**Prerequisites:**
+- Swank server must be running on the target host/port
+- See SLIME Installation Guide for server setup instructions
+
 ## SBCL Detection
 
 The plugin automatically detects SBCL from these locations (in order):
@@ -203,13 +221,19 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 
 ## Future Enhancements
 
-### Phase 3: SLIME Protocol Integration
-- **`:lisp-slime-connect` Command**: Alternative connection method using SLIME protocol
+### Phase 3: SLIME Protocol Integration ✅ **COMPLETED**
+- **✅ `:lisp-slime-connect` Command**: Alternative connection method using SLIME protocol
+- **✅ TCP Socket Connectivity**: Robust connection to Swank servers with proper error handling
+- **✅ SLIME Protocol Support**: Full :emacs-rex message protocol implementation
+- **✅ Response Parsing**: Intelligent extraction of results from S-expression responses
+- **✅ Interactive Buffer Integration**: SLIME responses displayed directly in REPL buffer
+- **✅ Dual Connection Architecture**: Seamless switching between direct SBCL and SLIME modes
+
+### Phase 4: Advanced SLIME Features (Future)
 - **Advanced Debugging**: Interactive debugger with stack traces and condition handling
 - **Code Completion**: Context-aware Lisp symbol completion via SLIME
 - **Inspector Integration**: Object inspection and modification capabilities
 - **Macro Expansion**: Interactive macro expansion and analysis
-- **Multiple Connection Types**: Choose between direct SBCL or SLIME connection modes
 
 ### Additional Planned Features
 - **Multiple REPL Sessions**: Support for concurrent Lisp environments
@@ -288,15 +312,29 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 (in-package :cl-user)
 ```
 
-### Future SLIME Integration
+### SLIME Integration (Phase 3 - Implemented)
 ```lisp
-; Planned for Phase 3:
-:lisp-slime-connect    ; Alternative connection using SLIME protocol
-; This will enable advanced features like:
-; - Interactive debugger
-; - Object inspection
-; - Advanced completion
-; - Remote connections
+; SLIME protocol connection:
+:lisp-slime-connect hostname port    ; Connect to Swank server
+:lisp-slime-connect localhost 4005   ; Example connection
+
+; Features now available:
+; - TCP socket connection to Swank servers
+; - SLIME :emacs-rex protocol evaluation
+; - Intelligent response parsing from S-expressions
+; - Interactive REPL buffer with formatted results
+; - Dual connection architecture (direct SBCL + SLIME)
+; - Cross-platform socket support (Windows/Unix)
+```
+
+### Future Enhancements
+```lisp
+; Planned for Phase 4:
+; - Interactive debugger integration
+; - Object inspection via SLIME
+; - Advanced completion with symbol lookup  
+; - Multiple simultaneous connections
+; - Connection profiles and bookmarks
 ```
 
 ## Technical Details

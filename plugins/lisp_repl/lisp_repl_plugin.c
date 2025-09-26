@@ -44,12 +44,19 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <process.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
 #else
     #include <unistd.h>
     #include <sys/wait.h>
     #include <sys/select.h>
     #include <fcntl.h>
     #include <errno.h>
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
 #endif
 
 #ifdef _WIN32
@@ -87,7 +94,14 @@ static int lisp_handle_enter_key(vizero_editor_t* editor);
 static int lisp_evaluate_current_input(vizero_editor_t* editor);
 static int lisp_extract_current_input(char* buffer, size_t buffer_size);
 
-
+/* SLIME connection functions */
+static int slime_connect(const char* host, int port);
+static void slime_disconnect(void);
+static int slime_send_message(const char* message);
+static int slime_read_response(char* buffer, size_t buffer_size);
+static int slime_extract_result(const char* response, char* result, size_t result_size);
+static int slime_eval_expression(const char* expression);
+static void slime_close_repl_on_disconnect(void);
 
 /* Enhanced Lisp REPL Message structure for Phase 2 */
 typedef struct {
@@ -141,6 +155,29 @@ typedef struct {
     bool is_bound;             /* Symbol bound status */
     bool is_function;          /* Function symbol flag */
 } lisp_symbol_info_t;
+
+/* Connection Type Enumeration */
+typedef enum {
+    LISP_CONNECTION_NONE,      /* No connection */
+    LISP_CONNECTION_DIRECT,    /* Direct SBCL process (current) */
+    LISP_CONNECTION_SLIME      /* SLIME protocol via TCP */
+} lisp_connection_type_t;
+
+/* SLIME Connection Structure */
+typedef struct {
+#ifdef _WIN32
+    SOCKET socket_fd;          /* Windows socket */
+#else
+    int socket_fd;             /* Unix socket */
+#endif
+    char host[256];            /* SLIME server host */
+    int port;                  /* SLIME server port */
+    int connection_id;         /* SLIME connection ID */
+    char read_buffer[8192];    /* TCP read buffer */
+    int buffer_pos;            /* Current buffer position */
+    bool connected;            /* Connection status */
+    int message_counter;       /* Message ID counter */
+} slime_connection_t;
 
 /* Enhanced SBCL Process Management with SLIME Support */
 typedef struct {
@@ -274,6 +311,10 @@ typedef struct {
     
     /* Original editor state */
     vizero_buffer_t* original_buffer;
+    
+    /* Connection management */
+    lisp_connection_type_t connection_type;  /* Current connection type */
+    slime_connection_t slime;                /* SLIME connection state */
     
     /* Interactive REPL state */
     bool interactive_mode;            /* True when in interactive REPL mode */
@@ -796,6 +837,616 @@ static void stop_sbcl_process(sbcl_process_t* proc) {
     lisp_log_message("SBCL process stopped");
 }
 
+/* SLIME Connection Functions */
+
+/**
+ * @brief Connect to SLIME/Swank server via TCP
+ * 
+ * Establishes a TCP connection to a running Swank server, typically started
+ * with (swank:create-server :port 4005 :dont-close t) in SBCL.
+ * 
+ * @param host Hostname or IP address of SLIME server (e.g., "localhost")
+ * @param port Port number of SLIME server (typically 4005)
+ * @return 0 on success, -1 on failure
+ */
+static int slime_connect(const char* host, int port) {
+    if (g_lisp_state->slime.connected) {
+        lisp_log_message("SLIME already connected");
+        return 0;
+    }
+
+#ifdef _WIN32
+    WSADATA wsa_data;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+        lisp_log_message("ERROR: WSAStartup failed");
+        return -1;
+    }
+#endif
+
+    /* Create socket */
+#ifdef _WIN32
+    g_lisp_state->slime.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (g_lisp_state->slime.socket_fd == INVALID_SOCKET) {
+#else
+    g_lisp_state->slime.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (g_lisp_state->slime.socket_fd < 0) {
+#endif
+        lisp_log_message("ERROR: Failed to create socket");
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        return -1;
+    }
+
+    /* Set up server address */
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    
+    if (inet_pton(AF_INET, host, &server_addr.sin_addr) <= 0) {
+        /* Try to resolve hostname */
+        struct hostent* he = gethostbyname(host);
+        if (he == NULL) {
+            lisp_log_message("ERROR: Failed to resolve hostname");
+#ifdef _WIN32
+            closesocket(g_lisp_state->slime.socket_fd);
+            WSACleanup();
+#else
+            close(g_lisp_state->slime.socket_fd);
+#endif
+            return -1;
+        }
+        memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
+    }
+
+    /* Set socket timeout to prevent hanging */
+#ifdef _WIN32
+    DWORD timeout = 5000;  /* 5 seconds */
+    setsockopt(g_lisp_state->slime.socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(g_lisp_state->slime.socket_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+#else
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    setsockopt(g_lisp_state->slime.socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(g_lisp_state->slime.socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+#endif
+
+    /* Connect to server */
+    if (connect(g_lisp_state->slime.socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "ERROR: Failed to connect to %s:%d", host, port);
+        lisp_log_message(error_msg);
+#ifdef _WIN32
+        closesocket(g_lisp_state->slime.socket_fd);
+        WSACleanup();
+#else
+        close(g_lisp_state->slime.socket_fd);
+#endif
+        return -1;
+    }
+
+    /* Initialize SLIME connection state */
+    strncpy(g_lisp_state->slime.host, host, sizeof(g_lisp_state->slime.host) - 1);
+    g_lisp_state->slime.host[sizeof(g_lisp_state->slime.host) - 1] = '\0';
+    g_lisp_state->slime.port = port;
+    g_lisp_state->slime.connected = true;
+    g_lisp_state->slime.message_counter = 1;  /* Start at 1 */
+    g_lisp_state->slime.buffer_pos = 0;
+    g_lisp_state->connection_type = LISP_CONNECTION_SLIME;
+
+    /* Send connection handshake - SLIME expects this */
+    lisp_log_message("Sending SLIME handshake...");
+    const char* handshake = "(:emacs-rex (swank:connection-info) \"COMMON-LISP-USER\" t 1)";
+    int handshake_len = strlen(handshake);
+    char length_prefix[16];
+    snprintf(length_prefix, sizeof(length_prefix), "%06x", handshake_len);
+    
+    /* Send length + message */
+    if (send(g_lisp_state->slime.socket_fd, length_prefix, 6, 0) == 6 &&
+        send(g_lisp_state->slime.socket_fd, handshake, handshake_len, 0) == handshake_len) {
+        
+        /* Read handshake response */
+        char handshake_response[2048];
+        int response_len = slime_read_response(handshake_response, sizeof(handshake_response));
+        if (response_len > 0) {
+            lisp_log_message("SLIME handshake successful");
+            printf("[LISP] Handshake response: %s\n", handshake_response);
+        } else {
+            lisp_log_message("WARNING: No handshake response");
+        }
+    } else {
+        lisp_log_message("ERROR: Failed to send handshake");
+        slime_disconnect();
+        return -1;
+    }
+
+    char welcome_msg[256];
+    snprintf(welcome_msg, sizeof(welcome_msg), "Connected to SLIME server at %s:%d", host, port);
+    lisp_log_message(welcome_msg);
+
+    return 0;
+}
+
+/**
+ * @brief Disconnect from SLIME server
+ * 
+ * Closes the TCP connection to the SLIME server and cleans up connection state.
+ */
+static void slime_disconnect(void) {
+    if (!g_lisp_state->slime.connected) {
+        return;
+    }
+
+    lisp_log_message("Disconnecting from SLIME server...");
+
+#ifdef _WIN32
+    closesocket(g_lisp_state->slime.socket_fd);
+    WSACleanup();
+#else
+    close(g_lisp_state->slime.socket_fd);
+#endif
+
+    g_lisp_state->slime.connected = false;
+    g_lisp_state->slime.socket_fd = 0;
+    g_lisp_state->connection_type = LISP_CONNECTION_NONE;
+
+    lisp_log_message("SLIME disconnected");
+}
+
+/**
+ * @brief Send message to SLIME server
+ * 
+ * Sends a SLIME protocol message to the connected Swank server.
+ * Messages are formatted as length-prefixed S-expressions.
+ * 
+ * @param message SLIME protocol message to send
+ * @return 0 on success, -1 on failure
+ */
+static int slime_send_message(const char* message) {
+    if (!g_lisp_state->slime.connected) {
+        lisp_log_message("ERROR: SLIME not connected");
+        return -1;
+    }
+
+    /* Format message with length prefix (SLIME protocol requirement) */
+    char formatted_msg[4096];
+    int msg_len = strlen(message);
+    snprintf(formatted_msg, sizeof(formatted_msg), "%06x%s", msg_len, message);
+
+    printf("[LISP] Sending SLIME message: %s\n", formatted_msg);
+    
+    /* Send to SLIME server */
+#ifdef _WIN32
+    int sent = send(g_lisp_state->slime.socket_fd, formatted_msg, strlen(formatted_msg), 0);
+    if (sent == 0) {
+        lisp_log_message("SLIME connection closed during send");
+        g_lisp_state->slime.connected = false;
+        slime_close_repl_on_disconnect();
+        return -2;  /* Connection closed */
+    } else if (sent < 0) {
+        int error_code = WSAGetLastError();
+        if (error_code == WSAECONNRESET || error_code == WSAECONNABORTED) {
+            lisp_log_message("SLIME connection lost during send");
+            g_lisp_state->slime.connected = false;
+            slime_close_repl_on_disconnect();
+            return -2;  /* Connection closed */
+        }
+        printf("[LISP] ERROR: Failed to send to SLIME server. Sent: %d, Error: %d\n", sent, error_code);
+        lisp_log_message("ERROR: Failed to send to SLIME server");
+        return -1;
+    }
+#else
+    int sent = send(g_lisp_state->slime.socket_fd, formatted_msg, strlen(formatted_msg), 0);
+    if (sent == 0) {
+        lisp_log_message("SLIME connection closed during send");
+        g_lisp_state->slime.connected = false;
+        slime_close_repl_on_disconnect();
+        return -2;  /* Connection closed */
+    } else if (sent < 0) {
+        if (errno == ECONNRESET || errno == EPIPE || errno == ECONNABORTED) {
+            lisp_log_message("SLIME connection lost during send");
+            g_lisp_state->slime.connected = false;
+            slime_close_repl_on_disconnect();
+            return -2;  /* Connection closed */
+        }
+        printf("[LISP] ERROR: Failed to send to SLIME server. Sent: %d, errno: %d\n", sent, errno);
+        lisp_log_message("ERROR: Failed to send to SLIME server");
+        return -1;
+    }
+#endif
+
+    printf("[LISP] Successfully sent %d bytes to SLIME\n", sent);
+    return 0;
+}
+
+/**
+ * @brief Read response from SLIME server
+ * 
+ * Reads and parses a response from the SLIME server. Handles length-prefixed
+ * protocol messages and buffers partial reads.
+ * 
+ * @param buffer Buffer to store the response
+ * @param buffer_size Size of the response buffer
+ * @return Number of bytes read, or -1 on error
+ */
+static int slime_read_response(char* buffer, size_t buffer_size) {
+    if (!g_lisp_state->slime.connected) {
+        return -1;
+    }
+
+    lisp_log_message("Reading SLIME length prefix...");
+    
+    /* First, read exactly 6 bytes for the length prefix */
+    char length_str[7];
+    int bytes_read = 0;
+    
+    int prefix_attempts = 0;
+    while (bytes_read < 6 && prefix_attempts < 100) {
+        int result = recv(g_lisp_state->slime.socket_fd, length_str + bytes_read, 6 - bytes_read, 0);
+        if (result > 0) {
+            bytes_read += result;
+        } else if (result == 0) {
+            lisp_log_message("SLIME server closed connection");
+            g_lisp_state->slime.connected = false;
+            return -2;  /* Special code for connection closed */
+        } else {
+            prefix_attempts++;
+#ifdef _WIN32
+            if (WSAGetLastError() == WSAETIMEDOUT) continue;
+#else
+            if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+#endif
+            lisp_log_message("Failed to read SLIME length prefix");
+            return -1;
+        }
+    }
+    
+    if (bytes_read < 6) {
+        lisp_log_message("Timeout reading SLIME length prefix");
+        return -1;
+    }
+    length_str[6] = '\0';
+    
+    /* Parse the hex length */
+    int message_length = (int)strtol(length_str, NULL, 16);
+    char length_msg[256];
+    snprintf(length_msg, sizeof(length_msg), "SLIME message length: %d (prefix: %s)", message_length, length_str);
+    lisp_log_message(length_msg);
+    
+    /* Skip very large messages to prevent crashes */
+    if (message_length > 4000) {
+        lisp_log_message("Message too large, discarding...");
+        
+        /* Read and discard the large message in chunks */
+        char discard_buffer[1024];
+        int remaining = message_length;
+        while (remaining > 0) {
+            int to_read = (remaining > 1024) ? 1024 : remaining;
+            int result = recv(g_lisp_state->slime.socket_fd, discard_buffer, to_read, 0);
+            if (result <= 0) break;
+            remaining -= result;
+        }
+        
+        lisp_log_message("Large message discarded, continuing...");
+        return -1;  /* Signal that we discarded this message */
+    }
+    
+    /* Read the actual message content */
+    if (message_length >= buffer_size) {
+        lisp_log_message("Message too large for buffer");
+        return -1;
+    }
+    
+    bytes_read = 0;
+    while (bytes_read < message_length) {
+        int result = recv(g_lisp_state->slime.socket_fd, buffer + bytes_read, message_length - bytes_read, 0);
+        if (result == 0) {
+            lisp_log_message("SLIME connection lost while reading message content");
+            g_lisp_state->slime.connected = false;
+            return -2;  /* Special code for connection closed */
+        } else if (result < 0) {
+            lisp_log_message("Failed to read SLIME message content");
+            return -1;
+        }
+        bytes_read += result;
+    }
+    
+    buffer[message_length] = '\0';
+    
+    char msg_preview[256];
+    snprintf(msg_preview, sizeof(msg_preview), "SLIME message received (%d bytes): %.100s%s", 
+             message_length, buffer, (message_length > 100) ? "..." : "");
+    lisp_log_message(msg_preview);
+    
+    return message_length;
+}
+
+/**
+ * @brief Extract result from SLIME response message
+ * @param response Raw SLIME response
+ * @param result Buffer to store extracted result
+ * @param result_size Maximum result buffer size
+ * @return 0 on success, -1 on error
+ */
+static int slime_extract_result(const char* response, char* result, size_t result_size) {
+    if (!response || !result || result_size == 0) {
+        return -1;
+    }
+    
+    /* Look for :return (:ok (value output)) pattern */
+    const char* return_pos = strstr(response, ":return");
+    if (!return_pos) {
+        strncpy(result, response, result_size - 1);
+        result[result_size - 1] = '\0';
+        return 0;
+    }
+    
+    /* Look for :ok followed by the result tuple */
+    const char* ok_pos = strstr(return_pos, ":ok");
+    if (!ok_pos) {
+        /* Might be an error */
+        strncpy(result, return_pos, result_size - 1);
+        result[result_size - 1] = '\0';
+        return 0;
+    }
+    
+    /* SLIME format is (:ok ("output" "result")) - look for the second quoted string */
+    const char* values_start = ok_pos + 3;  /* Skip ":ok" */
+    while (*values_start && (*values_start == ' ' || *values_start == '\t')) {
+        values_start++;
+    }
+    
+    if (*values_start == '(') {
+        values_start++;  /* Skip opening paren */
+        
+        /* Find first quoted string (output) */
+        const char* first_quote = strchr(values_start, '"');
+        if (first_quote) {
+            const char* first_end = strchr(first_quote + 1, '"');
+            if (first_end) {
+                /* Find second quoted string (actual result) */
+                const char* second_quote = strchr(first_end + 1, '"');
+                if (second_quote) {
+                    second_quote++;  /* Skip opening quote */
+                    const char* second_end = strchr(second_quote, '"');
+                    if (second_end) {
+                        size_t result_len = second_end - second_quote;
+                        if (result_len < result_size) {
+                            strncpy(result, second_quote, result_len);
+                            result[result_len] = '\0';
+                            return 0;
+                        }
+                    }
+                } else {
+                    /* Only one string, use it as result */
+                    const char* quote_start = first_quote + 1;
+                    size_t result_len = first_end - quote_start;
+                    if (result_len < result_size) {
+                        strncpy(result, quote_start, result_len);
+                        result[result_len] = '\0';
+                        return 0;
+                    }
+                }
+            }
+        }
+    }
+    
+    /* Fallback: show a portion of the response */
+    snprintf(result, result_size, "Response: %.100s%s", 
+             ok_pos, (strlen(ok_pos) > 100) ? "..." : "");
+    return 0;
+}
+
+/**
+ * @brief Evaluate Lisp expression via SLIME
+ * 
+ * Sends a Lisp expression to SLIME for evaluation and displays the result.
+ * Uses the SLIME :emacs-rex protocol for expression evaluation.
+ * 
+ * @param expression Lisp expression to evaluate
+ * @return 0 on success, -1 on failure
+ */
+static int slime_eval_expression(const char* expression) {
+    if (!g_lisp_state->slime.connected) {
+        lisp_log_message("ERROR: SLIME not connected");
+        return -1;
+    }
+
+    /* Create SLIME evaluation message */
+    char slime_msg[2048];
+    int msg_id = g_lisp_state->slime.message_counter++;
+    
+    snprintf(slime_msg, sizeof(slime_msg),
+        "(:emacs-rex (swank:eval-and-grab-output \"%s\") \"COMMON-LISP-USER\" t %d)",
+        expression, msg_id);
+
+    /* Send to SLIME */
+    int send_result = slime_send_message(slime_msg);
+    if (send_result == -2) {
+        /* Connection was closed during send - already handled */
+        return -1;
+    } else if (send_result != 0) {
+        return -1;
+    }
+
+    /* Read and filter SLIME responses - may get multiple messages */
+    lisp_log_message("Reading SLIME responses (filtering for our result)");
+    
+    char result_text[2048];
+    int found_result = 0;
+    int max_attempts = 15;  /* Increase attempts to handle discarded messages */
+    int discarded_count = 0;
+    
+    for (int attempt = 0; attempt < max_attempts && !found_result; attempt++) {
+        char response[8192];
+        int bytes_read = slime_read_response(response, sizeof(response));
+        
+        if (bytes_read > 0) {
+            lisp_log_message("SLIME message received, checking type...");
+            
+            /* Check message type */
+            if (strstr(response, ":indentation-update")) {
+                lisp_log_message("Skipping indentation-update message");
+                continue;
+            } else if (strstr(response, ":new-package")) {
+                lisp_log_message("Skipping new-package message");  
+                continue;
+            } else if (strstr(response, ":debug")) {
+                lisp_log_message("Skipping debug message");
+                continue;
+            } else if (strstr(response, ":return") && strstr(response, ":ok")) {
+                lisp_log_message("Found evaluation result!");
+                printf("[LISP] Result response (%d bytes): %.200s%s\n", 
+                       bytes_read, response, (bytes_read > 200) ? "..." : "");
+                
+                /* Extract the actual result */
+                if (slime_extract_result(response, result_text, sizeof(result_text)) == 0) {
+                    printf("[LISP] Extracted result: %s\n", result_text);
+                    found_result = 1;
+                } else {
+                    snprintf(result_text, sizeof(result_text), "Result: %.100s%s", 
+                             response, (bytes_read > 100) ? "..." : "");
+                    found_result = 1;
+                }
+            } else if (strstr(response, ":return")) {
+                lisp_log_message("Found return message (possibly error)");
+                snprintf(result_text, sizeof(result_text), "Error: %.200s%s", 
+                         response, (bytes_read > 200) ? "..." : "");
+                found_result = 1;
+            } else {
+                char msg_type[256];
+                snprintf(msg_type, sizeof(msg_type), "Skipping message type: %.50s", response);
+                lisp_log_message(msg_type);
+                continue;
+            }
+        } else if (bytes_read == -1) {
+            discarded_count++;
+            char discard_msg[256];
+            snprintf(discard_msg, sizeof(discard_msg), "Large message discarded (count: %d), continuing...", discarded_count);
+            lisp_log_message(discard_msg);
+            
+            /* Prevent infinite discarding */
+            if (discarded_count > 5) {
+                lisp_log_message("Too many large messages discarded, giving up");
+                break;
+            }
+            continue;  /* Keep trying to read more messages */
+        } else if (bytes_read == -2) {
+            /* Connection was closed */
+            lisp_log_message("SLIME connection closed during evaluation");
+            slime_close_repl_on_disconnect();
+            return -1;
+        } else {
+            lisp_log_message("No more SLIME messages available");
+            break;
+        }
+    }
+    
+    if (!found_result) {
+        lisp_log_message("WARNING: No evaluation result found after filtering messages");
+        snprintf(result_text, sizeof(result_text), "=> (evaluation sent, no result captured)");
+    }
+    
+    /* Add response to REPL buffer with safety checks */
+    if (g_lisp_state->repl_buffer && g_lisp_state->api->insert_text && 
+        strlen(result_text) > 0 && strlen(result_text) < 1000) {
+        
+        lisp_log_message("Adding result to REPL buffer...");
+        
+        /* Get current buffer position for appending */
+        size_t line_count = 0;
+        if (g_lisp_state->api->get_buffer_line_count) {
+            line_count = g_lisp_state->api->get_buffer_line_count(g_lisp_state->repl_buffer);
+        }
+        
+        vizero_position_t append_pos;
+        append_pos.line = line_count > 0 ? line_count - 1 : 0;
+        append_pos.column = 0;
+        
+        /* Find the end of the last line */
+        if (line_count > 0 && g_lisp_state->api->get_buffer_line_length) {
+            append_pos.column = g_lisp_state->api->get_buffer_line_length(g_lisp_state->repl_buffer, line_count - 1);
+        }
+        
+        /* Format response for display with bounds checking */
+        char formatted_response[1024];  /* Smaller buffer for safety */
+        int format_result = snprintf(formatted_response, sizeof(formatted_response), "\n%s\n* ", result_text);
+        if (format_result < 0 || format_result >= sizeof(formatted_response)) {
+            lisp_log_message("ERROR: Result text too long for formatting");
+            return 0;
+        }
+        
+        /* Insert response into buffer with error checking */
+        lisp_log_message("Inserting formatted response into buffer...");
+        g_lisp_state->inserting_sbcl_output = true;
+        
+        int insert_result = -1;
+        if (g_lisp_state->api->insert_text_multiline) {
+            insert_result = g_lisp_state->api->insert_text_multiline(g_lisp_state->repl_buffer, append_pos, formatted_response);
+        } else {
+            insert_result = g_lisp_state->api->insert_text(g_lisp_state->repl_buffer, append_pos, formatted_response);
+        }
+        g_lisp_state->inserting_sbcl_output = false;
+        
+        if (insert_result == 0) {
+            lisp_log_message("Result inserted successfully");
+            
+            /* Position cursor after the new prompt */
+            if (g_lisp_state->api->get_current_cursor && g_lisp_state->api->set_cursor_position) {
+                vizero_cursor_t* cursor = g_lisp_state->api->get_current_cursor(g_lisp_state->editor);
+                if (cursor) {
+                    vizero_position_t cursor_pos;
+                    cursor_pos.line = line_count + 1;  /* After the result and new prompt */
+                    cursor_pos.column = 2;             /* After "* " */
+                    int cursor_result = g_lisp_state->api->set_cursor_position(cursor, cursor_pos);
+                    if (cursor_result == 0) {
+                        lisp_log_message("Cursor positioned successfully");
+                    } else {
+                        lisp_log_message("WARNING: Failed to position cursor");
+                    }
+                }
+            }
+        } else {
+            lisp_log_message("ERROR: Failed to insert result into buffer");
+        }
+    } else {
+        lisp_log_message("WARNING: Cannot insert result - buffer or API unavailable");
+    }
+
+    return 0;
+}
+
+/* Close REPL buffer when SLIME connection is lost */
+static void slime_close_repl_on_disconnect(void) {
+    if (!g_lisp_state || !g_lisp_state->api) {
+        return;
+    }
+    
+    lisp_log_message("SLIME connection lost - closing REPL buffer...");
+    
+    /* Insert a disconnection message */
+    if (g_lisp_state->repl_buffer && g_lisp_state->api->insert_text && g_lisp_state->api->get_buffer_line_count) {
+        const char* disconnect_msg = "\n\n*** SLIME connection lost - REPL closed ***\n";
+        size_t line_count = g_lisp_state->api->get_buffer_line_count(g_lisp_state->repl_buffer);
+        vizero_position_t end_pos;
+        end_pos.line = line_count;
+        end_pos.column = 0;
+        g_lisp_state->api->insert_text(g_lisp_state->repl_buffer, end_pos, disconnect_msg);
+    }
+    
+    /* Clean up SLIME state */
+    slime_disconnect();
+    
+    /* Close the buffer after a short delay by running the close command */
+    if (g_lisp_state->api->execute_command) {
+        g_lisp_state->api->execute_command(g_lisp_state->editor, "close");
+    }
+    
+    lisp_log_message("REPL buffer closed due to SLIME disconnection");
+}
+
 /* Send command to SBCL */
 static bool read_from_sbcl(char* buffer, size_t buffer_size, int timeout_ms) {
     if (!g_lisp_state->sbcl.running) {
@@ -1251,6 +1902,9 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
         }
     }
     
+    /* Set connection type */
+    g_lisp_state->connection_type = LISP_CONNECTION_DIRECT;
+    
     /* Enable interactive REPL mode */
     g_lisp_state->interactive_mode = true;
     g_lisp_state->user_exited_interactive = false;
@@ -1305,22 +1959,44 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
  * @return 0 on success, -1 on failure
  */
 static int lisp_cmd_disconnect(vizero_editor_t* editor, const char* args) {
-    if (!g_lisp_state->sbcl.running) {
-        lisp_log_message("SBCL is not running");
+    /* Handle different connection types */
+    if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME) {
+        if (!g_lisp_state->slime.connected) {
+            lisp_log_message("SLIME is not connected");
+            return 0;
+        }
+        
+        /* Disconnect from SLIME */
+        slime_disconnect();
+        
+    } else if (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT) {
+        if (!g_lisp_state->sbcl.running) {
+            lisp_log_message("SBCL is not running");
+            return 0;
+        }
+        
+        /* Send quit command to SBCL */
+        send_to_sbcl("(quit)");
+        
+        /* Wait a moment then force stop */
+#ifdef _WIN32
+        Sleep(1000);
+#else
+        sleep(1);
+#endif
+        
+        stop_sbcl_process(&g_lisp_state->sbcl);
+        
+    } else {
+        lisp_log_message("No active connection to disconnect");
         return 0;
     }
     
-    /* Send quit command to SBCL */
-    send_to_sbcl("(quit)");
+    /* Reset connection state */
+    g_lisp_state->connection_type = LISP_CONNECTION_NONE;
+    g_lisp_state->interactive_mode = false;
+    g_lisp_state->user_exited_interactive = true;
     
-    /* Wait a moment then force stop */
-#ifdef _WIN32
-    Sleep(1000);
-#else
-    sleep(1);
-#endif
-    
-    stop_sbcl_process(&g_lisp_state->sbcl);
     return 0;
 }
 
@@ -1570,24 +2246,248 @@ static int lisp_cmd_package(vizero_editor_t* editor, const char* args) {
  */
 static int lisp_cmd_status(vizero_editor_t* editor, const char* args) {
     char status_msg[1024];
-    if (g_lisp_state->sbcl.running) {
-        snprintf(status_msg, sizeof(status_msg), 
-                "SBCL Status: Running | Path: %s | Package: %s\n"
-                "Dynamic Space: %dMB | Swank: %s | Evaluations: %d\n"
-                "Features: Completion=%s, Inspection=%s, Debugger=%s", 
-                g_lisp_state->sbcl.sbcl_path,
-                g_lisp_state->buffer_count > 0 ? g_lisp_state->buffers[0]->current_package : "Unknown",
-                g_lisp_state->sbcl.dynamic_space_size,
-                g_lisp_state->sbcl.swank_server_running ? "Running" : "Stopped",
-                g_lisp_state->total_evaluations,
-                g_lisp_state->enable_completion ? "ON" : "OFF",
-                g_lisp_state->enable_inspection ? "ON" : "OFF",
-                g_lisp_state->enable_debugger ? "ON" : "OFF");
+    
+    /* Display connection type and status */
+    if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME) {
+        if (g_lisp_state->slime.connected) {
+            snprintf(status_msg, sizeof(status_msg), 
+                    "Connection: SLIME | Server: %s:%d | Status: Connected\n"
+                    "Interactive Mode: %s | Evaluations: %d\n"
+                    "Available Commands: :lisp-disconnect, direct typing in REPL buffer", 
+                    g_lisp_state->slime.host,
+                    g_lisp_state->slime.port,
+                    g_lisp_state->interactive_mode ? "ON" : "OFF",
+                    g_lisp_state->total_evaluations);
+        } else {
+            snprintf(status_msg, sizeof(status_msg), "Connection: SLIME | Status: Disconnected");
+        }
+        
+    } else if (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT) {
+        if (g_lisp_state->sbcl.running) {
+            snprintf(status_msg, sizeof(status_msg), 
+                    "Connection: Direct SBCL | Path: %s | Status: Running\n"
+                    "Dynamic Space: %dMB | Package: %s | Evaluations: %d\n"
+                    "Interactive Mode: %s | Features: Completion=%s, Inspection=%s", 
+                    g_lisp_state->sbcl.sbcl_path,
+                    g_lisp_state->sbcl.dynamic_space_size,
+                    g_lisp_state->buffer_count > 0 ? g_lisp_state->buffers[0]->current_package : "Unknown",
+                    g_lisp_state->total_evaluations,
+                    g_lisp_state->interactive_mode ? "ON" : "OFF",
+                    g_lisp_state->enable_completion ? "ON" : "OFF",
+                    g_lisp_state->enable_inspection ? "ON" : "OFF");
+        } else {
+            snprintf(status_msg, sizeof(status_msg), "Connection: Direct SBCL | Status: Not running");
+        }
+        
     } else {
-        snprintf(status_msg, sizeof(status_msg), "SBCL Status: Not running | Phase 2 features ready");
+        /* No connection */
+        char sbcl_status[256] = "Not found";
+        if (g_lisp_state->sbcl.sbcl_path[0]) {
+            snprintf(sbcl_status, sizeof(sbcl_status), "Available at %s", g_lisp_state->sbcl.sbcl_path);
+        }
+        
+        snprintf(status_msg, sizeof(status_msg), 
+                "Connection: None | SBCL: %s\n"
+                "Available Commands:\n"
+                "  :lisp-connect - Direct SBCL connection\n"
+                "  :lisp-slime-connect [host] [port] - SLIME connection (requires running Swank server)",
+                sbcl_status);
     }
     
     lisp_log_message(status_msg);
+    return 0;
+}
+
+/**
+ * @brief Command handler for :lisp-slime-connect
+ * 
+ * Handles the :lisp-slime-connect command to establish connection to a running
+ * SLIME/Swank server. Supports both localhost and remote connections.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param args Command arguments: "[host] [port]" (defaults: localhost 4005)
+ * @return 0 on success, -1 on failure
+ */
+static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
+    /* Check if already connected */
+    if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME && g_lisp_state->slime.connected) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Already connected to SLIME server at %s:%d", 
+                 g_lisp_state->slime.host, g_lisp_state->slime.port);
+        lisp_log_message(msg);
+        return 0;
+    }
+
+    /* Disconnect from direct SBCL if connected */
+    if (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT && g_lisp_state->sbcl.running) {
+        lisp_log_message("Disconnecting from direct SBCL connection...");
+        stop_sbcl_process(&g_lisp_state->sbcl);
+        g_lisp_state->connection_type = LISP_CONNECTION_NONE;
+    }
+
+    /* Parse arguments */
+    char host[256] = "localhost";
+    int port = 4005;
+    
+    if (args && strlen(args) > 0) {
+        char args_copy[512];
+        strncpy(args_copy, args, sizeof(args_copy) - 1);
+        args_copy[sizeof(args_copy) - 1] = '\0';
+        
+        char* token = strtok(args_copy, " ");
+        if (token) {
+            /* First argument could be host or port */
+            char* endptr;
+            long parsed_port = strtol(token, &endptr, 10);
+            if (*endptr == '\0' && parsed_port > 0 && parsed_port < 65536) {
+                /* It's just a port number */
+                port = (int)parsed_port;
+            } else {
+                /* It's a hostname */
+                strncpy(host, token, sizeof(host) - 1);
+                host[sizeof(host) - 1] = '\0';
+                
+                /* Check for port as second argument */
+                token = strtok(NULL, " ");
+                if (token) {
+                    parsed_port = strtol(token, &endptr, 10);
+                    if (*endptr == '\0' && parsed_port > 0 && parsed_port < 65536) {
+                        port = (int)parsed_port;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Attempt SLIME connection */
+    char connecting_msg[256];
+    snprintf(connecting_msg, sizeof(connecting_msg), "Connecting to SLIME server at %s:%d...", host, port);
+    lisp_log_message(connecting_msg);
+
+    if (slime_connect(host, port) != 0) {
+        lisp_log_message("Failed to connect to SLIME server");
+        lisp_log_message("Make sure SBCL is running with: (swank:create-server :port 4005 :dont-close t)");
+        return -1;
+    }
+
+    /* Use EXACT same buffer creation logic as direct connection */
+    /* Save reference to current buffer BEFORE creating new one */
+    if (g_lisp_state->api && g_lisp_state->api->get_current_buffer) {
+        g_lisp_state->original_buffer = g_lisp_state->api->get_current_buffer(editor);
+        const char* orig_filename = NULL;
+        if (g_lisp_state->api->get_buffer_filename) {
+            orig_filename = g_lisp_state->api->get_buffer_filename(g_lisp_state->original_buffer);
+        }
+        printf("[LISP] Saved reference to original buffer: %s\n", orig_filename ? orig_filename : "<unnamed>");
+    }
+    
+    /* Create a new empty buffer using enew command */
+    if (g_lisp_state->api && g_lisp_state->api->execute_command) {
+        printf("[LISP] Executing enew command to create new buffer...\n");
+        int result = g_lisp_state->api->execute_command(editor, "enew");
+        printf("[LISP] enew returned: %d\n", result);
+        
+        /* Check what buffer we're currently in immediately after enew */
+        vizero_buffer_t* current_buffer = g_lisp_state->api->get_current_buffer(editor);
+        const char* current_filename = NULL;
+        if (g_lisp_state->api->get_buffer_filename) {
+            current_filename = g_lisp_state->api->get_buffer_filename(current_buffer);
+        }
+        printf("[LISP] Buffer immediately after enew: %s\n", current_filename ? current_filename : "<null>");
+        
+        /* If we're still in the original buffer, try switching by name */
+        if (current_buffer == g_lisp_state->original_buffer) {
+            
+            printf("[LISP] Still in original buffer, trying name-based switching...\n");
+            
+            /* Try different buffer name patterns without brackets */
+            result = g_lisp_state->api->execute_command(editor, "buffer No Name");
+            printf("[LISP] 'buffer No Name' returned: %d\n", result);
+            
+            if (result != 0) {
+                result = g_lisp_state->api->execute_command(editor, "buffer unnamed");
+                printf("[LISP] 'buffer unnamed' returned: %d\n", result);
+            }
+            
+            if (result != 0) {
+                result = g_lisp_state->api->execute_command(editor, "buffer noname");
+                printf("[LISP] 'buffer noname' returned: %d\n", result);
+            }
+            
+            if (result != 0) {
+                result = g_lisp_state->api->execute_command(editor, "b No Name");
+                printf("[LISP] 'b No Name' returned: %d\n", result);
+            }
+            
+            if (result != 0) {
+                result = g_lisp_state->api->execute_command(editor, "edit No Name");
+                printf("[LISP] 'edit No Name' returned: %d\n", result);
+            }
+        }
+        
+        /* Check what buffer we're now in */
+        if (g_lisp_state->api->get_current_buffer) {
+            vizero_buffer_t* current_buffer = g_lisp_state->api->get_current_buffer(editor);
+            const char* current_filename = NULL;
+            if (g_lisp_state->api->get_buffer_filename) {
+                current_filename = g_lisp_state->api->get_buffer_filename(current_buffer);
+            }
+            
+            printf("[LISP] Current buffer after buffer switching: %s\n", current_filename ? current_filename : "<null>");
+            printf("[LISP] Buffer pointer: %p, Original pointer: %p\n", 
+                   (void*)current_buffer, (void*)g_lisp_state->original_buffer);
+            
+            /* Set this as our REPL buffer regardless */
+            g_lisp_state->repl_buffer = current_buffer;
+        }
+    }
+
+    /* Add welcome content to REPL buffer - same as direct connection */
+    if (g_lisp_state->repl_buffer && g_lisp_state->api->insert_text) {
+        printf("[LISP] Inserting SLIME REPL welcome text...\n");
+        vizero_position_t pos = {0, 0};
+        char welcome_text[512];
+        snprintf(welcome_text, sizeof(welcome_text), 
+                "; Vizero SLIME REPL - Connected to %s:%d\n"
+                "; Type Lisp expressions directly - Press Enter when balanced\n"
+                "; Use Escape+: for vi commands\n"
+                "\n* ",
+                host, port);
+        
+        int insert_result;
+        if (g_lisp_state->api->insert_text_multiline) {
+            insert_result = g_lisp_state->api->insert_text_multiline(g_lisp_state->repl_buffer, pos, welcome_text);
+        } else {
+            insert_result = g_lisp_state->api->insert_text(g_lisp_state->repl_buffer, pos, welcome_text);
+        }
+        printf("[LISP] insert_text returned: %d\n", insert_result);
+        
+        /* Position cursor after the "* " prompt */
+        if (g_lisp_state->api->get_current_cursor && g_lisp_state->api->set_cursor_position) {
+            vizero_cursor_t* cursor = g_lisp_state->api->get_current_cursor(editor);
+            if (cursor) {
+                vizero_position_t cursor_pos;
+                cursor_pos.line = 4;  /* After the welcome text lines, on the "* " prompt line */
+                cursor_pos.column = 2; /* After "* " */
+                int cursor_result = g_lisp_state->api->set_cursor_position(cursor, cursor_pos);
+                printf("[LISP] Positioned cursor at (%d, %d), result: %d\n", 
+                       cursor_pos.line, cursor_pos.column, cursor_result);
+            }
+        }
+        
+        printf("[LISP] SLIME REPL setup complete - check current buffer for content\n");
+    }
+
+
+    /* Enable interactive mode */
+    g_lisp_state->interactive_mode = true;
+    g_lisp_state->user_exited_interactive = false;
+    g_lisp_state->command_mode_active = false;
+
+    /* Add status messages */
+    lisp_log_message("SLIME connection established - type Lisp expressions directly");
+    lisp_log_message("Use Escape+:lisp-disconnect to close connection");
+
     return 0;
 }
 
@@ -2021,15 +2921,29 @@ static int lisp_handle_interactive_input(vizero_editor_t* editor, uint32_t key, 
 
 /* Evaluate input for interactive REPL (without duplicating input display) */
 static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input) {
-    if (!g_lisp_state->sbcl.running) {
-        printf("[LISP] SBCL not running, cannot evaluate\n");
-        return -1;
-    }
-    
     printf("[LISP] Interactive evaluation: '%s'\n", input);
     
-    /* Send to SBCL */
-    if (!send_to_sbcl(input)) {
+    /* Route to appropriate connection type */
+    if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME) {
+        if (!g_lisp_state->slime.connected) {
+            printf("[LISP] SLIME not connected, cannot evaluate\n");
+            return -1;
+        }
+        
+        /* Evaluate via SLIME */
+        return slime_eval_expression(input);
+    } else if (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT) {
+        if (!g_lisp_state->sbcl.running) {
+            printf("[LISP] SBCL not running, cannot evaluate\n");
+            return -1;
+        }
+        
+        /* Send to SBCL directly */
+        if (!send_to_sbcl(input)) {
+            return -1;
+        }
+    } else {
+        printf("[LISP] No active connection, cannot evaluate\n");
         return -1;
     }
     
@@ -2133,8 +3047,12 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
 
 /* Evaluate the current input in interactive mode */
 static int lisp_evaluate_current_input(vizero_editor_t* editor) {
-    if (!g_lisp_state->sbcl.running) {
-        printf("[LISP] SBCL not running, cannot evaluate\n");
+    /* Check if we have any active connection */
+    int has_connection = (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT && g_lisp_state->sbcl.running) ||
+                       (g_lisp_state->connection_type == LISP_CONNECTION_SLIME && g_lisp_state->slime.connected);
+    
+    if (!has_connection) {
+        printf("[LISP] No active connection, cannot evaluate\n");
         return 0;
     }
     
@@ -2199,36 +3117,42 @@ static int lisp_extract_current_input(char* buffer, size_t buffer_size) {
         return -1;
     }
     
-    /* Search backwards from the last line to find the most recent SBCL * prompt */
+    /* Search backwards from the last line to find the most recent REPL prompt */
     for (size_t i = line_count; i > 0; i--) {
         const char* line_text = g_lisp_state->api->get_buffer_line(g_lisp_state->repl_buffer, i - 1);
         if (line_text) {
             printf("[LISP] Checking line %zu: '%s'\n", i - 1, line_text);
             
-            /* Look for SBCL prompt "* " at the beginning of the line */
+            /* Look for REPL prompt "* " at the beginning of the line or after whitespace */
             const char* prompt_pos = NULL;
+            
+            /* Check if line starts with "* " */
             if (strncmp(line_text, "* ", 2) == 0) {
                 prompt_pos = line_text;
+            } else {
+                /* Look for " * " (space before prompt, common in some formats) */
+                const char* space_star = strstr(line_text, " * ");
+                if (space_star) {
+                    prompt_pos = space_star + 1; /* Point to the "* " part */
+                }
             }
             
             if (prompt_pos) {
-                /* Found the prompt at the beginning of this line, extract everything after it */
+                /* Found the prompt, extract everything after "* " */
                 const char* input_start = prompt_pos + 2;
                 
-                /* Check if there's actually input after the prompt */
-                if (strlen(input_start) > 0) {
-                    strncpy(buffer, input_start, buffer_size - 1);
-                    buffer[buffer_size - 1] = '\0';
-                    
-                    /* Remove any trailing whitespace */
-                    size_t len = strlen(buffer);
-                    while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r' || buffer[len-1] == ' ' || buffer[len-1] == '\t')) {
-                        buffer[--len] = '\0';
-                    }
-                    
-                    printf("[LISP] Extracted input from line %zu: '%s' (length: %zu)\n", i - 1, buffer, strlen(buffer));
-                    return 0;
+                /* Copy the input text */
+                strncpy(buffer, input_start, buffer_size - 1);
+                buffer[buffer_size - 1] = '\0';
+                
+                /* Remove any trailing whitespace */
+                size_t len = strlen(buffer);
+                while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r' || buffer[len-1] == ' ' || buffer[len-1] == '\t')) {
+                    buffer[--len] = '\0';
                 }
+                
+                printf("[LISP] Extracted input from line %zu: '%s' (length: %zu)\n", i - 1, buffer, strlen(buffer));
+                return 0;
             }
         }
     }
@@ -2271,7 +3195,9 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
                        g_lisp_state->interactive_mode, g_lisp_state->user_exited_interactive);
                 
                 /* Auto-enable interactive mode when switching back to REPL buffer */
-                if (!g_lisp_state->interactive_mode && g_lisp_state->sbcl.running) {
+                int has_connection = (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT && g_lisp_state->sbcl.running) ||
+                                   (g_lisp_state->connection_type == LISP_CONNECTION_SLIME && g_lisp_state->slime.connected);
+                if (!g_lisp_state->interactive_mode && has_connection) {
                     printf("[LISP] Auto-enabling interactive mode on buffer switch\n");
                     g_lisp_state->interactive_mode = true;
                     g_lisp_state->user_exited_interactive = false;
@@ -2294,7 +3220,9 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
         
         /* If user is typing Lisp-like characters, re-enable interactive mode */
         /* Only re-enable for characters that start Lisp expressions: letters, digits, (, +, -, *, / */
-        if (g_lisp_state->sbcl.running &&
+        int has_connection = (g_lisp_state->connection_type == LISP_CONNECTION_DIRECT && g_lisp_state->sbcl.running) ||
+                           (g_lisp_state->connection_type == LISP_CONNECTION_SLIME && g_lisp_state->slime.connected);
+        if (has_connection &&
             ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') || 
              (key >= '0' && key <= '9') || key == '(' || key == '+' || 
              key == '-' || key == '*' || key == '/')) {
@@ -2303,8 +3231,8 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
             g_lisp_state->user_exited_interactive = false;
             g_lisp_state->paren_balance = 0;
         } else {
-            printf("[LISP] Auto-re-enable conditions not met: sbcl_running=%d, key=%u\n", 
-                   g_lisp_state->sbcl.running, key);
+            printf("[LISP] Auto-re-enable conditions not met: connection=%d, key=%u\n", 
+                   has_connection, key);
         }
     }
     
@@ -2589,14 +3517,12 @@ static vizero_plugin_command_t lisp_commands[] = {
         .handler = lisp_cmd_help,
         .user_data = NULL
     },
-    /* TODO Phase 3: Add SLIME protocol integration
     {
         .command = "lisp-slime-connect",
         .description = "Connect to SBCL via SLIME protocol for advanced features",
         .handler = lisp_cmd_slime_connect,
         .user_data = NULL
     },
-    */
     {
         .command = "lisp-interactive",
         .description = "Re-enable interactive REPL mode for direct expression typing",

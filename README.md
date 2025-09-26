@@ -122,7 +122,7 @@ Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
 # Once connected, type directly in *lisp-repl* buffer
 # Press Enter when parentheses are balanced to evaluate
 # Use Escape+: for vi commands, automatic state restoration
-# Future: :lisp-slime-connect for SLIME protocol integration
+:lisp-slime-connect localhost 4005  # Connect to Swank server (SLIME protocol)
 ```
 
 #### File Operations
@@ -374,6 +374,7 @@ static int highlight_syntax(/* ... */) {
 | `:session <name>` | Load session |
 | `:sessions` | List sessions |
 | `:lisp-connect` | Start interactive LISP REPL |
+| `:lisp-slime-connect` | Connect to SLIME/Swank server |
 | `:lisp-disconnect` | Stop LISP REPL |
 | `:lisp-status` | Show REPL status |
 | `:d/:y/:p/:P` | Delete/yank/paste lines |
