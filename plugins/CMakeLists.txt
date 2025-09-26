@@ -81,6 +81,11 @@ add_vizero_plugin(syntax_lisp
     syntax_lisp/syntax_lisp.c
 )
 
+# JavaScript syntax highlighting plugin
+add_vizero_plugin(syntax_javascript
+    syntax_javascript/syntax_javascript.c
+)
+
 # File browser plugin
 add_vizero_plugin(file_browser
     file_browser/file_browser.c

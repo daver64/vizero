@@ -3,10 +3,10 @@
   "plugins": {
     "example_plugin": {
       "type": "generic",
-      "load_on_demand": false,
+      "load_on_demand": true,
       "dll_path": "example_plugin.dll",
       "description": "Example plugin for development and testing",
-      "always_load": true
+      "always_load": false
     },
     "file_browser": {
       "type": "file_browser",
@@ -73,6 +73,15 @@
       "load_on_demand": true,
       "dll_path": "syntax_php.dll",
       "description": "PHP syntax highlighting with REPL support",
+      "priority": 1
+    },
+    "syntax_javascript": {
+      "type": "syntax_highlighter",
+      "file_extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
+      "repl_patterns": ["*JavaScript*", "*JS*", "javascript-repl", ".js-repl"],
+      "load_on_demand": true,
+      "dll_path": "syntax_javascript.dll",
+      "description": "JavaScript/TypeScript syntax highlighting with JSX support",
       "priority": 1
     },
     "irc": {
