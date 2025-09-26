@@ -882,7 +882,7 @@ static int slime_connect(const char* host, int port) {
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
+    server_addr.sin_port = htons((u_short)port);
     
     if (inet_pton(AF_INET, host, &server_addr.sin_addr) <= 0) {
         /* Try to resolve hostname */
@@ -939,7 +939,7 @@ static int slime_connect(const char* host, int port) {
     /* Send connection handshake - SLIME expects this */
     lisp_log_message("Sending SLIME handshake...");
     const char* handshake = "(:emacs-rex (swank:connection-info) \"COMMON-LISP-USER\" t 1)";
-    int handshake_len = strlen(handshake);
+    int handshake_len = (int)strlen(handshake);
     char length_prefix[16];
     snprintf(length_prefix, sizeof(length_prefix), "%06x", handshake_len);
     
@@ -1012,14 +1012,14 @@ static int slime_send_message(const char* message) {
 
     /* Format message with length prefix (SLIME protocol requirement) */
     char formatted_msg[4096];
-    int msg_len = strlen(message);
+    int msg_len = (int)strlen(message);
     snprintf(formatted_msg, sizeof(formatted_msg), "%06x%s", msg_len, message);
 
     printf("[LISP] Sending SLIME message: %s\n", formatted_msg);
     
     /* Send to SLIME server */
 #ifdef _WIN32
-    int sent = send(g_lisp_state->slime.socket_fd, formatted_msg, strlen(formatted_msg), 0);
+    int sent = send(g_lisp_state->slime.socket_fd, formatted_msg, (int)strlen(formatted_msg), 0);
     if (sent == 0) {
         lisp_log_message("SLIME connection closed during send");
         g_lisp_state->slime.connected = false;
@@ -1449,6 +1449,7 @@ static void slime_close_repl_on_disconnect(void) {
 
 /* Send command to SBCL */
 static bool read_from_sbcl(char* buffer, size_t buffer_size, int timeout_ms) {
+    (void)timeout_ms;  /* Currently unused, could be implemented with select/poll */
     if (!g_lisp_state->sbcl.running) {
         return false;
     }
@@ -1529,7 +1530,7 @@ static bool send_to_sbcl_silent(const char* command) {
     
 #ifdef _WIN32
     DWORD bytes_written;
-    if (!WriteFile(g_lisp_state->sbcl.stdin_pipe, full_command, strlen(full_command), &bytes_written, NULL)) {
+    if (!WriteFile(g_lisp_state->sbcl.stdin_pipe, full_command, (DWORD)strlen(full_command), &bytes_written, NULL)) {
         lisp_log_message("ERROR: Failed to write to SBCL process");
         return false;
     }
@@ -1704,6 +1705,7 @@ static lisp_buffer_t* create_lisp_buffer(const char* name, const char* display_n
  */
 static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
     if (g_lisp_state->sbcl.running) {
+        (void)args;  /* Unused */
         lisp_log_message("SBCL is already running");
         return 0;
     }
@@ -1781,8 +1783,8 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
         
         /* Check what buffer we're now in */
         if (g_lisp_state->api->get_current_buffer) {
-            vizero_buffer_t* current_buffer = g_lisp_state->api->get_current_buffer(editor);
-            const char* current_filename = NULL;
+            current_buffer = g_lisp_state->api->get_current_buffer(editor);
+            current_filename = NULL;
             if (g_lisp_state->api->get_buffer_filename) {
                 current_filename = g_lisp_state->api->get_buffer_filename(current_buffer);
             }
@@ -1959,6 +1961,8 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
  * @return 0 on success, -1 on failure
  */
 static int lisp_cmd_disconnect(vizero_editor_t* editor, const char* args) {
+    (void)args;  /* Unused */
+    (void)editor; /* Unused */
     /* Handle different connection types */
     if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME) {
         if (!g_lisp_state->slime.connected) {
@@ -2001,6 +2005,8 @@ static int lisp_cmd_disconnect(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_eval(vizero_editor_t* editor, const char* args) {
+    (void)editor;  /* Unused */
+    (void)args;    /* Unused */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2208,6 +2214,7 @@ static int lisp_cmd_eval(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_package(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2245,6 +2252,8 @@ static int lisp_cmd_package(vizero_editor_t* editor, const char* args) {
  * @return 0 on success, -1 on failure
  */
 static int lisp_cmd_status(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
+    (void)args;   /* Command has no arguments */
     char status_msg[1024];
     
     /* Display connection type and status */
@@ -2427,18 +2436,18 @@ static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
         
         /* Check what buffer we're now in */
         if (g_lisp_state->api->get_current_buffer) {
-            vizero_buffer_t* current_buffer = g_lisp_state->api->get_current_buffer(editor);
-            const char* current_filename = NULL;
+            vizero_buffer_t* switched_buffer = g_lisp_state->api->get_current_buffer(editor);
+            const char* switched_filename = NULL;
             if (g_lisp_state->api->get_buffer_filename) {
-                current_filename = g_lisp_state->api->get_buffer_filename(current_buffer);
+                switched_filename = g_lisp_state->api->get_buffer_filename(switched_buffer);
             }
             
-            printf("[LISP] Current buffer after buffer switching: %s\n", current_filename ? current_filename : "<null>");
+            printf("[LISP] Current buffer after buffer switching: %s\n", switched_filename ? switched_filename : "<null>");
             printf("[LISP] Buffer pointer: %p, Original pointer: %p\n", 
-                   (void*)current_buffer, (void*)g_lisp_state->original_buffer);
+                   (void*)switched_buffer, (void*)g_lisp_state->original_buffer);
             
             /* Set this as our REPL buffer regardless */
-            g_lisp_state->repl_buffer = current_buffer;
+            g_lisp_state->repl_buffer = switched_buffer;
         }
     }
 
@@ -2470,7 +2479,7 @@ static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
                 cursor_pos.line = 4;  /* After the welcome text lines, on the "* " prompt line */
                 cursor_pos.column = 2; /* After "* " */
                 int cursor_result = g_lisp_state->api->set_cursor_position(cursor, cursor_pos);
-                printf("[LISP] Positioned cursor at (%d, %d), result: %d\n", 
+                printf("[LISP] Positioned cursor at (%zu, %zu), result: %d\n", 
                        cursor_pos.line, cursor_pos.column, cursor_result);
             }
         }
@@ -2494,6 +2503,7 @@ static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
 /* New Phase 2 Commands */
 
 static int lisp_cmd_complete(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2521,6 +2531,7 @@ static int lisp_cmd_complete(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_inspect(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2553,6 +2564,7 @@ static int lisp_cmd_inspect(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_trace(vizero_editor_t* editor, const char* args) {
+    (void*)editor; // Unused parameter
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2578,6 +2590,7 @@ static int lisp_cmd_trace(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_untrace(vizero_editor_t* editor, const char* args) {
+    (void*)editor; // Unused parameter
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2602,6 +2615,7 @@ static int lisp_cmd_untrace(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_load(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2625,6 +2639,7 @@ static int lisp_cmd_load(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_compile(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2648,6 +2663,7 @@ static int lisp_cmd_compile(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_quicklisp(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2672,6 +2688,8 @@ static int lisp_cmd_quicklisp(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_help(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
+    (void)args;   /* Command has no arguments */
     lisp_log_message("=== Lisp REPL Plugin Phase 2 Commands ===");
     lisp_log_message("Basic Commands:");
     lisp_log_message("  /lisp-connect       - Connect to SBCL REPL");
@@ -2702,6 +2720,8 @@ static int lisp_cmd_help(vizero_editor_t* editor, const char* args) {
  * @return 0 on success, -1 on error
  */
 static int lisp_cmd_interactive(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Required by command API */
+    (void)args;   /* Command has no arguments */
     if (!g_lisp_state) {
         lisp_log_message("LISP REPL not initialized");
         return -1;
@@ -2722,6 +2742,7 @@ static int lisp_cmd_interactive(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_return(vizero_editor_t* editor, const char* args) {
+    (void)args;   /* Command has no arguments */
     if (!g_lisp_state) {
         printf("[LISP] Plugin not initialized\n");
         return -1;
@@ -2757,11 +2778,14 @@ static void lisp_set_active_buffer(const char* buffer_name) {
 
 /* Enhanced Phase 2 Rendering System */
 static int lisp_wants_full_window(vizero_editor_t* editor) {
+    (void)editor;
     /* Disable full window mode to avoid rendering conflicts with other plugins */
     return 0;
 }
 
 static int lisp_render_full_window(vizero_editor_t* editor, vizero_renderer_t* renderer, int width, int height) {
+    (void)editor;   /* Required by plugin API */
+    (void)renderer; /* Using OpenGL directly */
     if (!g_lisp_state || g_lisp_state->buffer_count == 0) return 0;
     
     lisp_buffer_t* buffer = g_lisp_state->buffers[0];
@@ -2921,6 +2945,7 @@ static int lisp_handle_interactive_input(vizero_editor_t* editor, uint32_t key, 
 
 /* Evaluate input for interactive REPL (without duplicating input display) */
 static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input) {
+    (void)editor;
     printf("[LISP] Interactive evaluation: '%s'\n", input);
     
     /* Route to appropriate connection type */
@@ -3020,8 +3045,6 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
     /* Get current cursor position */
     vizero_cursor_t* cursor = g_lisp_state->api->get_current_cursor(editor);
     if (!cursor) return 0;
-    
-    vizero_position_t cursor_pos = g_lisp_state->api->get_cursor_position(cursor);
     
     /* Extract current input to check if it's balanced */
     char current_input[2048];
@@ -3353,7 +3376,7 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
                     buffer->input_history[buffer->history_count][511] = '\0';
                     buffer->history_count++;
                 }
-                buffer->history_index = buffer->history_count;
+                buffer->history_index = (int)buffer->history_count;
                 
                 /* Check for balanced parentheses */
                 int paren_balance = count_parens(g_lisp_state->input_buffer);
@@ -3419,8 +3442,8 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
                 strncpy(g_lisp_state->input_buffer, buffer->input_history[buffer->history_index], 
                        sizeof(g_lisp_state->input_buffer) - 1);
                 g_lisp_state->input_buffer[sizeof(g_lisp_state->input_buffer) - 1] = '\0';
-            } else if (buffer->history_index == buffer->history_count - 1) {
-                buffer->history_index = buffer->history_count;
+            } else if (buffer->history_index == (int)buffer->history_count - 1) {
+                buffer->history_index = (int)buffer->history_count;
                 g_lisp_state->input_buffer[0] = '\0';
             }
             return 1;
@@ -3710,6 +3733,7 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
  * @param plugin Pointer to the plugin structure being cleaned up
  */
 void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
+    (void)plugin; /* Required by plugin API */
     if (g_lisp_state) {
         /* Stop SBCL if running */
         if (g_lisp_state->sbcl.running) {

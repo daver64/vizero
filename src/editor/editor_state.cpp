@@ -425,9 +425,7 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
     if (state->buffer_count == 1 && state->buffers[0]) {
         const char* first_filename = vizero_buffer_get_filename(state->buffers[0]);
         const char* first_text = vizero_buffer_get_text(state->buffers[0]);
-        size_t text_len = first_text ? strlen(first_text) : 0;
-        printf("[DEBUG] Buffer replacement check: filename='%s', text_len=%zu\n", 
-               first_filename ? first_filename : "(null)", text_len);
+
         if ((!first_filename || strlen(first_filename) == 0) && (!first_text || strlen(first_text) == 0)) {
             /* Store old buffer/cursor pointers before destroying them */
             vizero_buffer_t* old_buffer = state->buffers[0];
@@ -508,13 +506,9 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     if (state->plugin_manager) {
                         vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[0]);
                     }
-                    printf("[DEBUG] vizero_editor_open_buffer: destroying buffer %p (index 0)\n", (void*)state->buffers[0]);
                     vizero_buffer_destroy(state->buffers[0]);
-                    printf("[DEBUG] vizero_editor_open_buffer: destroyed buffer %p (index 0)\n", (void*)state->buffers[0]);
                     if (state->cursors[0]) {
-                        printf("[DEBUG] vizero_editor_open_buffer: destroying cursor %p (index 0)\n", (void*)state->cursors[0]);
                         vizero_cursor_destroy(state->cursors[0]);
-                        printf("[DEBUG] vizero_editor_open_buffer: destroyed cursor %p (index 0)\n", (void*)state->cursors[0]);
                     }
                     state->buffers[0] = NULL;
                     state->cursors[0] = NULL;

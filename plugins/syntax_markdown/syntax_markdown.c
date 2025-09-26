@@ -45,8 +45,8 @@ static void add_token(vizero_syntax_token_t* tokens, size_t* count, size_t max_t
 }
 
 static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t end_line,
-                             vizero_syntax_token_t* tokens, size_t max_tokens) {
-    size_t token_count = 0;
+                             vizero_syntax_token_t* tokens, size_t max_tokens, size_t* token_count) {
+    size_t count = 0;
     
     for (size_t line = start_line; line < end_line; ++line) {
         const char* text = NULL;
@@ -63,7 +63,7 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
             while (text[i] == '#') ++i;
             while (text[i] == ' ') ++i;
             vizero_range_t r = { {line, 0}, {line, len} };
-            add_token(tokens, &token_count, max_tokens, r, header_colour, 0);
+            add_token(tokens, &count, max_tokens, r, header_colour, 0);
             continue;
         }
         
@@ -77,7 +77,7 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
                 while (i+1 < len && !(text[i] == delim && text[i+1] == delim)) ++i;
                 if (i+1 < len) {
                     vizero_range_t r = { {line, start}, {line, i+2} };
-                    add_token(tokens, &token_count, max_tokens, r, bold_colour, SYNTAX_BOLD);
+                    add_token(tokens, &count, max_tokens, r, bold_colour, SYNTAX_BOLD);
                     i += 2;
                     continue;
                 }
@@ -91,7 +91,7 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
                 while (i < len && text[i] != delim) ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, &token_count, max_tokens, r, italic_colour, SYNTAX_ITALIC);
+                    add_token(tokens, &count, max_tokens, r, italic_colour, SYNTAX_ITALIC);
                     i++;
                     continue;
                 }
@@ -104,7 +104,7 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
                 while (i < len && text[i] != '`') ++i;
                 if (i < len) {
                     vizero_range_t r = { {line, start}, {line, i+1} };
-                    add_token(tokens, &token_count, max_tokens, r, code_colour, 0);
+                    add_token(tokens, &count, max_tokens, r, code_colour, 0);
                     i++;
                     continue;
                 }
@@ -121,7 +121,7 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
                     if (i < len && text[i] == ')') {
                         link_end = i+1;
                         vizero_range_t r = { {line, start}, {line, link_end} };
-                        add_token(tokens, &token_count, max_tokens, r, link_colour, 0);
+                        add_token(tokens, &count, max_tokens, r, link_colour, 0);
                         i++;
                         continue;
                     }
@@ -130,21 +130,22 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
             i++;
         }
     }
-    return (int)token_count;
+    *token_count = count;
+    return 0;
 }
 
 /* Main syntax highlighting function */
 static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t end_line,
-                           vizero_syntax_token_t* tokens, size_t max_tokens) {
-    if (!buffer || !tokens || !editor_api) return 0;
+                           vizero_syntax_token_t* tokens, size_t max_tokens, size_t* token_count) {
+    if (!buffer || !tokens || !token_count || !editor_api) return 0;
     if (!editor_api->get_buffer_line || !editor_api->get_buffer_filename) return 0;
-    
+
     const char* filename = editor_api->get_buffer_filename(buffer);
     
     /* Only handle Markdown files */
     if (!is_markdown_file(filename)) return 0;
     
-    return highlight_markdown(buffer, start_line, end_line, tokens, max_tokens);
+    return highlight_markdown(buffer, start_line, end_line, tokens, max_tokens, token_count);
 }
 
 VIZERO_PLUGIN_DEFINE_INFO(

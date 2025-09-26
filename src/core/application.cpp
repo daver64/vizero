@@ -49,11 +49,7 @@ struct vizero_application_t {
     vizero_settings_t* settings;
 };
 /* Forward declaration for syntax line rendering - currently unused */
-#if 0
-static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
-                                   float base_x, float y, int scroll_x,
-                                   vizero_syntax_token_t* tokens, size_t token_count);
-#endif
+
 vizero_application_t* vizero_application_create(const vizero_app_config_t* config) {
     vizero_application_t* app = (vizero_application_t*)calloc(1, sizeof(vizero_application_t));
     if (!app) {
@@ -359,67 +355,7 @@ static void render_editor_window(vizero_application_t* app, vizero_editor_window
     vizero_editor_window_render_content(window, app->editor, app->renderer);
 }
 
-/* Helper function to render a line with syntax highlighting - currently unused */
-#if 0
-static void render_line_with_syntax(vizero_application_t* app, const char* line_text, size_t line_num,
-                                   float base_x, float y, int scroll_x,
-                                   vizero_syntax_token_t* tokens, size_t token_count) {
-    if (!app || !line_text) return;
-    
-    size_t line_len = strlen(line_text);
-    if (line_len == 0) return;
-    
-    /* Create array to store colour for each character */
-    vizero_colour_t* char_colours = (vizero_colour_t*)malloc(line_len * sizeof(vizero_colour_t));
-    if (!char_colours) return;
-    
-    /* Initialize all characters to default white colour */
-    vizero_colour_t default_colour = {1.0f, 1.0f, 1.0f, 1.0f};
-    for (size_t i = 0; i < line_len; i++) {
-        char_colours[i] = default_colour;
-    }
-    
-    /* Apply syntax highlighting colours */
-    for (size_t t = 0; t < token_count; t++) {
-        vizero_syntax_token_t* token = &tokens[t];
-        if (token->range.start.line == line_num) {
-            size_t start_col = token->range.start.column;
-            size_t end_col = token->range.end.column;
-            /* Clamp to line bounds */
-            if (start_col >= line_len) continue;
-            if (end_col > line_len) end_col = line_len;
-            vizero_colour_t render_colour = {
-                token->colour.r / 255.0f,
-                token->colour.g / 255.0f,
-                token->colour.b / 255.0f,
-                token->colour.a / 255.0f
-            };
-            for (size_t col = start_col; col < end_col; col++) {
-                char_colours[col] = render_colour;
-            }
-        }
-    }
-    
-    /* Render characters with their assigned colours */
-    for (size_t col = 0; col < line_len; col++) {
-        if ((int)col < scroll_x) continue; /* Skip characters scrolled out of view */
-        
-        char char_str[2] = {line_text[col], '\0'};
-        float char_x = base_x + ((col - scroll_x) * 8);
-        
-        vizero_text_info_t text_info = {
-            char_x,
-            y,
-            char_colours[col],
-            NULL
-        };
-        
-        vizero_renderer_draw_text(app->renderer, char_str, &text_info);
-    }
-    
-    free(char_colours);
-}
-#endif
+
 
 /* Helper function to draw window borders */
 static void draw_window_borders(vizero_application_t* app, vizero_editor_window_t** windows, size_t count) {
@@ -620,12 +556,7 @@ int vizero_application_run(vizero_application_t* app) {
     }
     printf("Starting main loop...\n");
 
-    /* File polling variables - currently disabled for debugging */
-    (void)SDL_GetTicks(); /* Suppress warning about unused function call */
-    /* uint32_t last_poll_time = SDL_GetTicks();
-    const uint32_t poll_interval_ms = 2000; // 2 seconds */
-
-    // Debug: Check initial conditions
+    // Main render loop
     while (!app->should_quit && !vizero_window_should_close(app->window) && !vizero_editor_should_quit(app->editor)) {
 
         /* Process input events */
@@ -850,15 +781,15 @@ int vizero_application_run(vizero_application_t* app) {
         /* Check if any plugin wants full window control */
         if (app->plugin_manager && vizero_plugin_manager_wants_full_window(app->plugin_manager)) {
             /* Get window dimensions */
-            int window_width, window_height;
-            SDL_GetWindowSize(vizero_window_get_sdl_window(app->window), &window_width, &window_height);
+            int plugin_window_width, plugin_window_height;
+            SDL_GetWindowSize(vizero_window_get_sdl_window(app->window), &plugin_window_width, &plugin_window_height);
             
             /* Clear with black background */
             vizero_colour_t bg_color = {0.0f, 0.0f, 0.0f, 1.0f};
             vizero_renderer_clear(app->renderer, bg_color);
             
             /* Let plugin render using OpenGL */
-            if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, window_width, window_height)) {
+            if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, plugin_window_width, plugin_window_height)) {
                 /* Fallback: show placeholder if plugin rendering fails */
                 vizero_text_info_t text_info = {0};
                 text_info.x = 10.0f;

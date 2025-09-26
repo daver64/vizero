@@ -218,14 +218,14 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     printf("[DEBUG] Triggering LSP completion at line %zu, column %zu\n", 
                                            position.line, position.column);
                                     
-                                    vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
-                                    if (plugin_manager) {
+                                    vizero_plugin_manager_t* lsp_plugin_manager = vizero_application_get_plugin_manager(input->app);
+                                    if (lsp_plugin_manager) {
                                         printf("[DEBUG] Plugin manager found, requesting LSP completion\n");
                                         
                                         vizero_completion_list_t* completion_list = NULL;
                                         printf("[DEBUG] Calling vizero_plugin_manager_lsp_completion...\n");
                                         
-                                        int result = vizero_plugin_manager_lsp_completion(plugin_manager, 
+                                        int result = vizero_plugin_manager_lsp_completion(lsp_plugin_manager, 
                                                     vizero_editor_get_current_buffer(editor), position, &completion_list);
                                         
                                         printf("[DEBUG] LSP completion returned result=%d, completion_list=%p\n", 

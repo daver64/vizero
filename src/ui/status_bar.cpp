@@ -415,7 +415,7 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
             }
             else
             {
-                printf("[DEBUG] Status bar right_text overflow at panel %zu\n", i);
+                /* Overflow - skip this panel */
             }
         }
         else
@@ -428,7 +428,7 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
             }
             else
             {
-                printf("[DEBUG] Status bar left_text overflow at panel %zu\n", i);
+                /* Overflow - skip this panel */
             }
         }
     }
@@ -447,7 +447,7 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
         snprintf(status_bar->rendered_text, status_bar->rendered_capacity, "%s", left_text);
     }
     status_bar->rendered_text[status_bar->rendered_capacity - 1] = '\0';
-//    printf("[DEBUG] Status bar rendered_text: '%.*s'\n", 128, status_bar->rendered_text);
+
 
 
 }

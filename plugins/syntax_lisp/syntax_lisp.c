@@ -383,24 +383,25 @@ static int UNUSED_PARAM highlight_lisp_line(const char* line, size_t line_num,
 
 /* Main syntax highlighting function */
 static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t end_line,
-                           vizero_syntax_token_t* tokens, size_t max_tokens) {
-    if (!buffer || !tokens || !editor_api) return 0;
+                           vizero_syntax_token_t* tokens, size_t max_tokens, size_t* token_count) {
+    if (!buffer || !tokens || !token_count || !editor_api) return 0;
     if (!editor_api->get_buffer_line || !editor_api->get_buffer_filename) return 0;
-    
+
     const char* filename = editor_api->get_buffer_filename(buffer);
     
     /* Only handle Lisp files and REPL buffers */
     if (!is_lisp_file(filename)) return 0;
     
-    size_t token_count = 0;
-    for (size_t line = start_line; line <= end_line && token_count < max_tokens; line++) {
+    size_t count = 0;
+    for (size_t line = start_line; line <= end_line && count < max_tokens; line++) {
         const char* line_text = editor_api->get_buffer_line(buffer, line);
         if (!line_text) continue;
         
-        int n = highlight_lisp_line(line_text, line, tokens + token_count, max_tokens - token_count);
-        if (n > 0) token_count += n;
+        int n = highlight_lisp_line(line_text, line, tokens + count, max_tokens - count);
+        if (n > 0) count += n;
     }
-    return (int)token_count;
+    *token_count = count;
+    return 0;
 }
 
 VIZERO_PLUGIN_DEFINE_INFO(

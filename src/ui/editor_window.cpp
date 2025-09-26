@@ -1,8 +1,16 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "vizero/editor_state.h"
 #include "vizero/renderer.h"
 #include "vizero/search.h"
+#include "vizero/editor_window.h"
+#include "vizero/buffer.h"
+#include "vizero/cursor.h"
+#include "vizero/editor_window_constants.h"
+#include "vizero/plugin_manager.h"
+#include "../editor/editor_state_internal.h"
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -41,19 +49,6 @@ void vizero_draw_status_bar_with_cwd(vizero_editor_state_t* state, vizero_render
     vizero_text_info_t info2 = {(float)(screen_width - text_width - 8), (float)(screen_height - 18), {0.7f, 0.7f, 1.0f, 1.0f}, NULL};
     vizero_renderer_draw_text(renderer, cwd_buf, &info2);
 }
-// ...existing code...
-// Safely set the window title, freeing the old one
-#include "vizero/editor_window_constants.h"
-// C stdio for sprintf/snprintf
-#include <cstdio>
-#include <ctype.h>
-/* Multi-window editor system implementation */
-#include "vizero/editor_window.h"
-#include "vizero/buffer.h"
-#include "vizero/cursor.h"
-#include <stdlib.h>
-#include <string.h>
-#include <string.h>
 // Safely set the window title, freeing the old one
 void vizero_editor_window_set_title(vizero_editor_window_t* window, const char* title) {
     if (!window) return;
@@ -63,10 +58,6 @@ void vizero_editor_window_set_title(vizero_editor_window_t* window, const char* 
     }
     window->title = title ? strdup(title) : NULL;
 }
-#include "vizero/editor_state.h"
-#include "../editor/editor_state_internal.h"
-#include "vizero/renderer.h"
-#include "vizero/plugin_manager.h"
 /* Window manager structure */
 struct vizero_window_manager_t {
     vizero_editor_window_t* windows[MAX_WINDOWS];

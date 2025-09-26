@@ -49,8 +49,7 @@ typedef const vizero_plugin_info_t* (*plugin_get_info_func_t)(void);
 typedef int (*plugin_init_func_t)(vizero_plugin_t*, vizero_editor_t*, const vizero_editor_api_t*);
 typedef void (*plugin_cleanup_func_t)(vizero_plugin_t*);
 
-/* Initialize the editor API structure */
-static void init_editor_api(vizero_editor_api_t* api, vizero_editor_t* editor);
+
 
 vizero_plugin_manager_t* vizero_plugin_manager_create(vizero_editor_t* editor) {
     vizero_plugin_manager_t* manager = (vizero_plugin_manager_t*)calloc(1, sizeof(vizero_plugin_manager_t));
@@ -563,69 +562,9 @@ int vizero_plugin_manager_highlight_syntax(
     return 0; /* No plugin handled the buffer */
 }
 
-/* API function implementations */
-static const char* api_get_buffer_text(vizero_buffer_t* buffer) {
-    return vizero_buffer_get_text(buffer);
-}
 
-static const char* api_get_buffer_filename(vizero_buffer_t* buffer) {
-    return vizero_buffer_get_filename(buffer);
-}
 
-static size_t api_get_buffer_line_count(vizero_buffer_t* buffer) {
-    if (!buffer) return 0;
-    return vizero_buffer_get_line_count(buffer);
-}
 
-static const char* api_get_buffer_line(vizero_buffer_t* buffer, size_t line_num) {
-    if (!buffer) return NULL;
-    
-    size_t line_count = vizero_buffer_get_line_count(buffer);
-    if (line_num >= line_count) return NULL;
-    
-    return vizero_buffer_get_line_text(buffer, line_num);
-}
-
-static size_t api_get_buffer_line_length(vizero_buffer_t* buffer, size_t line_num) {
-    return vizero_buffer_get_line_length(buffer, line_num);
-}
-
-static int api_is_buffer_readonly(vizero_buffer_t* buffer) {
-    return vizero_buffer_is_readonly(buffer);
-}
-
-static void api_set_buffer_readonly(vizero_buffer_t* buffer, int readonly) {
-    vizero_buffer_set_readonly(buffer, readonly);
-}
-
-/* Initialize the editor API structure - this would be implemented in the core editor */
-static void init_editor_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
-    /* Buffer operations */
-    api->get_buffer_text = api_get_buffer_text;
-    api->get_buffer_filename = api_get_buffer_filename;
-    api->get_buffer_line_count = api_get_buffer_line_count;
-    api->get_buffer_line = api_get_buffer_line;
-    api->get_buffer_line_length = api_get_buffer_line_length;
-    api->is_buffer_readonly = api_is_buffer_readonly;
-    api->set_buffer_readonly = api_set_buffer_readonly;
-    
-    /* These would be implemented by the actual editor core */
-    api->insert_text = NULL;               /* vizero_buffer_insert_text_impl */
-    api->delete_text = NULL;               /* vizero_buffer_delete_text_impl */
-    api->get_cursor_position = NULL;       /* vizero_cursor_get_position_impl */
-    api->set_cursor_position = NULL;       /* vizero_cursor_set_position_impl */
-    api->get_current_buffer = NULL;        /* vizero_editor_get_current_buffer_impl */
-    api->get_current_cursor = NULL;        /* vizero_editor_get_current_cursor_impl */
-    api->execute_command = NULL;           /* vizero_editor_execute_command_impl */
-    api->set_status_message = NULL;        /* vizero_editor_set_status_message_impl */
-    api->open_file = NULL;                 /* vizero_editor_open_file_impl */
-    api->save_file = NULL;                 /* vizero_editor_save_file_impl */
-    api->add_syntax_tokens = NULL;         /* vizero_editor_add_syntax_tokens_impl */
-    api->clear_syntax_tokens = NULL;       /* vizero_editor_clear_syntax_tokens_impl */
-    
-    /* Store reference to editor for implementations */
-    (void)editor;
-}
 
 /* LSP completion function */
 int vizero_plugin_manager_lsp_completion(
@@ -640,30 +579,16 @@ int vizero_plugin_manager_lsp_completion(
     
     *result = NULL;
     
-    printf("[DEBUG] Searching %zu plugins for LSP completion support\n", manager->plugin_count);
-    
     /* Find plugins that support LSP completion */
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
-        printf("[DEBUG] Plugin %zu: name=%s, lsp_completion=%p\n", 
-               i, plugin ? (plugin->info.name ? plugin->info.name : "unknown") : "null",
-               plugin ? (void*)plugin->callbacks.lsp_completion : NULL);
-        
         if (plugin && plugin->callbacks.lsp_completion) {
-            printf("[DEBUG] Trying LSP completion with plugin: %s\n", 
-                   plugin->info.name ? plugin->info.name : "unknown");
-            
             int ret = plugin->callbacks.lsp_completion(buffer, position, result);
             if (ret == 0 && *result) {
-                printf("[DEBUG] LSP completion successful, got %zu items\n", (*result)->item_count);
                 return 0;
-            } else {
-                printf("[DEBUG] LSP completion failed: ret=%d, result=%p\n", ret, (void*)*result);
             }
         }
     }
-    
-    printf("[DEBUG] No LSP completion plugin found or no results\n");
     return -1;
 }
 
@@ -935,8 +860,8 @@ SDL_Texture* vizero_plugin_manager_render_plugin_ui(vizero_plugin_manager_t* man
     
     /* Find plugin that wants to render */
     for (size_t i = 0; i < manager->plugin_count; i++) {
-        vizero_plugin_t* plugin = manager->plugins[i];
         /* OLD SDL RENDERING - DISABLED
+        vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {
             if (plugin->callbacks.wants_full_window(manager->editor)) {
                 // Let plugin render to the texture
@@ -947,6 +872,7 @@ SDL_Texture* vizero_plugin_manager_render_plugin_ui(vizero_plugin_manager_t* man
             }
         }
         OLD SDL RENDERING - DISABLED */
+        (void)i; /* Suppress unused variable warning for commented code */
     }
     
     return NULL;

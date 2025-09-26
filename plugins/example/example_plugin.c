@@ -98,7 +98,7 @@ static int on_command(vizero_editor_t* editor, const char* command, const char* 
 
 static int on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
     (void)modifiers; /* Unused parameter */
-    
+    (void)key;
     /* Example: Handle F1 key to show plugin info */
     /* Note: F1 key code is much higher than 58. 0x3A (58) is the colon ':' character! */
     /* For now, disable this functionality to avoid consuming colon characters */

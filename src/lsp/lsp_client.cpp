@@ -72,8 +72,7 @@ static void lsp_client_stop_process(vizero_lsp_client_t* client);
 static int lsp_client_write_message(vizero_lsp_client_t* client, const char* message);
 static int lsp_client_read_messages(vizero_lsp_client_t* client);
 static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* content);
-static lsp_message_t* lsp_message_create(void);
-static void lsp_message_destroy(lsp_message_t* message);
+
 
 vizero_lsp_client_t* vizero_lsp_client_create(const char* server_path, const char* working_directory) {
     if (!server_path) {
@@ -394,10 +393,10 @@ static int lsp_client_write_message(vizero_lsp_client_t* client, const char* mes
     }
     
     DWORD bytes_written;
-    BOOL success = WriteFile(client->stdin_write, full_message, full_len, &bytes_written, NULL);
+    BOOL success = WriteFile(client->stdin_write, full_message, (DWORD)full_len, &bytes_written, NULL);
     free(full_message);
     
-    return success && bytes_written == full_len ? 0 : -1;
+    return success && bytes_written == (DWORD)full_len ? 0 : -1;
 }
 
 static int lsp_client_read_messages(vizero_lsp_client_t* client) {
@@ -851,18 +850,3 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
     printf("[LSP] Message parsing complete\n");
 }
 
-static lsp_message_t* lsp_message_create(void) {
-    return (lsp_message_t*)calloc(1, sizeof(lsp_message_t));
-}
-
-static void lsp_message_destroy(lsp_message_t* message) {
-    if (!message) {
-        return;
-    }
-    
-    free(message->method);
-    free(message->params);
-    free(message->result);
-    free(message->error);
-    free(message);
-}

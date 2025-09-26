@@ -381,7 +381,7 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
+    server_addr.sin_port = htons((u_short)port);
     memcpy(&server_addr.sin_addr, host_entry->h_addr_list[0], host_entry->h_length);
     
     int connect_result = connect(conn->socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -621,8 +621,8 @@ static void irc_parse_message(const char* line) {
     char* saveptr;
     char* prefix = NULL;
     char* command = NULL;
-    char* params = NULL;
-    char* message = NULL;
+    //char* params = NULL;
+    //char* message = NULL;
     
     /* Extract prefix */
     if (line_copy[0] == ':') {
@@ -797,7 +797,7 @@ static void irc_process_incoming(void) {
         FD_SET(conn->socket, &write_fds);
         FD_SET(conn->socket, &error_fds);
         
-        int result = select(conn->socket + 1, NULL, &write_fds, &error_fds, &timeout);
+        int result = select((int)conn->socket + 1, NULL, &write_fds, &error_fds, &timeout);
         if (result > 0) {
             if (FD_ISSET(conn->socket, &error_fds)) {
                 /* Connection failed */
@@ -817,9 +817,9 @@ static void irc_process_incoming(void) {
                     char buffer[512];
                     printf("[IRC] Registering with server...\n");
                     snprintf(buffer, sizeof(buffer), "NICK %s\r\n", conn->nickname);
-                    send(conn->socket, buffer, strlen(buffer), 0);
+                    send(conn->socket, buffer, (int)strlen(buffer), 0);
                     snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", conn->username, conn->realname);
-                    send(conn->socket, buffer, strlen(buffer), 0);
+                    send(conn->socket, buffer, (int)strlen(buffer), 0);
                 } else {
                     printf("[IRC] Connection failed with socket error: %d\n", error);
                     irc_disconnect();
@@ -931,7 +931,7 @@ static void irc_prev_buffer(void) {
         }
     }
     
-    int prev_index = (current_index - 1 + g_irc_state->buffer_count) % g_irc_state->buffer_count;
+    int prev_index = (int)((current_index - 1 + g_irc_state->buffer_count) % g_irc_state->buffer_count);
     irc_set_active_buffer(g_irc_state->buffers[prev_index]->name);
 }
 
@@ -949,7 +949,7 @@ static void irc_draw_simple_text(SDL_Renderer* renderer, const char* text, int x
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     
     /* Draw a simple rectangle as text placeholder */
-    int text_len = strlen(text);
+    int text_len = (int)strlen(text);
     if (text_len > 0) {
         SDL_Rect text_rect = {x, y, text_len * 6, 12}; /* Approximate text size */
         SDL_RenderFillRect(renderer, &text_rect);
@@ -1347,7 +1347,7 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
     int line_height = 16;
     int max_lines = height / line_height;
     int start_index = (current_buffer->message_count > max_lines) ? 
-                     current_buffer->message_count - max_lines : 0;
+                     (int)(current_buffer->message_count - max_lines) : 0;
     
     int line_y = y + 5;
     
@@ -1380,6 +1380,7 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
                 uint8_t nick_r = (nick_color >> 16) & 0xFF;
                 uint8_t nick_g = (nick_color >> 8) & 0xFF;
                 uint8_t nick_b = nick_color & 0xFF;
+                (void)nick_r; (void)nick_g; (void)nick_b; /* TODO: Use for colored nicks */
                 
                 /* Add nick part */
                 char nick_part[128];
@@ -2286,6 +2287,7 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
 }
 
 void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
+    (void)plugin; /* Required by plugin API */
     if (g_irc_state) {
         /* Disconnect if connected */
         irc_disconnect();
