@@ -250,6 +250,8 @@ typedef struct {
     
     /* Interactive REPL state */
     bool interactive_mode;            /* True when in interactive REPL mode */
+    bool user_exited_interactive;     /* True when user explicitly exited with Escape */
+    bool command_mode_active;         /* True when processing : commands, prevent auto-re-enable */
     bool inserting_sbcl_output;       /* True when inserting SBCL responses (don't count parens) */
     vizero_position_t prompt_start;   /* Position where current prompt starts */
     int paren_balance;                /* Track parentheses balance for auto-evaluation */
@@ -1196,6 +1198,8 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
     
     /* Enable interactive REPL mode */
     g_lisp_state->interactive_mode = true;
+    g_lisp_state->user_exited_interactive = false;
+    g_lisp_state->command_mode_active = false;
     g_lisp_state->inserting_sbcl_output = false;
     g_lisp_state->paren_balance = 0;
     
@@ -1709,6 +1713,7 @@ static int lisp_cmd_help(vizero_editor_t* editor, const char* args) {
     lisp_log_message("  /lisp-compile <file> - Compile Lisp file");
     lisp_log_message("  /lisp-quicklisp [sys] - Quicklisp operations");
     lisp_log_message("  /lisp-help          - Show this help");
+    lisp_log_message("  /lisp-interactive   - Re-enable interactive REPL mode");
     lisp_log_message("  /lisp-return        - Return to original buffer");
     
     return 0;
@@ -1720,6 +1725,26 @@ static int lisp_cmd_help(vizero_editor_t* editor, const char* args) {
  * @param args Command arguments (unused)
  * @return 0 on success, -1 on error
  */
+static int lisp_cmd_interactive(vizero_editor_t* editor, const char* args) {
+    if (!g_lisp_state) {
+        lisp_log_message("LISP REPL not initialized");
+        return -1;
+    }
+    
+    if (!g_lisp_state->sbcl.running) {
+        lisp_log_message("SBCL not running. Use /lisp-connect first.");
+        return -1;
+    }
+    
+    /* Re-enable interactive mode */
+    g_lisp_state->interactive_mode = true;
+    g_lisp_state->user_exited_interactive = false;
+    g_lisp_state->paren_balance = 0;
+    
+    lisp_log_message("Interactive REPL mode re-enabled. Type Lisp expressions to evaluate them.");
+    return 0;
+}
+
 static int lisp_cmd_return(vizero_editor_t* editor, const char* args) {
     if (!g_lisp_state) {
         printf("[LISP] Plugin not initialized\n");
@@ -1869,6 +1894,16 @@ static int lisp_handle_interactive_input(vizero_editor_t* editor, uint32_t key, 
     
     /* Handle special keys */
     switch (key) {
+        case 27: /* Escape - exit interactive mode */
+        case 1073742053: /* Escape with modifiers on Windows */
+            printf("[LISP] Escape pressed (key=%u), exiting interactive mode\n", key);
+            g_lisp_state->interactive_mode = false;
+            g_lisp_state->user_exited_interactive = true; /* Remember user explicitly exited */
+            g_lisp_state->paren_balance = 0; /* Reset paren balance */
+            return 0; /* Let Vizero handle the Escape key for command mode */
+            
+
+            
         case 13: /* Enter key */
         case 10: /* LF */
             return lisp_handle_enter_key(editor);
@@ -1919,6 +1954,8 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
     
     char result[2048];
     if (read_from_sbcl(result, sizeof(result), 1000)) {
+        printf("[LISP] Raw SBCL result (%zu chars): '%s'\n", strlen(result), result);
+        
         /* Clean up the result - remove control characters */
         char cleaned_result[2048];
         size_t cleaned_len = 0;
@@ -1930,10 +1967,12 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
             }
         }
         cleaned_result[cleaned_len] = '\0';
+        printf("[LISP] Cleaned result (%zu chars): '%s'\n", cleaned_len, cleaned_result);
         
         /* Prepend newline to result for proper formatting */
         char formatted_result[2048];
         snprintf(formatted_result, sizeof(formatted_result), "\n%s", cleaned_result);
+        printf("[LISP] Formatted result (%zu chars): '%s'\n", strlen(formatted_result), formatted_result);
         
         /* Append result to the REPL buffer */
         if (g_lisp_state->repl_buffer && g_lisp_state->api && g_lisp_state->api->insert_text) {
@@ -1956,6 +1995,8 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
             g_lisp_state->inserting_sbcl_output = false;
             printf("[LISP] Interactive result appended (%zu chars)\n", strlen(formatted_result));
         }
+    } else {
+        printf("[LISP] Failed to read result from SBCL\n");
     }
     
     return 0;
@@ -1971,16 +2012,25 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
     
     vizero_position_t cursor_pos = g_lisp_state->api->get_cursor_position(cursor);
     
-    /* Check if we have balanced parentheses */
-    if (g_lisp_state->paren_balance == 0) {
-        /* Expression is complete, evaluate it */
-        printf("[LISP] Complete expression, evaluating...\n");
-        return lisp_evaluate_current_input(editor);
+    /* Extract current input to check if it's balanced */
+    char current_input[2048];
+    if (lisp_extract_current_input(current_input, sizeof(current_input)) == 0) {
+        int actual_balance = count_parens(current_input);
+        printf("[LISP] Checking balance: live_balance=%d, actual_balance=%d\n", 
+               g_lisp_state->paren_balance, actual_balance);
+        
+        if (actual_balance == 0) {
+            /* Expression is complete, evaluate it */
+            printf("[LISP] Complete expression, evaluating...\n");
+            return lisp_evaluate_current_input(editor);
+        } else {
+            /* Expression incomplete, just insert newline and continue */
+            printf("[LISP] Incomplete expression (balance: %d), continuing on next line\n", actual_balance);
+            return 0; /* Let normal newline processing happen */
+        }
     } else {
-        /* Expression incomplete, just insert newline and continue */
-        printf("[LISP] Incomplete expression (balance: %d), continuing on next line\n", 
-               g_lisp_state->paren_balance);
-        return 0; /* Let normal newline processing happen */
+        printf("[LISP] Failed to extract input for balance check\n");
+        return 0;
     }
 }
 
@@ -2098,13 +2148,68 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
     
     /* Check if we're in the REPL buffer */
     int in_repl_buffer = 0;
+    static vizero_buffer_t* last_buffer = NULL;
     if (g_lisp_state->api && g_lisp_state->api->get_current_buffer && g_lisp_state->repl_buffer) {
         vizero_buffer_t* current = g_lisp_state->api->get_current_buffer(editor);
         in_repl_buffer = (current == g_lisp_state->repl_buffer);
+        
+        /* Debug buffer switches */
+        if (current != last_buffer) {
+            printf("[LISP] Buffer switch detected: from %p to %p (REPL buffer: %p)\n", 
+                   last_buffer, current, g_lisp_state->repl_buffer);
+            if (current == g_lisp_state->repl_buffer) {
+                printf("[LISP] Switched back to REPL buffer - interactive_mode=%d, user_exited=%d\n", 
+                       g_lisp_state->interactive_mode, g_lisp_state->user_exited_interactive);
+                
+                /* Auto-enable interactive mode when switching back to REPL buffer */
+                if (!g_lisp_state->interactive_mode && g_lisp_state->sbcl.running) {
+                    printf("[LISP] Auto-enabling interactive mode on buffer switch\n");
+                    g_lisp_state->interactive_mode = true;
+                    g_lisp_state->user_exited_interactive = false;
+                    g_lisp_state->command_mode_active = false;
+                    g_lisp_state->paren_balance = 0;
+                }
+            }
+            last_buffer = current;
+        }
+    }
+    
+    /* Handle special cases when user recently exited interactive mode */
+    if (in_repl_buffer && g_lisp_state->user_exited_interactive && !g_lisp_state->command_mode_active) {
+        /* If user pressed ':', let Vizero handle command mode */
+        if (key == 58) { /* ':' key */
+            printf("[LISP] Colon pressed after Escape, activating command mode\n");
+            g_lisp_state->command_mode_active = true;
+            return 0; /* Let Vizero handle the colon for command mode */
+        }
+        
+        /* If user is typing Lisp-like characters, re-enable interactive mode */
+        /* Only re-enable for characters that start Lisp expressions: letters, digits, (, +, -, *, / */
+        if (g_lisp_state->sbcl.running &&
+            ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') || 
+             (key >= '0' && key <= '9') || key == '(' || key == '+' || 
+             key == '-' || key == '*' || key == '/')) {
+            printf("[LISP] User typing Lisp expression (key=%u), re-enabling interactive mode\n", key);
+            g_lisp_state->interactive_mode = true;
+            g_lisp_state->user_exited_interactive = false;
+            g_lisp_state->paren_balance = 0;
+        } else {
+            printf("[LISP] Auto-re-enable conditions not met: sbcl_running=%d, key=%u\n", 
+                   g_lisp_state->sbcl.running, key);
+        }
+    }
+    
+    /* Reset command mode when Enter is pressed (command completed) */
+    if (g_lisp_state->command_mode_active && key == 13) { /* Enter key */
+        printf("[LISP] Command completed, resetting flags\n");
+        g_lisp_state->command_mode_active = false;
+        g_lisp_state->user_exited_interactive = false;
     }
     
     /* Handle interactive REPL mode */
     if (in_repl_buffer && g_lisp_state->interactive_mode && !g_lisp_state->inserting_sbcl_output) {
+        printf("[LISP] Routing key %u to interactive handler (interactive_mode=%d, user_exited=%d)\n", 
+               key, g_lisp_state->interactive_mode, g_lisp_state->user_exited_interactive);
         return lisp_handle_interactive_input(editor, key, modifiers);
     }
     
@@ -2373,6 +2478,12 @@ static vizero_plugin_command_t lisp_commands[] = {
         .command = "lisp-help",
         .description = "Show comprehensive help for all REPL commands",
         .handler = lisp_cmd_help,
+        .user_data = NULL
+    },
+    {
+        .command = "lisp-interactive",
+        .description = "Re-enable interactive REPL mode for direct expression typing",
+        .handler = lisp_cmd_interactive,
         .user_data = NULL
     },
     {
