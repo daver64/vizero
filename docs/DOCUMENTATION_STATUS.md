@@ -34,11 +34,11 @@ This document tracks the accuracy of our documentation against the actual implem
 ## ⚠️ Partially Implemented (Documentation Updated)
 
 ### LISP REPL Plugin
-- **✅ Working commands**: `:lisp-connect`, `:lisp-disconnect`, `:lisp-status`
-- **❌ Missing command**: `:lisp-slime-connect` - handler exists but not registered
+- **✅ Working commands**: `:lisp-connect`, `:lisp-disconnect`, `:lisp-status`, `:lisp-slime-connect`
+- **✅ SLIME integration**: Full SLIME/Swank server connectivity implemented and registered
 - **✅ Interactive mode**: Direct typing in REPL buffer works
 - **✅ SBCL integration**: Automatic detection and process management
-- **Status**: Core functionality works, SLIME command needs registration fix
+- **Status**: Fully implemented with both direct SBCL and SLIME connection methods
 
 ### Session Management
 - **⚠️ Command parsing**: `:mksession`, `:session`, `:sessions`, `:session-save` are recognized
@@ -57,8 +57,7 @@ This document tracks the accuracy of our documentation against the actual implem
 ## 🔧 Implementation Issues Identified
 
 ### Missing Command Registrations
-1. **LISP REPL**: `lisp-slime-connect` handler exists but not in `lisp_commands[]` array
-2. **IRC**: Commands work in IRC buffers but no vi-style `:connect` command
+1. **IRC**: Commands work in IRC buffers but no vi-style `:connect` command
 
 ### TODO Items Found
 1. **Session Management**: All functions have `// TODO: Implement session` comments
@@ -94,8 +93,7 @@ This document tracks the accuracy of our documentation against the actual implem
 ## Recommendations for Developers
 
 ### Easy Fixes
-1. **Enable lisp-slime-connect**: Add entry to `lisp_commands[]` array in `plugins/lisp_repl/lisp_repl_plugin.c`
-2. **Session management**: Implement the TODO functions or remove commands from parser
+1. **Session management**: Implement the TODO functions or remove commands from parser
 
 ### Feature Completion
 1. **LSP hover popups**: UI integration needed for existing framework

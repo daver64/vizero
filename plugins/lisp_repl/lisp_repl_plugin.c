@@ -331,7 +331,8 @@ typedef struct {
 static lisp_repl_state_t* g_lisp_state = NULL;
 
 /* Helper function to properly insert text with newline handling using line-by-line insertion */
-static int __attribute__((unused)) insert_text_with_newlines(vizero_buffer_t* buffer, size_t start_line, size_t start_col, const char* text) {
+static int insert_text_with_newlines(vizero_buffer_t* buffer, size_t start_line, size_t start_col, const char* text) {
+    (void)buffer; (void)start_line; (void)start_col; (void)text; /* Suppress unused warnings */
     if (!buffer || !text || !g_lisp_state || !g_lisp_state->api || !g_lisp_state->api->insert_text) return -1;
     
     /* Split text by newlines and insert each line separately */
@@ -445,7 +446,8 @@ static bool extract_symbol_at_cursor(const char* text, size_t cursor_pos, char* 
 }
 
 /* Format Lisp code with proper indentation */
-static void __attribute__((unused)) format_lisp_code(const char* input, char* output, size_t output_size) {
+static void format_lisp_code(const char* input, char* output, size_t output_size) {
+    (void)input; (void)output; (void)output_size; /* Suppress unused warnings */
     if (!input || !output || output_size == 0) return;
     
     size_t input_len = strlen(input);
@@ -3112,13 +3114,24 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
             printf("[LISP] Complete expression, evaluating...\n");
             return lisp_evaluate_current_input(editor);
         } else {
-            /* Expression incomplete, just insert newline and continue */
-            printf("[LISP] Incomplete expression (balance: %d), continuing on next line\n", actual_balance);
+            /* Expression incomplete, insert newline and continue */
+            printf("[LISP] Incomplete expression (balance: %d), inserting newline to continue\n", actual_balance);
+            
+            /* Expression incomplete, let normal Enter processing handle newline and cursor */
+            printf("[LISP] Incomplete expression, allowing normal Enter processing for newline\n");
+            return 0; /* Let the editor handle Enter key normally */
+            
+            printf("[LISP] Falling back to normal Enter processing\n");
             return 0; /* Let normal newline processing happen */
         }
     } else {
-        printf("[LISP] Failed to extract input for balance check\n");
-        return 0;
+        printf("[LISP] Failed to extract input for balance check, inserting newline anyway\n");
+        
+        /* If we can't check balance, allow normal Enter processing for newline */
+        printf("[LISP] Balance check failed, allowing normal Enter processing\n");
+        return 0; /* Let the editor handle Enter key normally */
+        
+        return 0; /* Let normal newline processing happen */
     }
 }
 
@@ -3215,20 +3228,46 @@ static int lisp_extract_current_input(char* buffer, size_t buffer_size) {
             }
             
             if (prompt_pos) {
-                /* Found the prompt, extract everything after "* " */
+                /* Found the prompt, extract everything from this line through the end of buffer */
                 const char* input_start = prompt_pos + 2;
                 
-                /* Copy the input text */
+                /* Start with the text after the prompt on the current line */
                 strncpy(buffer, input_start, buffer_size - 1);
                 buffer[buffer_size - 1] = '\0';
                 
-                /* Remove any trailing whitespace */
-                size_t len = strlen(buffer);
-                while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r' || buffer[len-1] == ' ' || buffer[len-1] == '\t')) {
-                    buffer[--len] = '\0';
+                size_t current_len = strlen(buffer);
+                
+                /* Append subsequent lines that are part of the same expression */
+                for (size_t j = i; j < line_count && current_len < buffer_size - 10; j++) {
+                    const char* next_line = g_lisp_state->api->get_buffer_line(g_lisp_state->repl_buffer, j);
+                    if (next_line) {
+                        /* Skip empty lines or lines that look like new prompts */
+                        if (strlen(next_line) == 0) continue;
+                        if (strncmp(next_line, "* ", 2) == 0) break; /* New prompt, stop */
+                        if (strstr(next_line, " * ")) break; /* New prompt, stop */
+                        
+                        /* Add newline separator if we have content */
+                        if (current_len > 0 && current_len < buffer_size - 2) {
+                            buffer[current_len++] = '\n';
+                            buffer[current_len] = '\0';
+                        }
+                        
+                        /* Append this line */
+                        size_t next_len = strlen(next_line);
+                        size_t space_left = buffer_size - current_len - 1;
+                        if (next_len > space_left) next_len = space_left;
+                        
+                        strncat(buffer, next_line, next_len);
+                        current_len += next_len;
+                    }
                 }
                 
-                printf("[LISP] Extracted input from line %zu: '%s' (length: %zu)\n", i - 1, buffer, strlen(buffer));
+                /* Remove any trailing whitespace */
+                while (current_len > 0 && (buffer[current_len-1] == '\n' || buffer[current_len-1] == '\r' || buffer[current_len-1] == ' ' || buffer[current_len-1] == '\t')) {
+                    buffer[--current_len] = '\0';
+                }
+                
+                printf("[LISP] Extracted multiline input from line %zu onwards: '%s' (length: %zu)\n", i - 1, buffer, strlen(buffer));
                 return 0;
             }
         }

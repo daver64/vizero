@@ -15,6 +15,12 @@ The Lisp REPL Plugin provides seamless integration between Vizero and SBCL (Stee
 - **Cross-Platform Support**: Works on Windows and Unix-like systems
 - **Graceful Error Handling**: Clean degradation when SBCL is not available
 
+### Enhanced Features
+- **Improved Multiline Input**: Enter key now properly handles incomplete expressions by inserting newlines
+- **Single-line expressions** - balanced parentheses trigger immediate evaluation
+- **Multiline expressions** - unbalanced parentheses allow continuation on next line
+- **Smart parentheses detection** - real-time balance checking for automatic evaluation
+
 ## Commands
 
 ### `:lisp-connect`
@@ -55,24 +61,27 @@ Shows detailed connection and process status information.
 :lisp-status
 ```
 
-### `:lisp-slime-connect` (Not Currently Available)
-**Status**: Handler function exists but command is not registered in the command array.
-
-**Implementation exists for:**
-- Establishes TCP connection to running Swank servers
+### `:lisp-slime-connect`
+Connects to a SLIME/Swank server via TCP socket for remote REPL interaction.
+- Establishes TCP connection to running Swank server
 - Uses SLIME :emacs-rex protocol for evaluation
 - Intelligent response parsing from S-expressions
 - Creates interactive REPL buffer with proper formatting
 - Cross-platform socket support (Windows/Unix)
+- Automatically disconnects from direct SBCL if connected
+- Supports hostname and port arguments with defaults
 
-**To enable:**
-The handler function `lisp_cmd_slime_connect` exists but needs to be added to the `lisp_commands[]` array in the plugin.
-
-**Intended Usage (when enabled):**
+**Usage:**
 ```
 :lisp-slime-connect hostname port
 :lisp-slime-connect localhost 4005    ; Example with local Swank server
+:lisp-slime-connect 4005              ; Use localhost with custom port
+:lisp-slime-connect                   ; Use defaults (localhost:4005)
 ```
+
+**Prerequisites:**
+- Swank server must be running on the target host/port
+- See SLIME Installation Guide for server setup instructions
 
 ## SBCL Detection
 
@@ -148,11 +157,20 @@ The REPL seamlessly integrates with Vizero's vi-style interface:
 (+ 1 2 3)
 ; → 6
 
+; Multiline expressions now work naturally:
 (defun factorial (n)
-  (if (<= n 1)
+  (if (<= n 1)      ; Press Enter here - continues on next line
       1
-      (* n (factorial (- n 1)))))
+      (* n (factorial (- n 1)))))  ; Press Enter here - evaluates when balanced
 ; → FACTORIAL
+
+; Complex nested expressions work too:
+(defun fibonacci (n)
+  (cond ((= n 0) 0)
+        ((= n 1) 1)
+        (t (+ (fibonacci (- n 1))
+              (fibonacci (- n 2))))))
+; → FIBONACCI
 
 (factorial 5)
 ; → 120
@@ -222,14 +240,14 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 
 ## Future Enhancements
 
-### Phase 3: SLIME Protocol Integration ⚠️ **PARTIALLY COMPLETED**
-- **✅ `:lisp-slime-connect` Handler Function**: Alternative connection method implementation exists
-- **❌ Command Registration**: Handler exists but command is not registered in command array
+### Phase 3: SLIME Protocol Integration ✅ **COMPLETED**
+- **✅ `:lisp-slime-connect` Command**: Fully implemented and registered command
+- **✅ Command Registration**: Properly registered in lisp_commands[] array
 - **✅ TCP Socket Connectivity**: Robust connection to Swank servers with proper error handling
 - **✅ SLIME Protocol Support**: Full :emacs-rex message protocol implementation
 - **✅ Response Parsing**: Intelligent extraction of results from S-expression responses
 - **✅ Interactive Buffer Integration**: SLIME responses displayed directly in REPL buffer
-- **⚠️ Availability**: Command exists but is not accessible via `:lisp-slime-connect` due to registration issue
+- **✅ Dual Connection Architecture**: Seamless switching between direct SBCL and SLIME modes
 
 ### Phase 4: Advanced SLIME Features (Future)
 - **Advanced Debugging**: Interactive debugger with stack traces and condition handling

@@ -502,6 +502,11 @@ int main() {
 - **Path issues**: Use absolute paths if relative paths don't work
 - **Version compatibility**: Use recent clangd versions (LLVM 12+)
 
+#### LISP REPL Issues
+- **Multiline expressions**: Now supported - Enter key inserts newlines for unbalanced expressions
+- **Automatic evaluation**: Expressions evaluate when parentheses are balanced
+- **Connection problems**: Use `:lisp-status` to check SBCL/SLIME connection status
+
 ---
 
 ## IRC Client Integration

@@ -184,14 +184,16 @@ static irc_state_t* g_irc_state = NULL;
 static void irc_send_raw(const char* message);
 
 /* Utility functions */
-static void __attribute__((unused)) irc_initialize_networking(void) {
+static void irc_initialize_networking(void) {
+    /* Currently unused function */
 #ifdef _WIN32
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
 }
 
-static void __attribute__((unused)) irc_cleanup_networking(void) {
+static void irc_cleanup_networking(void) {
+    /* Currently unused function */
 #ifdef _WIN32
     WSACleanup();
 #endif
