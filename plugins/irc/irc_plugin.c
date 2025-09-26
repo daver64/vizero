@@ -1746,12 +1746,15 @@ static int irc_wants_full_window(vizero_editor_t* editor) {
         return 0;
     }
     
-    /* Only take over full window when we're actually in an IRC buffer */
-    int wants = irc_is_in_irc_buffer(editor) ? 1 : 0;
+    /* Only take over full window when we're connected to IRC AND in an IRC buffer */
+    int connected = g_irc_state->connection.connected;
+    int in_irc_buffer = irc_is_in_irc_buffer(editor);
+    int wants = (connected && in_irc_buffer) ? 1 : 0;
+    
     static int last_wants = -1;
     if (wants != last_wants) {
-        printf("[IRC] wants_full_window: in_irc_buffer=%s, wants=%d\n", 
-               wants ? "yes" : "no", wants);
+        printf("[IRC] wants_full_window: connected=%s, in_irc_buffer=%s, wants=%d\n", 
+               connected ? "yes" : "no", in_irc_buffer ? "yes" : "no", wants);
         last_wants = wants;
     }
     return wants;
@@ -1768,12 +1771,11 @@ static int irc_on_any_command(vizero_editor_t* editor, const char* command, cons
     
     printf("[IRC] Command executed: '%s'\n", command ? command : "NULL");
     
-    /* AGGRESSIVE PROTECTION: Keep buffer readonly as long as IRC plugin is loaded */
-    /* Only restore writability if user explicitly disables IRC */
-    if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+    /* PROTECTION: Keep IRC buffer readonly during command processing */
+    if (g_irc_state && g_irc_state->irc_buffer && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
         vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
-        if (current_buffer) {
-            printf("[IRC] Ensuring buffer remains readonly (aggressive protection)\n");
+        if (current_buffer == g_irc_state->irc_buffer) {
+            printf("[IRC] Ensuring IRC buffer remains readonly during command processing\n");
             g_irc_state->api->set_buffer_readonly(current_buffer, 1);
         }
     }
@@ -1787,6 +1789,11 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     (void)editor; /* Unused */
     
     if (!g_irc_state) return 0;
+    
+    /* Only handle input when we're connected to IRC or in an IRC buffer */
+    if (!g_irc_state->connection.connected && !irc_is_in_irc_buffer(editor)) {
+        return 0; /* Let other plugins/editor handle the input */
+    }
     
     /* If we're in vi command mode, collect the command and execute it ourselves */
     if (g_irc_state->in_vi_command) {
@@ -1871,22 +1878,25 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         return 0;
     }
     
-    /* ONLY intercept the initial colon when IRC is inactive to set buffer readonly */
-    if (key == ':' && !g_in_command_mode && g_irc_state->buffer_count == 0) {
-        printf("[IRC] Initial colon detected - making buffer readonly to prevent text bleeding\n");
-        g_in_command_mode = 1;
-        
-        /* Make buffer readonly immediately */
-        if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+    /* ONLY intercept the initial colon when in IRC buffer to set buffer readonly */
+    if (key == ':' && !g_in_command_mode && g_irc_state->irc_buffer) {
+        /* Check if we're currently in the IRC buffer */
+        if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
             vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
-            if (current_buffer) {
-                printf("[IRC] Setting buffer readonly for command mode protection\n");
-                g_irc_state->api->set_buffer_readonly(current_buffer, 1);
+            if (current_buffer == g_irc_state->irc_buffer) {
+                printf("[IRC] Initial colon detected in IRC buffer - making readonly to prevent text bleeding\n");
+                g_in_command_mode = 1;
+                
+                /* Make IRC buffer readonly immediately */
+                if (g_irc_state->api->set_buffer_readonly) {
+                    printf("[IRC] Setting IRC buffer readonly for command mode protection\n");
+                    g_irc_state->api->set_buffer_readonly(current_buffer, 1);
+                }
+                
+                /* Let colon pass through to enter command mode */
+                return 0;
             }
         }
-        
-        /* Let colon pass through to enter command mode */
-        return 0;
     }
     
     /* When in command mode and IRC is inactive, DON'T intercept anything - let vim handle command building */
@@ -1904,10 +1914,10 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
             printf("[IRC] Command mode cancelled - restoring buffer writability\n");
             g_in_command_mode = 0;
             
-            /* Restore buffer writability since command was cancelled */
-            if (g_irc_state && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
+            /* Restore IRC buffer writability since command was cancelled */
+            if (g_irc_state && g_irc_state->irc_buffer && g_irc_state->api && g_irc_state->api->get_current_buffer && g_irc_state->api->set_buffer_readonly) {
                 vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
-                if (current_buffer) {
+                if (current_buffer == g_irc_state->irc_buffer) {
                     g_irc_state->api->set_buffer_readonly(current_buffer, 0);
                 }
             }

@@ -79,10 +79,9 @@
       "type": "generic",
       "load_on_demand": false,
       "dll_path": "irc.dll",
-      "description": "IRC Client Plugin with command registration - Fixed for coexistence",
+      "description": "IRC Client Plugin with command registration (demo)",
       "always_load": true
     },
-
     "lisp_repl": {
       "type": "generic",
       "load_on_demand": false,

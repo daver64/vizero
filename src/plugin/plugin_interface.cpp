@@ -33,6 +33,55 @@ static int api_insert_text(vizero_buffer_t* buffer, vizero_position_t pos, const
     return vizero_buffer_insert_text(buffer, pos.line, pos.column, text);
 }
 
+static int api_insert_text_multiline(vizero_buffer_t* buffer, vizero_position_t pos, const char* text) {
+    if (!buffer || !text) return -1;
+    
+    size_t current_line = pos.line;
+    size_t current_col = pos.column;
+    const char* segment_start = text;
+    
+    for (const char* c = text; *c; c++) {
+        if (*c == '\n') {
+            /* Insert text segment before newline */
+            if (c > segment_start) {
+                /* Create temporary string for this segment */
+                size_t segment_len = c - segment_start;
+                char* segment = (char*)malloc(segment_len + 1);
+                if (!segment) return -1;
+                strncpy(segment, segment_start, segment_len);
+                segment[segment_len] = '\0';
+                
+                /* Insert the segment */
+                if (vizero_buffer_insert_text(buffer, current_line, current_col, segment) != 0) {
+                    free(segment);
+                    return -1;
+                }
+                current_col += segment_len;
+                free(segment);
+            }
+            
+            /* Split the line at current position to create newline */
+            if (vizero_buffer_split_line(buffer, current_line, current_col) != 0) {
+                return -1;
+            }
+            
+            /* Move to next line, column 0 */
+            current_line++;
+            current_col = 0;
+            segment_start = c + 1;  /* Start after the newline */
+        }
+    }
+    
+    /* Insert remaining text after last newline (if any) */
+    if (*segment_start) {
+        if (vizero_buffer_insert_text(buffer, current_line, current_col, segment_start) != 0) {
+            return -1;
+        }
+    }
+    
+    return 0;
+}
+
 static int api_delete_text(vizero_buffer_t* buffer, vizero_range_t range) {
     /* This would need a new buffer function for range deletion */
     return vizero_buffer_delete_range(buffer, range.start.line, range.start.column, 
@@ -115,6 +164,7 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     api->get_buffer_line = api_get_buffer_line;
     api->get_buffer_line_length = api_get_buffer_line_length;
     api->insert_text = api_insert_text;
+    api->insert_text_multiline = api_insert_text_multiline;
     api->delete_text = api_delete_text;
     api->is_buffer_readonly = api_is_buffer_readonly;
     api->set_buffer_readonly = api_set_buffer_readonly;

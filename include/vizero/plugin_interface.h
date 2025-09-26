@@ -576,6 +576,9 @@ typedef struct {
     /** @brief Insert text at a specific position */
     int (*insert_text)(vizero_buffer_t* buffer, vizero_position_t pos, const char* text);
     
+    /** @brief Insert text with proper newline handling (splits lines on \n) */
+    int (*insert_text_multiline)(vizero_buffer_t* buffer, vizero_position_t pos, const char* text);
+    
     /** @brief Delete text within a specific range */
     int (*delete_text)(vizero_buffer_t* buffer, vizero_range_t range);
     
