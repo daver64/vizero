@@ -331,7 +331,7 @@ typedef struct {
 static lisp_repl_state_t* g_lisp_state = NULL;
 
 /* Helper function to properly insert text with newline handling using line-by-line insertion */
-static int insert_text_with_newlines(vizero_buffer_t* buffer, size_t start_line, size_t start_col, const char* text) {
+static int __attribute__((unused)) insert_text_with_newlines(vizero_buffer_t* buffer, size_t start_line, size_t start_col, const char* text) {
     if (!buffer || !text || !g_lisp_state || !g_lisp_state->api || !g_lisp_state->api->insert_text) return -1;
     
     /* Split text by newlines and insert each line separately */
@@ -445,7 +445,7 @@ static bool extract_symbol_at_cursor(const char* text, size_t cursor_pos, char* 
 }
 
 /* Format Lisp code with proper indentation */
-static void format_lisp_code(const char* input, char* output, size_t output_size) {
+static void __attribute__((unused)) format_lisp_code(const char* input, char* output, size_t output_size) {
     if (!input || !output || output_size == 0) return;
     
     size_t input_len = strlen(input);
@@ -1524,7 +1524,7 @@ static bool send_to_sbcl(const char* command) {
         return false;
     }
     
-    char full_command[1024];
+    char full_command[1026];  /* Increased to accommodate command + newline */
     snprintf(full_command, sizeof(full_command), "%s\n", command);
     
 #ifdef _WIN32
@@ -2068,7 +2068,17 @@ static int lisp_cmd_eval(vizero_editor_t* editor, const char* args) {
         
         char prefixed_input[2048];
         if (line_count > 0) {
-            snprintf(prefixed_input, sizeof(prefixed_input), "\n%s", input_display);
+            /* Ensure input_display fits with newline prefix */
+            size_t input_len = strlen(input_display);
+            if (input_len >= sizeof(prefixed_input) - 1) {
+                /* Temporarily truncate input_display to fit */
+                char temp_char = input_display[sizeof(prefixed_input) - 2];
+                ((char*)input_display)[sizeof(prefixed_input) - 2] = '\0';
+                snprintf(prefixed_input, sizeof(prefixed_input), "\n%s", input_display);
+                ((char*)input_display)[sizeof(prefixed_input) - 2] = temp_char;
+            } else {
+                snprintf(prefixed_input, sizeof(prefixed_input), "\n%s", input_display);
+            }
         } else {
             snprintf(prefixed_input, sizeof(prefixed_input), "%s", input_display);
         }
@@ -2324,7 +2334,7 @@ static int lisp_cmd_status(vizero_editor_t* editor, const char* args) {
         
     } else {
         /* No connection */
-        char sbcl_status[256] = "Not found";
+        char sbcl_status[540] = "Not found";  /* Increased to accommodate 512-char path + text */
         if (g_lisp_state->sbcl.sbcl_path[0]) {
             snprintf(sbcl_status, sizeof(sbcl_status), "Available at %s", g_lisp_state->sbcl.sbcl_path);
         }
@@ -2354,7 +2364,7 @@ static int lisp_cmd_status(vizero_editor_t* editor, const char* args) {
 static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
     /* Check if already connected */
     if (g_lisp_state->connection_type == LISP_CONNECTION_SLIME && g_lisp_state->slime.connected) {
-        char msg[256];
+        char msg[320];  /* Increased size to accommodate host string */
         snprintf(msg, sizeof(msg), "Already connected to SLIME server at %s:%d", 
                  g_lisp_state->slime.host, g_lisp_state->slime.port);
         lisp_log_message(msg);
@@ -3036,6 +3046,12 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
         
         /* Prepend newline to result for proper formatting */
         char formatted_result[2048];
+        /* Ensure cleaned_result fits with newline prefix */
+        size_t cleaned_len_check = strlen(cleaned_result);
+        if (cleaned_len_check >= sizeof(formatted_result) - 1) {
+            /* Truncate cleaned_result to fit */
+            cleaned_result[sizeof(formatted_result) - 2] = '\0';
+        }
         snprintf(formatted_result, sizeof(formatted_result), "\n%s", cleaned_result);
         printf("[LISP] Formatted result (%zu chars): '%s'\n", strlen(formatted_result), formatted_result);
         
@@ -3250,7 +3266,7 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
         /* Debug buffer switches */
         if (current != last_buffer) {
             printf("[LISP] Buffer switch detected: from %p to %p (REPL buffer: %p)\n", 
-                   last_buffer, current, g_lisp_state->repl_buffer);
+                   (void*)last_buffer, (void*)current, (void*)g_lisp_state->repl_buffer);
             if (current == g_lisp_state->repl_buffer) {
                 printf("[LISP] Switched back to REPL buffer - interactive_mode=%d, user_exited=%d\n", 
                        g_lisp_state->interactive_mode, g_lisp_state->user_exited_interactive);

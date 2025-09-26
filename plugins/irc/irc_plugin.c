@@ -184,14 +184,14 @@ static irc_state_t* g_irc_state = NULL;
 static void irc_send_raw(const char* message);
 
 /* Utility functions */
-static void irc_initialize_networking(void) {
+static void __attribute__((unused)) irc_initialize_networking(void) {
 #ifdef _WIN32
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
 }
 
-static void irc_cleanup_networking(void) {
+static void __attribute__((unused)) irc_cleanup_networking(void) {
 #ifdef _WIN32
     WSACleanup();
 #endif
@@ -485,7 +485,7 @@ static void irc_send_raw(const char* message) {
         return;
     }
     
-    char buffer[512];
+    char buffer[515];  /* Increased to accommodate message + \r\n + null terminator */
     snprintf(buffer, sizeof(buffer), "%s\r\n", message);
     printf("[IRC] Sending raw: %s", buffer); /* buffer already has \r\n */
     
@@ -911,7 +911,12 @@ static void irc_set_active_buffer(const char* buffer_name) {
     }
     
     /* Set new active buffer */
-    strncpy(g_irc_state->current_buffer, buffer_name, sizeof(g_irc_state->current_buffer) - 1);
+    size_t buffer_name_len = strlen(buffer_name);
+    if (buffer_name_len >= sizeof(g_irc_state->current_buffer)) {
+        buffer_name_len = sizeof(g_irc_state->current_buffer) - 1;
+    }
+    memcpy(g_irc_state->current_buffer, buffer_name, buffer_name_len);
+    g_irc_state->current_buffer[buffer_name_len] = '\0';
     
     irc_buffer_t* new_buffer = irc_find_buffer(buffer_name);
     if (new_buffer) {
@@ -1213,7 +1218,7 @@ static void irc_render_input_box_gl(vizero_renderer_t* renderer, int x, int y, i
     text_info.colour = (vizero_colour_t){0.7f, 0.7f, 0.7f, 1.0f};
     text_info.font = NULL;
     
-    char prompt[256];
+    char prompt[600];  /* Increased to accommodate current_buffer + input_buffer + formatting */
     snprintf(prompt, sizeof(prompt), "[%s] %s", g_irc_state->current_buffer, g_irc_state->input_buffer);
     vizero_renderer_draw_text(renderer, prompt, &text_info);
 }
@@ -1580,7 +1585,7 @@ static int irc_cmd_join(vizero_editor_t* editor, const char* args) {
     
     /* Ensure channel starts with # */
     if (channel[0] != '#' && channel[0] != '&') {
-        char temp[64];
+        char temp[65];  /* Increased to accommodate "#" + 63-char channel name */
         snprintf(temp, sizeof(temp), "#%s", channel);
         size_t temp_len = strlen(temp);
         if (temp_len >= sizeof(channel)) temp_len = sizeof(channel) - 1;
