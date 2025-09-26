@@ -1477,24 +1477,33 @@ static void slime_close_repl_on_disconnect(void) {
 
 /* Send command to SBCL */
 static bool read_from_sbcl(char* buffer, size_t buffer_size, int timeout_ms) {
-    (void)timeout_ms;  /* Currently unused, could be implemented with select/poll */
     if (!g_lisp_state->sbcl.running) {
         return false;
     }
     
 #ifdef _WIN32
-    DWORD bytes_available = 0;
-    if (!PeekNamedPipe(g_lisp_state->sbcl.stdout_pipe, NULL, 0, NULL, &bytes_available, NULL)) {
-        return false;
-    }
+    /* Implement proper timeout waiting on Windows */
+    int elapsed_ms = 0;
+    const int poll_interval_ms = 10;
     
-    if (bytes_available > 0) {
-        DWORD bytes_read;
-        DWORD to_read = (bytes_available < buffer_size - 1) ? bytes_available : (DWORD)(buffer_size - 1);
-        if (ReadFile(g_lisp_state->sbcl.stdout_pipe, buffer, to_read, &bytes_read, NULL)) {
-            buffer[bytes_read] = '\0';
-            return bytes_read > 0;
+    while (elapsed_ms < timeout_ms) {
+        DWORD bytes_available = 0;
+        if (!PeekNamedPipe(g_lisp_state->sbcl.stdout_pipe, NULL, 0, NULL, &bytes_available, NULL)) {
+            return false;
         }
+        
+        if (bytes_available > 0) {
+            DWORD bytes_read;
+            DWORD to_read = (bytes_available < buffer_size - 1) ? bytes_available : (DWORD)(buffer_size - 1);
+            if (ReadFile(g_lisp_state->sbcl.stdout_pipe, buffer, to_read, &bytes_read, NULL)) {
+                buffer[bytes_read] = '\0';
+                return bytes_read > 0;
+            }
+        }
+        
+        /* Wait a short interval before polling again */
+        Sleep(poll_interval_ms);
+        elapsed_ms += poll_interval_ms;
     }
 #else
     /* Non-blocking read on Unix */
@@ -1854,13 +1863,7 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
     /* Send initial setup commands to SBCL */
     send_to_sbcl("(force-output)");
     
-    /* Wait for and read SBCL response */
-#ifdef _WIN32
-    Sleep(200); /* Wait 200ms for SBCL to process and respond */
-#else
-    usleep(200000); /* Wait 200ms for SBCL to process and respond */
-#endif
-    
+    /* Read SBCL response with proper timeout */
     char sbcl_response[1024];
     if (read_from_sbcl(sbcl_response, sizeof(sbcl_response), 1000)) {
         /* Clean up SBCL response - remove control characters and fix line endings */
@@ -1978,6 +1981,54 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
                    last_line, last_line_length);
         }
     }
+    
+    /* Add an explicit REPL prompt for user input */
+    if (g_lisp_state->repl_buffer && g_lisp_state->api && g_lisp_state->api->insert_text) {
+        size_t line_count = g_lisp_state->api->get_buffer_line_count(g_lisp_state->repl_buffer);
+        vizero_position_t prompt_pos;
+        prompt_pos.line = line_count > 0 ? line_count - 1 : 0;
+        prompt_pos.column = 0;
+        
+        /* Find the end of the last line */
+        if (line_count > 0 && g_lisp_state->api->get_buffer_line_length) {
+            prompt_pos.column = g_lisp_state->api->get_buffer_line_length(g_lisp_state->repl_buffer, prompt_pos.line);
+        }
+        
+        /* Add a fresh prompt line if the current line isn't empty */
+        const char* prompt_text = (prompt_pos.column > 0) ? "\n* " : "* ";
+        
+        int prompt_result = g_lisp_state->api->insert_text(g_lisp_state->repl_buffer, prompt_pos, prompt_text);
+        printf("[LISP] Added REPL prompt '%s', result: %d\n", prompt_text, prompt_result);
+        
+        /* Position cursor after the prompt */
+        if (prompt_result == 0 && g_lisp_state->api->get_current_cursor && g_lisp_state->api->set_cursor_position) {
+            vizero_cursor_t* cursor = g_lisp_state->api->get_current_cursor(editor);
+            if (cursor) {
+                size_t final_line_count = g_lisp_state->api->get_buffer_line_count(g_lisp_state->repl_buffer);
+                if (final_line_count > 0) {
+                    size_t last_line = final_line_count - 1;
+                    size_t last_line_length = 0;
+                    if (g_lisp_state->api->get_buffer_line_length) {
+                        last_line_length = g_lisp_state->api->get_buffer_line_length(g_lisp_state->repl_buffer, last_line);
+                    }
+                    
+                    vizero_position_t cursor_pos = {last_line, last_line_length};
+                    int cursor_result = g_lisp_state->api->set_cursor_position(cursor, cursor_pos);
+                    printf("[LISP] Positioned cursor after prompt at (%zu, %zu), result: %d\n", 
+                           cursor_pos.line, cursor_pos.column, cursor_result);
+                    
+                    /* Update prompt start position for interactive mode */
+                    g_lisp_state->prompt_start.line = last_line;
+                    g_lisp_state->prompt_start.column = last_line_length - 1; /* Just after "* " */
+                    printf("[LISP] Updated prompt start to (%zu, %zu)\n", 
+                           g_lisp_state->prompt_start.line, g_lisp_state->prompt_start.column);
+                }
+            }
+        }
+    }
+    
+    lisp_log_message("SBCL connection established - type Lisp expressions directly");
+    lisp_log_message("Use Escape+:lisp-disconnect to close connection");
     
     return 0;
 }
@@ -2101,13 +2152,7 @@ static int lisp_cmd_eval(vizero_editor_t* editor, const char* args) {
         return -1;
     }
     
-    /* Wait a bit and try to read the result */
-#ifdef _WIN32
-    Sleep(100); /* Wait 100ms for SBCL to process */
-#else
-    usleep(100000); /* Wait 100ms for SBCL to process */
-#endif
-    
+    /* Read the result with proper timeout */
     char result[2048];
     if (read_from_sbcl(result, sizeof(result), 500)) {
         /* Display the result in the REPL buffer */
@@ -3022,13 +3067,7 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
         return -1;
     }
     
-    /* Wait for SBCL response */
-#ifdef _WIN32
-    Sleep(200); /* Wait 200ms for SBCL to process */
-#else
-    usleep(200000); /* Wait 200ms for SBCL to process */
-#endif
-    
+    /* Read SBCL response with proper timeout */
     char result[2048];
     if (read_from_sbcl(result, sizeof(result), 1000)) {
         printf("[LISP] Raw SBCL result (%zu chars): '%s'\n", strlen(result), result);
@@ -3121,8 +3160,6 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
             printf("[LISP] Incomplete expression, allowing normal Enter processing for newline\n");
             return 0; /* Let the editor handle Enter key normally */
             
-            printf("[LISP] Falling back to normal Enter processing\n");
-            return 0; /* Let normal newline processing happen */
         }
     } else {
         printf("[LISP] Failed to extract input for balance check, inserting newline anyway\n");
@@ -3131,7 +3168,7 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
         printf("[LISP] Balance check failed, allowing normal Enter processing\n");
         return 0; /* Let the editor handle Enter key normally */
         
-        return 0; /* Let normal newline processing happen */
+        
     }
 }
 
