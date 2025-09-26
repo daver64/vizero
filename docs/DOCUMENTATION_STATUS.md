@@ -1,24 +1,110 @@
-# Vizero Documentation Status - Phase 2 In Progress
+# Documentation Status - Current Implementation vs Claims
 
-## Overview
-This document tracks the progress of comprehensive Doxygen documentation for Vizero editor.
+## Updated September 2025
 
-## Phase 2 Status: 🔄 IN PROGRESS
+This document tracks the accuracy of our documentation against the actual implementation.
 
-**Documentation Updated**: September 26, 2025  
-**Output Location**: `docs/html/index.html`  
-**Status**: Phase 1 complete, Phase 2 adding plugin documentation
+### Recent Updates (September 2025)
+- **✅ Documentation Accuracy Review**: Comprehensive verification of all claims against source code
+- **✅ LISP REPL Status Correction**: Identified that `:lisp-slime-connect` handler exists but isn't registered
+- **✅ Session Management Clarification**: Commands parsed but implementation marked as TODO
+- **✅ IRC Integration Correction**: Plugin works but doesn't provide documented `:connect` command
+- **✅ All Major Documentation Updated**: README, manual, and development docs corrected
 
-### Recent Updates (January 2025)
-- **✅ SLIME Integration Complete**: Full SLIME protocol implementation with TCP socket connectivity
-- **✅ LISP REPL Plugin Documentation**: Complete Doxygen comments added
-- **✅ Documentation Files Updated**: LISP_REPL_PLUGIN.md fully updated for interactive mode + SLIME
-- **✅ README Updated**: Added LISP REPL commands including `:lisp-slime-connect`
-- **✅ Phase 3 Implementation**: SLIME/Swank server connection with intelligent response parsing
-- **✅ Plugin API Coverage**: Comprehensive documentation for interactive REPL features
+## ✅ Fully Implemented and Documented Correctly
 
-### 1. Doxygen Configuration ✅
-- **File**: `Doxyfile`
+### Core Editor Features
+- **Vi commands and navigation** - All documented commands work as described
+- **Buffer management** - `:bn`, `:bp`, `:b1`, `:b2`, `:buffers` all implemented
+- **File operations** - `:w`, `:wa`, `:q`, `:wq`, `:e`, `:r` all working
+- **Search and replace** - `/`, `?`, `:s/`, `:%s/` with regex support
+- **Compilation** - `:cc`, `:cpp`, `:asm`, `:run`, `:make` commands working
+- **Window management** - `:split`, `:vsplit`, `:close`, `:only` implemented
+- **LSP integration** - clangd support with Ctrl+Space completion
+- **Syntax highlighting** - All language plugins (C, JavaScript, Python, etc.) working
+- **Settings system** - Persistent configuration with `:set`, `:show` commands
+- **Colour themes** - `:colourscheme` with Default/Monokai/Solarized Dark themes
+
+### Plugin System
+- **Plugin loading** - Dynamic plugin system with .dll/.so support
+- **Command registration** - Plugin commands properly integrated
+- **Syntax highlighting plugins** - All documented language plugins implemented
+- **Cross-platform** - Windows/Unix plugin loading working
+
+## ⚠️ Partially Implemented (Documentation Updated)
+
+### LISP REPL Plugin
+- **✅ Working commands**: `:lisp-connect`, `:lisp-disconnect`, `:lisp-status`
+- **❌ Missing command**: `:lisp-slime-connect` - handler exists but not registered
+- **✅ Interactive mode**: Direct typing in REPL buffer works
+- **✅ SBCL integration**: Automatic detection and process management
+- **Status**: Core functionality works, SLIME command needs registration fix
+
+### Session Management
+- **⚠️ Command parsing**: `:mksession`, `:session`, `:sessions`, `:session-save` are recognized
+- **❌ Implementation**: All marked as "TODO: Implement" in source code
+- **Status**: Framework exists but no actual functionality yet
+
+## ❌ Not Implemented (Documentation Corrected)
+
+### IRC Client Integration
+- **✅ Plugin exists**: IRC plugin loads and provides IRC functionality
+- **❌ Vi commands**: No `:connect` command as documented in manual
+- **✅ Buffer interface**: IRC works through buffer switching, not vi commands
+- **✅ Protocol support**: Full IRC protocol implementation exists
+- **Status**: Working but uses different interface than documented
+
+## 🔧 Implementation Issues Identified
+
+### Missing Command Registrations
+1. **LISP REPL**: `lisp-slime-connect` handler exists but not in `lisp_commands[]` array
+2. **IRC**: Commands work in IRC buffers but no vi-style `:connect` command
+
+### TODO Items Found
+1. **Session Management**: All functions have `// TODO: Implement session` comments
+2. **LSP Hover**: Framework ready but UI popup not implemented
+3. **LSP Diagnostics**: Framework ready but UI integration needed
+
+## Documentation Updates Made
+
+### README.md
+- ✅ Updated LISP REPL section to note missing `:lisp-slime-connect` registration
+- ✅ Updated session management to indicate TODO status
+- ✅ Corrected feature claims to match implementation
+
+### manual.md
+- ✅ Updated IRC section to reflect actual implementation (no `:connect` command)
+- ✅ Updated session management commands to indicate TODO status
+- ✅ Maintained accuracy of all working features
+
+### docs/LISP_REPL_PLUGIN.md
+- ✅ Changed Phase 3 status from "COMPLETED" to "PARTIALLY COMPLETED"
+- ✅ Added warning about command registration issue
+- ✅ Provided instructions for enabling `:lisp-slime-connect`
+
+### docs/DEVELOPMENT.md
+- ✅ Updated troubleshooting section with accurate information
+- ✅ Corrected session management claims
+- ✅ Added notes about command registration issues
+
+### docs/SLIME_TESTING_GUIDE.md
+- ✅ Updated status section to reflect command availability issue
+- ✅ Maintained accuracy about implemented functionality
+
+## Recommendations for Developers
+
+### Easy Fixes
+1. **Enable lisp-slime-connect**: Add entry to `lisp_commands[]` array in `plugins/lisp_repl/lisp_repl_plugin.c`
+2. **Session management**: Implement the TODO functions or remove commands from parser
+
+### Feature Completion
+1. **LSP hover popups**: UI integration needed for existing framework
+2. **IRC vi commands**: Add `:connect` command registration if desired interface
+3. **Session persistence**: Complete the session management implementation
+
+## Summary
+
+The documentation now accurately reflects the current implementation state. All working features are properly documented, partially working features are clearly marked, and missing implementations are noted. This provides users with accurate expectations and developers with clear tasks for completion.
 - **Status**: Complete 
 - **Features**:
   - Optimized for C/C++ projects

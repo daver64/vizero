@@ -24,7 +24,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Logo Display**: Vizero logo appears on startup when no files are loaded, creating a professional welcome screen.
 - **Search System Improvements**: Fixed double-character input issues in search mode (`/`, `?`) and command mode (`:`).
 - **Colour Theme System**: Complete theming with Default, Monokai, and Solarized Dark themes. Switch themes with `:colourscheme <theme>` command.
-- **Session Management Infrastructure**: Added comprehensive session management system with `:mksession`, `:session`, `:sessions`, and `:session-save` commands (implementation in progress).
+- **Session Management Infrastructure**: Added comprehensive session management command parsing for `:mksession`, `:session`, `:sessions`, and `:session-save` commands (implementation framework exists, actual functionality marked as TODO).
 - **Status Message Timeouts**: Status messages now auto-dismiss after 3 seconds for better user experience.
 - **Clean Build System**: Eliminated all compilation warnings for a professional development experience.
 - **LSP Integration with clangd**: Full Language Server Protocol support for C/C++ with code completion, hover information, and diagnostics. Gracefully degrades when clangd is not available.
@@ -40,6 +40,28 @@ Vizero provides two Windows executables:
 - **`vizero-gui.exe`**: GUI version without console window for cleaner desktop integration
 
 Both versions share identical functionality and command-line arguments. Use the GUI version for regular editing and the console version for debugging or when you need to see command-line output.
+
+## 📚 Documentation
+
+### User Documentation
+- **[Complete User Manual](manual.md)** - Comprehensive guide to all features and commands
+- **[Quick Start](#quick-start)** - Get up and running immediately (see below)
+
+### Developer Documentation  
+- **[Development Guide](docs/DEVELOPMENT.md)** - Build instructions, architecture, and contribution guidelines
+- **[Documentation Status](docs/DOCUMENTATION_STATUS.md)** - Current implementation status vs documentation claims
+
+### Plugin Documentation
+- **[LISP REPL Plugin](docs/LISP_REPL_PLUGIN.md)** - Interactive Common Lisp development with SBCL
+- **[clangd Integration](docs/CLANGD_INTEGRATION_PROGRESS.md)** - Language Server Protocol support for C/C++
+- **[JavaScript Syntax Highlighter](docs/JAVASCRIPT_SYNTAX_HIGHLIGHTER.md)** - JavaScript/TypeScript syntax highlighting
+- **[Colour Themes](docs/COLOUR_THEMES.md)** - Available themes and customization
+- **[SLIME Testing Guide](docs/SLIME_TESTING_GUIDE.md)** - SLIME/Swank server integration testing
+- **[SLIME Installation Guide](docs/SLIME_INSTALLATION_GUIDE.md)** - Set up SLIME for Lisp development
+
+### Reference Documentation
+- **[Suggested Commands](docs/SUGGESTED_COMMANDS.md)** - Complete command reference and implementation status
+- **[Plugin Conflicts](docs/PLUGIN_CONFLICTS.md)** - Known plugin compatibility issues
 
 ## Usage Notes
 
@@ -122,7 +144,7 @@ Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
 # Once connected, type directly in *lisp-repl* buffer
 # Press Enter when parentheses are balanced to evaluate
 # Use Escape+: for vi commands, automatic state restoration
-:lisp-slime-connect localhost 4005  # Connect to Swank server (SLIME protocol)
+# Note: :lisp-slime-connect command exists but is not currently registered
 ```
 
 #### File Operations
@@ -246,10 +268,10 @@ N              # Previous match
 
 #### Session Management
 ```
-:mksession <name>       # Create/save session
-:session <name>         # Load session
-:sessions               # List available sessions
-:session-save           # Save current session
+:mksession <name>       # Create/save session (framework exists, implementation TODO)
+:session <name>         # Load session (framework exists, implementation TODO)
+:sessions               # List available sessions (framework exists, implementation TODO)
+:session-save           # Save current session (framework exists, implementation TODO)
 ```
 
 ## Advanced Features
@@ -400,3 +422,29 @@ Areas for contribution:
 ## License
 
 MIT License - see LICENSE file for details.
+
+---
+
+## 🔗 Additional Resources
+
+### Documentation Index
+- **[📖 Complete Manual](manual.md)** - Full user guide with examples
+- **[🛠️ Development Guide](docs/DEVELOPMENT.md)** - For contributors and plugin developers  
+- **[📊 Documentation Status](docs/DOCUMENTATION_STATUS.md)** - Implementation accuracy tracking
+- **[🎨 Colour Themes](docs/COLOUR_THEMES.md)** - Theme customization guide
+- **[🔧 Plugin Development](docs/DEVELOPMENT.md#plugin-development)** - Create your own plugins
+
+### Specialized Guides
+- **[🐍 LISP Development](docs/LISP_REPL_PLUGIN.md)** - Interactive Common Lisp with SBCL
+- **[⚡ C/C++ Development](docs/CLANGD_INTEGRATION_PROGRESS.md)** - LSP-powered code completion
+- **[🌐 JavaScript Support](docs/JAVASCRIPT_SYNTAX_HIGHLIGHTER.md)** - Modern JS/TS highlighting
+- **[🔌 SLIME Integration](docs/SLIME_TESTING_GUIDE.md)** - Connect to Swank servers
+
+### Quick Links
+- **[Command Reference](docs/SUGGESTED_COMMANDS.md)** - All available commands
+- **[Troubleshooting](docs/DEVELOPMENT.md#common-issues)** - Common problems and solutions
+- **[Build Instructions](docs/DEVELOPMENT.md#quick-start)** - Compile from source
+
+---
+
+*Vizero - A powerful, modern vi clone for developers. The documentation accurately represents the current working state of the editor with functional LISP REPL, LSP integration, and comprehensive plugin architecture.*

@@ -55,23 +55,24 @@ Shows detailed connection and process status information.
 :lisp-status
 ```
 
-### `:lisp-slime-connect`
-Connects to a SLIME/Swank server via TCP socket for remote REPL interaction.
-- Establishes TCP connection to running Swank server
+### `:lisp-slime-connect` (Not Currently Available)
+**Status**: Handler function exists but command is not registered in the command array.
+
+**Implementation exists for:**
+- Establishes TCP connection to running Swank servers
 - Uses SLIME :emacs-rex protocol for evaluation
 - Intelligent response parsing from S-expressions
 - Creates interactive REPL buffer with proper formatting
 - Cross-platform socket support (Windows/Unix)
 
-**Usage:**
+**To enable:**
+The handler function `lisp_cmd_slime_connect` exists but needs to be added to the `lisp_commands[]` array in the plugin.
+
+**Intended Usage (when enabled):**
 ```
 :lisp-slime-connect hostname port
 :lisp-slime-connect localhost 4005    ; Example with local Swank server
 ```
-
-**Prerequisites:**
-- Swank server must be running on the target host/port
-- See SLIME Installation Guide for server setup instructions
 
 ## SBCL Detection
 
@@ -221,13 +222,14 @@ SBCL starts in the same directory as the current Vizero session, allowing easy a
 
 ## Future Enhancements
 
-### Phase 3: SLIME Protocol Integration ✅ **COMPLETED**
-- **✅ `:lisp-slime-connect` Command**: Alternative connection method using SLIME protocol
+### Phase 3: SLIME Protocol Integration ⚠️ **PARTIALLY COMPLETED**
+- **✅ `:lisp-slime-connect` Handler Function**: Alternative connection method implementation exists
+- **❌ Command Registration**: Handler exists but command is not registered in command array
 - **✅ TCP Socket Connectivity**: Robust connection to Swank servers with proper error handling
 - **✅ SLIME Protocol Support**: Full :emacs-rex message protocol implementation
 - **✅ Response Parsing**: Intelligent extraction of results from S-expression responses
 - **✅ Interactive Buffer Integration**: SLIME responses displayed directly in REPL buffer
-- **✅ Dual Connection Architecture**: Seamless switching between direct SBCL and SLIME modes
+- **⚠️ Availability**: Command exists but is not accessible via `:lisp-slime-connect` due to registration issue
 
 ### Phase 4: Advanced SLIME Features (Future)
 - **Advanced Debugging**: Interactive debugger with stack traces and condition handling

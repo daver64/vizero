@@ -138,14 +138,16 @@ vizero.exe
 
 ## Implementation Status
 
-✅ **Completed**:
+✅ **Implementation Exists**:
 - TCP socket connection to SLIME/Swank
 - Basic SLIME protocol message formatting
 - Connection management (connect/disconnect)
-- Unified command interface
 - Interactive mode integration
 - Buffer switching state preservation
 - Cross-platform support (Windows/Unix)
+
+⚠️ **Not Accessible**:
+- `:lisp-slime-connect` command (handler exists but not registered)
 
 🔄 **In Progress**:
 - SLIME response parsing and result display

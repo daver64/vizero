@@ -512,15 +512,16 @@ Vizero includes a comprehensive IRC (Internet Relay Chat) client plugin that sea
 
 #### Connecting to IRC Servers
 ```
-:connect [server] [port] [nickname]
+# Note: The :connect command is not currently implemented as a vi command
+# IRC functionality is available through the IRC plugin but uses a different interface
+# The plugin provides IRC buffers that can be accessed through normal buffer navigation
 ```
 
-**Examples:**
+**Current Implementation:**
 ```
-:connect                                    # Connect to default server (irc.libera.chat:6667) with username "vi"
-:connect irc.libera.chat                   # Connect to Libera Chat with default port and nickname
-:connect irc.libera.chat 6667 mynick      # Connect with custom nickname
-:connect irc.freenode.net 6667 coder      # Connect to different server
+# IRC plugin loads automatically but doesn't provide :connect command
+# IRC connection and channel management happen through buffer interface
+# See plugin source code for actual implementation details
 ```
 
 **Default Settings:**
@@ -882,10 +883,10 @@ The IRC integration in Vizero provides a powerful combination of real-time commu
 ### Session Management Commands
 | Command | Action |
 |---------|--------|
-| `:mksession <name>` | Create/save session with specified name |
-| `:session <name>` | Load session with specified name |
-| `:sessions` | List all available sessions |
-| `:session-save` | Save current session state |
+| `:mksession <name>` | Create/save session (command recognized, implementation TODO) |
+| `:session <name>` | Load session (command recognized, implementation TODO) |
+| `:sessions` | List available sessions (command recognized, implementation TODO) |
+| `:session-save` | Save current session (command recognized, implementation TODO) |
 
 **Read-Only Status:** The status bar displays the current buffer's read-only status with pale green 'rw' for read-write buffers and pale red 'ro' for read-only buffers.
 
