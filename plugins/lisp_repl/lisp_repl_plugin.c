@@ -218,9 +218,9 @@ typedef struct {
     size_t scroll_offset;
     
     /* Enhanced input system */
-    char input_text[2048];            /* Larger input buffer */
+    char input_text[16384];            /* Larger input buffer */
     size_t input_cursor;
-    char input_history[50][512];      /* Command history */
+    char input_history[50][1024];      /* Command history */
     size_t history_count;
     int history_index;
     
@@ -495,19 +495,31 @@ static int generate_slime_message(slime_message_t* msg, const char* command, con
     if (!msg || !command) return -1;
     
     msg->id = g_lisp_state ? g_lisp_state->next_message_id++ : 1;
-    strncpy(msg->command, command, sizeof(msg->command) - 1);
-    msg->command[sizeof(msg->command) - 1] = '\0';
+    size_t cmd_len = strlen(command);
+    if (cmd_len >= sizeof(msg->command)) {
+        cmd_len = sizeof(msg->command) - 1;
+    }
+    memcpy(msg->command, command, cmd_len);
+    msg->command[cmd_len] = '\0';
     
     if (args) {
-        strncpy(msg->args, args, sizeof(msg->args) - 1);
-        msg->args[sizeof(msg->args) - 1] = '\0';
+        size_t args_len = strlen(args);
+        if (args_len >= sizeof(msg->args)) {
+            args_len = sizeof(msg->args) - 1;
+        }
+        memcpy(msg->args, args, args_len);
+        msg->args[args_len] = '\0';
     } else {
         msg->args[0] = '\0';
     }
     
     if (package) {
-        strncpy(msg->package, package, sizeof(msg->package) - 1);
-        msg->package[sizeof(msg->package) - 1] = '\0';
+        size_t pkg_len = strlen(package);
+        if (pkg_len >= sizeof(msg->package)) {
+            pkg_len = sizeof(msg->package) - 1;
+        }
+        memcpy(msg->package, package, pkg_len);
+        msg->package[pkg_len] = '\0';
     } else {
         strcpy(msg->package, "CL-USER");
     }
@@ -552,8 +564,12 @@ static void lisp_log_message(const char* message) {
         
         lisp_message_t* msg = &main_buffer->messages[main_buffer->message_count++];
         get_timestamp(msg->timestamp, sizeof(msg->timestamp));
-        strncpy(msg->content, message, sizeof(msg->content) - 1);
-        msg->content[sizeof(msg->content) - 1] = '\0';
+        size_t msg_len = strlen(message);
+        if (msg_len >= sizeof(msg->content)) {
+            msg_len = sizeof(msg->content) - 1;
+        }
+        memcpy(msg->content, message, msg_len);
+        msg->content[msg_len] = '\0';
         msg->type = LISP_MSG_INFO;
         
         /* Set default colour */
@@ -735,7 +751,9 @@ static bool start_sbcl_process(sbcl_process_t* proc) {
         
         /* Change directory if specified */
         if (proc->working_directory[0]) {
-            chdir(proc->working_directory);
+            if (chdir(proc->working_directory) != 0) {
+                fprintf(stderr, "Warning: Failed to change to directory %s\n", proc->working_directory);
+            }
         }
         
         /* Execute enhanced SBCL */
@@ -1134,7 +1152,7 @@ static int slime_read_response(char* buffer, size_t buffer_size) {
     }
     
     /* Read the actual message content */
-    if (message_length >= buffer_size) {
+    if ((size_t)message_length >= buffer_size) {
         lisp_log_message("Message too large for buffer");
         return -1;
     }
@@ -1178,8 +1196,12 @@ static int slime_extract_result(const char* response, char* result, size_t resul
     /* Look for :return (:ok (value output)) pattern */
     const char* return_pos = strstr(response, ":return");
     if (!return_pos) {
-        strncpy(result, response, result_size - 1);
-        result[result_size - 1] = '\0';
+        size_t response_len = strlen(response);
+        if (response_len >= result_size) {
+            response_len = result_size - 1;
+        }
+        memcpy(result, response, response_len);
+        result[response_len] = '\0';
         return 0;
     }
     
@@ -1187,8 +1209,12 @@ static int slime_extract_result(const char* response, char* result, size_t resul
     const char* ok_pos = strstr(return_pos, ":ok");
     if (!ok_pos) {
         /* Might be an error */
-        strncpy(result, return_pos, result_size - 1);
-        result[result_size - 1] = '\0';
+        size_t return_len = strlen(return_pos);
+        if (return_len >= result_size) {
+            return_len = result_size - 1;
+        }
+        memcpy(result, return_pos, return_len);
+        result[return_len] = '\0';
         return 0;
     }
     
@@ -1373,7 +1399,7 @@ static int slime_eval_expression(const char* expression) {
         /* Format response for display with bounds checking */
         char formatted_response[1024];  /* Smaller buffer for safety */
         int format_result = snprintf(formatted_response, sizeof(formatted_response), "\n%s\n* ", result_text);
-        if (format_result < 0 || format_result >= sizeof(formatted_response)) {
+        if (format_result < 0 || (size_t)format_result >= sizeof(formatted_response)) {
             lisp_log_message("ERROR: Result text too long for formatting");
             return 0;
         }
@@ -1590,8 +1616,12 @@ static void read_sbcl_output(void) {
                 if (buffer->message_count < 5000) {
                     lisp_message_t* msg = &buffer->messages[buffer->message_count++];
                     get_timestamp(msg->timestamp, sizeof(msg->timestamp));
-                    strncpy(msg->content, temp_buffer, sizeof(msg->content) - 1);
-                    msg->content[sizeof(msg->content) - 1] = '\0';
+                    size_t copy_len = strlen(temp_buffer);
+                    if (copy_len >= sizeof(msg->content)) {
+                        copy_len = sizeof(msg->content) - 1;
+                    }
+                    memcpy(msg->content, temp_buffer, copy_len);
+                    msg->content[copy_len] = '\0';
                     msg->type = LISP_MSG_ERROR;
                     msg->colour = (vizero_colour_t){255, 100, 100, 255};  /* Red for errors */
                     msg->severity = 2;  /* Error level */
@@ -1610,7 +1640,7 @@ static void read_sbcl_output(void) {
         /* Append to read buffer */
         size_t remaining = sizeof(proc->read_buffer) - proc->buffer_pos - 1;
         if (remaining > 0) {
-            size_t to_copy = bytes_read < remaining ? bytes_read : remaining;
+            size_t to_copy = (size_t)bytes_read < remaining ? (size_t)bytes_read : remaining;
             memcpy(proc->read_buffer + proc->buffer_pos, temp_buffer, to_copy);
             proc->buffer_pos += to_copy;
             proc->read_buffer[proc->buffer_pos] = '\0';
@@ -1628,8 +1658,12 @@ static void read_sbcl_output(void) {
             if (buffer->message_count < 5000) {
                 lisp_message_t* msg = &buffer->messages[buffer->message_count++];
                 get_timestamp(msg->timestamp, sizeof(msg->timestamp));
-                strncpy(msg->content, temp_buffer, sizeof(msg->content) - 1);
-                msg->content[sizeof(msg->content) - 1] = '\0';
+                size_t copy_len = strlen(temp_buffer);
+                if (copy_len >= sizeof(msg->content)) {
+                    copy_len = sizeof(msg->content) - 1;
+                }
+                memcpy(msg->content, temp_buffer, copy_len);
+                msg->content[copy_len] = '\0';
                 msg->type = LISP_MSG_ERROR;
                 msg->colour = (vizero_colour_t){255, 100, 100, 255};  /* Red for errors */
                 msg->severity = 2;  /* Error level */
@@ -1830,7 +1864,6 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
         /* Clean up SBCL response - remove control characters and fix line endings */
         char cleaned_response[1024];
         size_t cleaned_len = 0;
-        bool last_was_cr = false;
         
         printf("[LISP] Raw SBCL startup response (%zu chars): ", strlen(sbcl_response));
         for (size_t j = 0; j < strlen(sbcl_response) && j < 20; j++) {
@@ -1847,15 +1880,12 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
                     i++; /* Skip the \n after \r */
                 }
                 cleaned_response[cleaned_len++] = '\n';
-                last_was_cr = false;
             } else if (c == '\n') {
                 /* Unix line ending */
                 cleaned_response[cleaned_len++] = '\n';
-                last_was_cr = false;
             } else if ((c >= 32 && c <= 126) || c == '\t') {
                 /* Printable ASCII characters and tab */
                 cleaned_response[cleaned_len++] = c;
-                last_was_cr = false;
             }
             /* Skip all other control characters (including escape sequences) */
         }
@@ -2233,8 +2263,12 @@ static int lisp_cmd_package(vizero_editor_t* editor, const char* args) {
     
     /* Update local state */
     if (g_lisp_state->buffer_count > 0) {
-        strncpy(g_lisp_state->buffers[0]->current_package, args, 
-                sizeof(g_lisp_state->buffers[0]->current_package) - 1);
+        size_t args_len = strlen(args);
+        if (args_len >= sizeof(g_lisp_state->buffers[0]->current_package)) {
+            args_len = sizeof(g_lisp_state->buffers[0]->current_package) - 1;
+        }
+        memcpy(g_lisp_state->buffers[0]->current_package, args, args_len);
+        g_lisp_state->buffers[0]->current_package[args_len] = '\0';
     }
     
     return 0;
@@ -2340,8 +2374,12 @@ static int lisp_cmd_slime_connect(vizero_editor_t* editor, const char* args) {
     
     if (args && strlen(args) > 0) {
         char args_copy[512];
-        strncpy(args_copy, args, sizeof(args_copy) - 1);
-        args_copy[sizeof(args_copy) - 1] = '\0';
+        size_t args_len = strlen(args);
+        if (args_len >= sizeof(args_copy)) {
+            args_len = sizeof(args_copy) - 1;
+        }
+        memcpy(args_copy, args, args_len);
+        args_copy[args_len] = '\0';
         
         char* token = strtok(args_copy, " ");
         if (token) {
@@ -2564,7 +2602,7 @@ static int lisp_cmd_inspect(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_trace(vizero_editor_t* editor, const char* args) {
-    (void*)editor; // Unused parameter
+    (void)editor; // Unused parameter
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -2590,7 +2628,7 @@ static int lisp_cmd_trace(vizero_editor_t* editor, const char* args) {
 }
 
 static int lisp_cmd_untrace(vizero_editor_t* editor, const char* args) {
-    (void*)editor; // Unused parameter
+    (void)editor; // Unused parameter
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("ERROR: SBCL not running. Use /lisp-connect first");
         return -1;
@@ -3047,7 +3085,7 @@ static int lisp_handle_enter_key(vizero_editor_t* editor) {
     if (!cursor) return 0;
     
     /* Extract current input to check if it's balanced */
-    char current_input[2048];
+    char current_input[16384];
     if (lisp_extract_current_input(current_input, sizeof(current_input)) == 0) {
         int actual_balance = count_parens(current_input);
         printf("[LISP] Checking balance: live_balance=%d, actual_balance=%d\n", 
@@ -3372,8 +3410,12 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
             if (strlen(g_lisp_state->input_buffer) > 0) {
                 /* Add to history */
                 if (buffer->history_count < 50) {
-                    strncpy(buffer->input_history[buffer->history_count], g_lisp_state->input_buffer, 511);
-                    buffer->input_history[buffer->history_count][511] = '\0';
+                    size_t input_len = strlen(g_lisp_state->input_buffer);
+                    if (input_len >= 512) {
+                        input_len = 511;
+                    }
+                    memcpy(buffer->input_history[buffer->history_count], g_lisp_state->input_buffer, input_len);
+                    buffer->input_history[buffer->history_count][input_len] = '\0';
                     buffer->history_count++;
                 }
                 buffer->history_index = (int)buffer->history_count;
@@ -3437,7 +3479,7 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
             return 1;
             
         case 80: case 40: /* Down arrow - command history */
-            if (buffer->history_index < buffer->history_count - 1) {
+            if ((size_t)buffer->history_index < buffer->history_count - 1) {
                 buffer->history_index++;
                 strncpy(g_lisp_state->input_buffer, buffer->input_history[buffer->history_index], 
                        sizeof(g_lisp_state->input_buffer) - 1);
@@ -3573,7 +3615,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "Vizero Team",                                        /* author */
     "Interactive LISP REPL with SBCL integration",       /* description */
     VIZERO_PLUGIN_TYPE_GENERIC                           /* type */
-);
+)
 
 
 /**

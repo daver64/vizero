@@ -411,11 +411,27 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     }
     
     /* Store connection info */
-    strncpy(conn->server, server, sizeof(conn->server) - 1);
+    size_t server_len = strlen(server);
+    if (server_len >= sizeof(conn->server)) server_len = sizeof(conn->server) - 1;
+    memcpy(conn->server, server, server_len);
+    conn->server[server_len] = '\0';
+    
     conn->port = port;
-    strncpy(conn->nickname, nick, sizeof(conn->nickname) - 1);
-    strncpy(conn->username, user, sizeof(conn->username) - 1);
-    strncpy(conn->realname, real, sizeof(conn->realname) - 1);
+    
+    size_t nick_len = strlen(nick);
+    if (nick_len >= sizeof(conn->nickname)) nick_len = sizeof(conn->nickname) - 1;
+    memcpy(conn->nickname, nick, nick_len);
+    conn->nickname[nick_len] = '\0';
+    
+    size_t user_len = strlen(user);
+    if (user_len >= sizeof(conn->username)) user_len = sizeof(conn->username) - 1;
+    memcpy(conn->username, user, user_len);
+    conn->username[user_len] = '\0';
+    
+    size_t real_len = strlen(real);
+    if (real_len >= sizeof(conn->realname)) real_len = sizeof(conn->realname) - 1;
+    memcpy(conn->realname, real, real_len);
+    conn->realname[real_len] = '\0';
     conn->connecting = (connect_result != 0); /* True if connection in progress */
     conn->connected = (connect_result == 0);  /* True if connected immediately */
     conn->registered = false;
@@ -861,7 +877,7 @@ static void irc_process_incoming(void) {
     
     /* Add to receive buffer */
     size_t remaining = sizeof(conn->recv_buffer) - conn->recv_pos - 1;
-    size_t to_copy = (bytes_received < remaining) ? bytes_received : remaining;
+    size_t to_copy = ((size_t)bytes_received < remaining) ? (size_t)bytes_received : remaining;
     memcpy(conn->recv_buffer + conn->recv_pos, temp_buffer, to_copy);
     conn->recv_pos += to_copy;
     conn->recv_buffer[conn->recv_pos] = '\0';
@@ -909,14 +925,14 @@ static void irc_next_buffer(void) {
     if (!g_irc_state || g_irc_state->buffer_count == 0) return;
     
     int current_index = -1;
-    for (int i = 0; i < g_irc_state->buffer_count; i++) {
+    for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
         if (strcmp(g_irc_state->buffers[i]->name, g_irc_state->current_buffer) == 0) {
-            current_index = i;
+            current_index = (int)i;
             break;
         }
     }
     
-    int next_index = (current_index + 1) % g_irc_state->buffer_count;
+    int next_index = (current_index + 1) % (int)g_irc_state->buffer_count;
     irc_set_active_buffer(g_irc_state->buffers[next_index]->name);
 }
 
@@ -924,9 +940,9 @@ static void irc_prev_buffer(void) {
     if (!g_irc_state || g_irc_state->buffer_count == 0) return;
     
     int current_index = -1;
-    for (int i = 0; i < g_irc_state->buffer_count; i++) {
+    for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
         if (strcmp(g_irc_state->buffers[i]->name, g_irc_state->current_buffer) == 0) {
-            current_index = i;
+            current_index = (int)i;
             break;
         }
     }
@@ -1056,7 +1072,7 @@ static void irc_render_nick_list_gl(vizero_renderer_t* renderer, int x, int y, i
     int line_y = y + 25;
     int line_height = 18;
     
-    for (int i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
+    for (size_t i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
         irc_user_t* user = &current_buffer->channel_info.users[i];
         
         /* Choose color based on operator status */
@@ -1227,7 +1243,7 @@ static void irc_render_channel_list(SDL_Renderer* renderer, int x, int y, int wi
     int line_height = 20;
     
     /* Render buffer list */
-    for (int i = 0; i < g_irc_state->buffer_count && line_y < y + height - line_height; i++) {
+    for (size_t i = 0; i < g_irc_state->buffer_count && line_y < y + height - line_height; i++) {
         irc_buffer_t* buffer = g_irc_state->buffers[i];
         if (!buffer) continue;
         
@@ -1292,7 +1308,7 @@ static void irc_render_nick_list(SDL_Renderer* renderer, int x, int y, int width
     int line_height = 18;
     
     /* Render nick list for current channel */
-    for (int i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
+    for (size_t i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
         irc_user_t* user = &current_buffer->channel_info.users[i];
         
         /* Choose color based on operator status */
@@ -1346,13 +1362,13 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
     
     int line_height = 16;
     int max_lines = height / line_height;
-    int start_index = (current_buffer->message_count > max_lines) ? 
-                     (int)(current_buffer->message_count - max_lines) : 0;
+    int start_index = (current_buffer->message_count > (size_t)max_lines) ? 
+                     (int)(current_buffer->message_count - (size_t)max_lines) : 0;
     
     int line_y = y + 5;
     
     /* Render messages */
-    for (int i = start_index; i < current_buffer->message_count && line_y < y + height - line_height; i++) {
+    for (size_t i = (size_t)start_index; i < current_buffer->message_count && line_y < y + height - line_height; i++) {
         irc_message_t* msg = &current_buffer->messages[i];
         
         char formatted_msg[1024];
@@ -1566,7 +1582,10 @@ static int irc_cmd_join(vizero_editor_t* editor, const char* args) {
     if (channel[0] != '#' && channel[0] != '&') {
         char temp[64];
         snprintf(temp, sizeof(temp), "#%s", channel);
-        strncpy(channel, temp, sizeof(channel) - 1);
+        size_t temp_len = strlen(temp);
+        if (temp_len >= sizeof(channel)) temp_len = sizeof(channel) - 1;
+        memcpy(channel, temp, temp_len);
+        channel[temp_len] = '\0';
     }
     
     irc_join_channel(channel);
@@ -2172,7 +2191,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "Vizero Team",                        /* author */
     "Full-featured IRC Client Plugin",    /* description */
     VIZERO_PLUGIN_TYPE_GENERIC            /* type */
-);
+)
 
 /* Plugin entry points */
 int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
@@ -2304,7 +2323,7 @@ void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
 #endif
         
         /* Clean up buffers */
-        for (int i = 0; i < g_irc_state->buffer_count; i++) {
+        for (size_t i = 0; i < g_irc_state->buffer_count; i++) {
             if (g_irc_state->buffers[i]) {
                 irc_destroy_buffer(g_irc_state->buffers[i]);
             }
