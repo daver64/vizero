@@ -30,6 +30,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **LSP Integration with clangd**: Full Language Server Protocol support for C/C++ with code completion, hover information, and diagnostics. Gracefully degrades when clangd is not available.
 - **Crash-Free Completion**: Fixed all LSP completion crashes with robust JSON parsing and proper buffer management for large completion responses (42KB+).
 - **Intelligent Code Completion**: Real-time code completion with Ctrl+Space, supporting functions, variables, and type information from clangd language server.
+- **Interactive LISP REPL**: Full SBCL integration with direct buffer typing, automatic expression evaluation, vi-style command integration, and seamless buffer switching with state preservation.
 
 ## Executables
 
@@ -111,6 +112,16 @@ cmake --build . --config Release
 #### LSP and Code Completion
 ```
 Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
+```
+
+#### LISP REPL
+```
+:lisp-connect    # Start interactive SBCL REPL
+:lisp-status     # Show REPL connection status
+:lisp-disconnect # Stop REPL session
+# Once connected, type directly in *lisp-repl* buffer
+# Press Enter when parentheses are balanced to evaluate
+# Use Escape+: for vi commands, automatic state restoration
 ```
 
 #### File Operations
@@ -361,6 +372,9 @@ static int highlight_syntax(/* ... */) {
 | `:mksession <name>` | Create session |
 | `:session <name>` | Load session |
 | `:sessions` | List sessions |
+| `:lisp-connect` | Start interactive LISP REPL |
+| `:lisp-disconnect` | Stop LISP REPL |
+| `:lisp-status` | Show REPL status |
 | `:d/:y/:p/:P` | Delete/yank/paste lines |
 | `:j` | Join lines |
 | `:u/:redo` | Undo/redo |

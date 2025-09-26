@@ -1,7 +1,23 @@
-/* Lisp REPL Plugin for Vizero - Phase 2: Advanced SLIME Integration
- * Features: Full SLIME protocol, custom UI, completion, debugging
- * Commands: Enhanced REPL with auto-completion and interactive debugging
- * Version: 2.0.0 - September 2025
+/**
+ * @file lisp_repl_plugin.c
+ * @brief Interactive LISP REPL Plugin for Vizero Editor
+ * 
+ * This plugin provides seamless integration between Vizero and SBCL (Steel Bank Common Lisp),
+ * enabling interactive Lisp development with direct buffer typing, automatic expression 
+ * evaluation, and comprehensive vi-style integration.
+ * 
+ * Features:
+ * - Interactive buffer typing with real-time expression evaluation
+ * - Automatic SBCL detection across Windows and Unix platforms
+ * - Robust process management with proper I/O redirection
+ * - Vi-style command integration with Escape+colon sequences
+ * - Buffer switching support with automatic state restoration
+ * - Graceful error handling when SBCL is unavailable
+ * - Cross-platform compatibility (Windows, Linux, macOS)
+ * 
+ * @version 2.0.0
+ * @date September 2025
+ * @author Vizero Development Team
  */
 
 #include "vizero/plugin_interface.h"
@@ -493,7 +509,16 @@ static void lisp_log_message(const char* message) {
     }
 }
 
-/* SBCL Detection */
+/**
+ * @brief Detects SBCL installation on the system
+ * 
+ * Searches for SBCL executable in common installation locations across Windows and Unix platforms.
+ * Checks local Vizero directory first, then system PATH, then standard installation directories.
+ * 
+ * @param sbcl_path Buffer to store the detected SBCL executable path
+ * @param path_size Size of the sbcl_path buffer
+ * @return true if SBCL installation found, false otherwise
+ */
 static bool detect_sbcl_installation(char* sbcl_path, size_t path_size) {
     const char* possible_paths[] = {
         "sbcl\\sbcl.exe",                         /* Local Vizero directory */
@@ -533,7 +558,16 @@ static bool detect_sbcl_installation(char* sbcl_path, size_t path_size) {
     return false;
 }
 
-/* Enhanced SBCL Process Management with Swank Support */
+/**
+ * @brief Starts SBCL process with enhanced configuration
+ * 
+ * Initializes and starts an SBCL subprocess with proper I/O redirection, optimized settings,
+ * and cross-platform process management. Sets up pipes for communication and configures
+ * SBCL with no debugger, custom dynamic space size, and clean initialization.
+ * 
+ * @param proc Pointer to sbcl_process_t structure to initialize
+ * @return true if process started successfully, false on failure
+ */
 static bool start_sbcl_process(sbcl_process_t* proc) {
     if (!proc->sbcl_path[0]) {
         lisp_log_message("ERROR: No SBCL path configured");
@@ -995,7 +1029,17 @@ static lisp_buffer_t* create_lisp_buffer(const char* name, const char* display_n
     return buffer;
 }
 
-/* Command handlers */
+/**
+ * @brief Command handler for :lisp-connect
+ * 
+ * Handles the :lisp-connect command to establish connection to SBCL and enter interactive mode.
+ * Detects SBCL installation, starts the subprocess, creates the REPL buffer, and enables
+ * interactive typing mode with automatic expression evaluation.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param args Command arguments (unused)
+ * @return 0 on success, -1 on failure
+ */
 static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
     if (g_lisp_state->sbcl.running) {
         lisp_log_message("SBCL is already running");
@@ -1239,6 +1283,16 @@ static int lisp_cmd_connect(vizero_editor_t* editor, const char* args) {
     return 0;
 }
 
+/**
+ * @brief Command handler for :lisp-disconnect
+ * 
+ * Handles the :lisp-disconnect command to cleanly disconnect from SBCL and exit interactive mode.
+ * Sends graceful quit command to SBCL, terminates the subprocess, and restores normal editing mode.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param args Command arguments (unused)
+ * @return 0 on success, -1 on failure
+ */
 static int lisp_cmd_disconnect(vizero_editor_t* editor, const char* args) {
     if (!g_lisp_state->sbcl.running) {
         lisp_log_message("SBCL is not running");
@@ -1492,6 +1546,17 @@ static int lisp_cmd_package(vizero_editor_t* editor, const char* args) {
     return 0;
 }
 
+/**
+ * @brief Command handler for :lisp-status
+ * 
+ * Handles the :lisp-status command to display comprehensive REPL status information.
+ * Shows SBCL process state, executable path, interactive mode status, and provides
+ * helpful guidance for SBCL installation when not available.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param args Command arguments (unused)
+ * @return 0 on success, -1 on failure
+ */
 static int lisp_cmd_status(vizero_editor_t* editor, const char* args) {
     char status_msg[1024];
     if (g_lisp_state->sbcl.running) {
@@ -1888,7 +1953,19 @@ static int lisp_render_full_window(vizero_editor_t* editor, vizero_renderer_t* r
     return 0;
 }
 
-/* Interactive REPL input handler */
+/**
+ * @brief Handles interactive input in REPL mode
+ * 
+ * Processes keyboard input when the REPL is in interactive mode. Handles special keys
+ * like Enter for expression evaluation, Escape for command mode transition, and
+ * regular character input for expression building. Manages parentheses balancing
+ * and provides real-time feedback.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param key Key code of the pressed key
+ * @param modifiers Modifier keys (Ctrl, Alt, Shift) bitmask
+ * @return 0 on successful handling, -1 on error
+ */
 static int lisp_handle_interactive_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
     printf("[LISP] Interactive key input: key=%u, modifiers=%u\n", key, modifiers);
     
@@ -2002,7 +2079,16 @@ static int lisp_evaluate_interactive(vizero_editor_t* editor, const char* input)
     return 0;
 }
 
-/* Handle Enter key in interactive REPL */
+/**
+ * @brief Handles Enter key press in interactive REPL mode
+ * 
+ * Processes Enter key when in interactive REPL mode. Determines if the current expression
+ * has balanced parentheses and is ready for evaluation. If balanced, sends the expression
+ * to SBCL for evaluation and displays the result. If unbalanced, allows multi-line input.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @return 0 on successful handling, -1 on error
+ */
 static int lisp_handle_enter_key(vizero_editor_t* editor) {
     printf("[LISP] Enter pressed in interactive REPL\n");
     
@@ -2140,7 +2226,19 @@ static int lisp_extract_current_input(char* buffer, size_t buffer_size) {
     return -1;
 }
 
-/* Enhanced Phase 2 Input Handling */
+/**
+ * @brief Main keyboard input handler for LISP REPL plugin
+ * 
+ * Central input processing function that routes keyboard input based on current REPL state.
+ * Handles buffer switching detection, interactive mode management, command mode transitions,
+ * and delegates to appropriate specialized input handlers. Provides comprehensive state
+ * management across buffer switches with automatic restoration.
+ * 
+ * @param editor Pointer to the Vizero editor instance
+ * @param key Key code of the pressed key
+ * @param modifiers Modifier keys (Ctrl, Alt, Shift) bitmask
+ * @return 0 if key handled by plugin, -1 to pass through to editor
+ */
 static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
     if (!g_lisp_state) {
         return 0;  /* Let Vizero handle input */
@@ -2494,17 +2592,34 @@ static vizero_plugin_command_t lisp_commands[] = {
     }
 };
 
-/* Phase 2 Plugin Information */
+/**
+ * @brief Plugin information structure for LISP REPL
+ * 
+ * Defines metadata for the Interactive LISP REPL plugin including version,
+ * author, description, and plugin type. Used by Vizero's plugin manager
+ * for loading and identification purposes.
+ */
 VIZERO_PLUGIN_DEFINE_INFO(
     "lisp_repl",                                          /* name */
     "2.0.0",                                              /* version */
     "Vizero Team",                                        /* author */
-    "Lisp REPL Plugin Phase 2 - Advanced SLIME Features", /* description */
+    "Interactive LISP REPL with SBCL integration",       /* description */
     VIZERO_PLUGIN_TYPE_GENERIC                           /* type */
 );
 
 
-/* Plugin entry points */
+/**
+ * @brief Initialize the LISP REPL plugin
+ * 
+ * Entry point for plugin initialization. Allocates plugin state, sets up command handlers,
+ * configures callbacks for keyboard input processing, and initializes SBCL detection.
+ * Registers plugin commands (:lisp-connect, :lisp-disconnect, :lisp-status) with the editor.
+ * 
+ * @param plugin Pointer to the plugin structure to initialize
+ * @param editor Pointer to the Vizero editor instance
+ * @param api Pointer to the editor API function table
+ * @return 0 on successful initialization, -1 on failure
+ */
 int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     /* Allocate plugin state */
     g_lisp_state = calloc(1, sizeof(lisp_repl_state_t));
@@ -2640,6 +2755,15 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     return 0;
 }
 
+/**
+ * @brief Clean up and shutdown the LISP REPL plugin
+ * 
+ * Performs comprehensive cleanup when the plugin is being unloaded. Stops any running
+ * SBCL processes gracefully, frees allocated buffers and message histories, and deallocates
+ * the plugin state structure. Ensures no memory leaks or zombie processes remain.
+ * 
+ * @param plugin Pointer to the plugin structure being cleaned up
+ */
 void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
     if (g_lisp_state) {
         /* Stop SBCL if running */
