@@ -82,6 +82,15 @@
       "description": "IRC Client Plugin with command registration (demo)",
       "always_load": true
     },
+    "lisp_repl": {
+      "type": "generic",
+      "load_on_demand": false,
+      "dll_path": "lisp_repl.dll",
+      "description": "Lisp REPL Plugin with SBCL integration",
+      "always_load": true,
+      "features": ["sbcl_detection", "process_management", "basic_slime_protocol"],
+      "requires": ["sbcl"]
+    },
     "clangd": {
       "type": "language_server",
       "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],

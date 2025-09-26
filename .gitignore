@@ -11,6 +11,7 @@ plugins/*.dll
 plugins/*.so
 plugins/*.dylib
 docs/html
+sbcl
 
 # Visual Studio
 .vs/
