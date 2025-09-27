@@ -651,6 +651,17 @@ typedef struct {
     int (*clear_syntax_tokens)(vizero_editor_t* editor);
     
     /** @} */ // end of rendering_api group
+    
+    /**
+     * @defgroup popup_api Popup Operations  
+     * @brief Functions for showing popup dialogs
+     * @{
+     */
+    
+    /** @brief Show a popup dialog with text content */
+    int (*show_popup)(vizero_editor_t* editor, const char* content, uint32_t duration_ms);
+    
+    /** @} */ // end of popup_api group
 } vizero_editor_api_t;
 
 /** @} */ // end of editor_api group

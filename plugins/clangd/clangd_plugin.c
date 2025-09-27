@@ -38,6 +38,20 @@ static int _asprintf(char** strp, const char* fmt, ...) {
 #include <libgen.h>
 #endif
 
+/* Diagnostic popup structure */
+typedef struct {
+    vizero_diagnostic_t* diagnostics;
+    size_t diagnostic_count;
+    size_t selected_index;
+    bool is_visible;
+    float popup_x, popup_y;
+    float popup_width, popup_height;
+    char* buffer_path;  /* Which file these diagnostics belong to */
+    size_t error_count;
+    size_t warning_count;
+    size_t info_count;
+} diagnostic_popup_t;
+
 /* Plugin state */
 typedef struct {
     vizero_lsp_client_t* lsp_client;
@@ -49,6 +63,7 @@ typedef struct {
     
     /* API pointer */
     const vizero_editor_api_t* api;
+    vizero_editor_t* editor;
     
     /* Async completion state */
     int pending_completion_request_id;
@@ -60,6 +75,9 @@ typedef struct {
     size_t diagnostic_count;
     size_t diagnostic_capacity;
     char* diagnostic_buffer_path; /* Path of buffer that diagnostics apply to */
+    
+    /* Diagnostic popup */
+    diagnostic_popup_t popup;
 } clangd_state_t;
 
 static clangd_state_t g_state = {0};
@@ -74,7 +92,17 @@ static int clangd_lsp_goto_definition(vizero_buffer_t* buffer, vizero_position_t
 static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics,
                                      size_t* diagnostic_count);
 __declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer);
+__declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer);
 static void clangd_lsp_shutdown(void);
+
+/* Diagnostic popup functions */
+static void init_diagnostic_popup(diagnostic_popup_t* popup);
+static void cleanup_diagnostic_popup(diagnostic_popup_t* popup);
+static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t* diagnostics, size_t count, const char* buffer_path);
+static void hide_diagnostic_popup(diagnostic_popup_t* popup);
+static int handle_diagnostic_popup_input(diagnostic_popup_t* popup, int key, int modifiers);
+static void render_diagnostic_popup(diagnostic_popup_t* popup, void* renderer);
+static char* format_diagnostics_for_popup(vizero_diagnostic_t* diagnostics, size_t count, size_t error_count, size_t warning_count, size_t info_count);
 
 /* Plugin callbacks */
 static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename);
@@ -99,8 +127,9 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
         return -1;
     }
     
-    /* Store API pointer */
+    /* Store API pointer and editor reference */
     g_state.api = api;
+    g_state.editor = editor;
     
     /* Set up callbacks */
     plugin->callbacks.init = NULL; /* Already called */
@@ -242,6 +271,9 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
         /* Don't fail plugin loading, just disable LSP functionality */
     }
     
+    /* Initialize diagnostic popup */
+    init_diagnostic_popup(&g_state.popup);
+    
     printf("[CLANGD] Plugin initialization complete\n");
     return 0;
 }
@@ -287,6 +319,9 @@ void vizero_plugin_cleanup(void) {
     g_state.diagnostic_buffer_path = NULL;
     g_state.diagnostic_count = 0;
     g_state.diagnostic_capacity = 0;
+    
+    /* Cleanup diagnostic popup */
+    cleanup_diagnostic_popup(&g_state.popup);
     
     g_state.initialized = false;
 }
@@ -1010,8 +1045,51 @@ static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic
 }
 
 __declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer) {
-    /* Manual diagnostic refresh disabled - keeping only hover popup functionality */
-    return;
+    /* Legacy function - now redirects to diagnostic popup */
+    clangd_show_diagnostic_popup(buffer);
+}
+
+__declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
+    if (!g_state.initialized || !buffer || !g_state.lsp_client) {
+        printf("[CLANGD] Show diagnostic popup failed - not initialized or invalid buffer\n");
+        return;
+    }
+    
+    const char* file_path = g_state.api ? g_state.api->get_buffer_filename(buffer) : NULL;
+    const char* content = g_state.api ? g_state.api->get_buffer_text(buffer) : NULL;
+    
+    if (!file_path || !content) {
+        printf("[CLANGD] Show diagnostic popup failed - no file path or content\n");
+        return;
+    }
+    
+    printf("[CLANGD] Showing diagnostic popup for: %s\n", file_path);
+    
+    /* First, check if we already have diagnostics for this file */
+    if (g_state.diagnostics && g_state.diagnostic_count > 0 && 
+        g_state.diagnostic_buffer_path && strcmp(g_state.diagnostic_buffer_path, file_path) == 0) {
+        printf("[CLANGD] Found existing %d diagnostics, showing popup immediately\n", g_state.diagnostic_count);
+        show_diagnostic_popup(&g_state.popup, g_state.diagnostics, g_state.diagnostic_count, file_path);
+        
+        /* Also refresh diagnostics in background for next time */
+        printf("[CLANGD] Also sending didChange to refresh diagnostics for next time...\n");
+        send_did_change_notification(file_path, content);
+        return;
+    }
+    
+    /* No existing diagnostics, need to wait for fresh ones */
+    printf("[CLANGD] No existing diagnostics found, sending didChange to get fresh diagnostics...\n");
+    
+    /* Show status message to user while waiting */
+    if (g_state.api && g_state.api->set_status_message && g_state.editor) {
+        g_state.api->set_status_message(g_state.editor, "Checking for errors...");
+    }
+    
+    /* Send didChange to get fresh diagnostics */
+    send_did_change_notification(file_path, content);
+    
+    /* The diagnostic popup will be shown when publishDiagnostics arrives */
+    printf("[CLANGD] didChange sent - popup will show when diagnostics arrive\n");
 }
 
 static void clangd_lsp_shutdown(void) {
@@ -1208,8 +1286,8 @@ static void on_lsp_notification(const char* method, const char* params, void* us
     
     /* Handle publishDiagnostics notifications */
     if (strcmp(method, "textDocument/publishDiagnostics") == 0) {
-        /* Diagnostic processing disabled - keeping only hover popup functionality */
-        return;
+        printf("[CLANGD] Received publishDiagnostics notification!\n");
+        printf("[CLANGD] Diagnostics params (first 300 chars): %.300s\n", params ? params : "null");
         
         /* Clear existing diagnostics */
         if (g_state.diagnostics) {
@@ -1383,10 +1461,20 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                                     g_state.diagnostic_count = parsed_count;
                                     
                                     printf("[CLANGD] Created %zu diagnostics from clangd response\n", g_state.diagnostic_count);
+                                    
+                                    /* Show diagnostic popup if we have diagnostics */
+                                    if (g_state.diagnostic_count > 0) {
+                                        printf("[CLANGD] publishDiagnostics: Calling show_diagnostic_popup with %zu diagnostics\n", g_state.diagnostic_count);
+                                        show_diagnostic_popup(&g_state.popup, g_state.diagnostics, g_state.diagnostic_count, g_state.diagnostic_buffer_path);
+                                    } else {
+                                        printf("[CLANGD] No diagnostics to show in popup\n");
+                                    }
                                 }
                             } else {
                                 printf("[CLANGD] No diagnostics in response\n");
                                 g_state.diagnostic_count = 0;
+                                /* Show empty popup or hide existing popup */
+                                hide_diagnostic_popup(&g_state.popup);
                             }
                         }
                     }
@@ -1401,5 +1489,201 @@ static void on_lsp_error(const char* error_message, void* user_data) {
     (void)error_message;
     (void)user_data;
     printf("[CLANGD] LSP Error: %s\n", error_message ? error_message : "Unknown error");
+}
+
+/* Diagnostic popup implementation */
+static void init_diagnostic_popup(diagnostic_popup_t* popup) {
+    if (!popup) return;
+    
+    memset(popup, 0, sizeof(diagnostic_popup_t));
+    popup->is_visible = false;
+    popup->selected_index = 0;
+    popup->popup_width = 600.0f;
+    popup->popup_height = 300.0f;
+}
+
+static void cleanup_diagnostic_popup(diagnostic_popup_t* popup) {
+    if (!popup) return;
+    
+    if (popup->diagnostics) {
+        for (size_t i = 0; i < popup->diagnostic_count; i++) {
+            free(popup->diagnostics[i].message);
+            free(popup->diagnostics[i].source);
+        }
+        free(popup->diagnostics);
+        popup->diagnostics = NULL;
+    }
+    
+    free(popup->buffer_path);
+    popup->buffer_path = NULL;
+    
+    popup->diagnostic_count = 0;
+    popup->is_visible = false;
+}
+
+static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t* diagnostics, size_t count, const char* buffer_path) {
+    if (!popup || !diagnostics || count == 0) {
+        printf("[CLANGD] Cannot show popup - invalid parameters\n");
+        return;
+    }
+    
+    /* Clean up existing popup data */
+    cleanup_diagnostic_popup(popup);
+    
+    /* Copy diagnostics */
+    popup->diagnostics = malloc(count * sizeof(vizero_diagnostic_t));
+    if (!popup->diagnostics) {
+        printf("[CLANGD] Failed to allocate memory for popup diagnostics\n");
+        return;
+    }
+    
+    popup->diagnostic_count = count;
+    popup->error_count = 0;
+    popup->warning_count = 0;
+    popup->info_count = 0;
+    
+    for (size_t i = 0; i < count; i++) {
+        popup->diagnostics[i] = diagnostics[i];
+        popup->diagnostics[i].message = strdup(diagnostics[i].message);
+        popup->diagnostics[i].source = strdup(diagnostics[i].source);
+        
+        /* Count by severity */
+        switch (diagnostics[i].severity) {
+            case VIZERO_DIAGNOSTIC_ERROR:
+                popup->error_count++;
+                break;
+            case VIZERO_DIAGNOSTIC_WARNING:
+                popup->warning_count++;
+                break;
+            default:
+                popup->info_count++;
+                break;
+        }
+    }
+    
+    popup->buffer_path = strdup(buffer_path);
+    popup->selected_index = 0;
+    popup->is_visible = true;
+    
+    /* Format diagnostics as text for existing popup system */
+    char* popup_text = format_diagnostics_for_popup(diagnostics, count, popup->error_count, popup->warning_count, popup->info_count);
+    
+    /* Show popup using existing editor popup system */
+    if (g_state.api && popup_text) {
+        /* Get current editor from API - we need a way to get this */
+        /* For now, we'll store editor reference in plugin state */
+        if (g_state.editor && g_state.api->show_popup) {
+            printf("[CLANGD] DEBUG: About to call API show_popup function\n");
+            int result = g_state.api->show_popup(g_state.editor, popup_text, 0); /* No timeout - stays until ESC */
+            printf("[CLANGD] DEBUG: API show_popup returned %d\n", result);
+            printf("[CLANGD] Showing diagnostic popup with %zu diagnostics (%zu errors, %zu warnings, %zu info)\n",
+                   count, popup->error_count, popup->warning_count, popup->info_count);
+        } else {
+            printf("[CLANGD] Cannot show popup - editor=%p, show_popup=%p\n", 
+                   (void*)g_state.editor, (void*)(g_state.api ? g_state.api->show_popup : NULL));
+        }
+        free(popup_text);
+    } else {
+        printf("[CLANGD] Failed to format popup text - api=%p, popup_text=%p\n", 
+               (void*)g_state.api, (void*)popup_text);
+    }
+}
+
+static void hide_diagnostic_popup(diagnostic_popup_t* popup) {
+    if (!popup) return;
+    popup->is_visible = false;
+}
+
+static int handle_diagnostic_popup_input(diagnostic_popup_t* popup, int key, int modifiers) {
+    if (!popup || !popup->is_visible) return 0;
+    
+    (void)modifiers; // Unused for now
+    
+    switch (key) {
+        case SDLK_ESCAPE:
+            hide_diagnostic_popup(popup);
+            return 1; // Consumed
+            
+        case SDLK_UP:
+        case SDLK_k: // Vi-style up
+            if (popup->selected_index > 0) {
+                popup->selected_index--;
+            }
+            return 1; // Consumed
+            
+        case SDLK_DOWN:
+        case SDLK_j: // Vi-style down
+            if (popup->selected_index < popup->diagnostic_count - 1) {
+                popup->selected_index++;
+            }
+            return 1; // Consumed
+            
+        case SDLK_RETURN:
+            // TODO: Jump to diagnostic location
+            printf("[CLANGD] Jump to diagnostic at line %zu, col %zu\n",
+                   popup->diagnostics[popup->selected_index].range.start.line + 1,
+                   popup->diagnostics[popup->selected_index].range.start.column + 1);
+            hide_diagnostic_popup(popup);
+            return 1; // Consumed
+            
+        default:
+            return 0; // Not consumed
+    }
+}
+
+static void render_diagnostic_popup(diagnostic_popup_t* popup, void* renderer) {
+    if (!popup || !popup->is_visible || !renderer) return;
+    
+    // TODO: Implement OpenGL rendering
+    // For now, just mark that we would render
+    printf("[CLANGD] Would render popup with %zu diagnostics at (%.1f, %.1f)\n",
+           popup->diagnostic_count, popup->popup_x, popup->popup_y);
+}
+
+static char* format_diagnostics_for_popup(vizero_diagnostic_t* diagnostics, size_t count, size_t error_count, size_t warning_count, size_t info_count) {
+    if (!diagnostics || count == 0) return NULL;
+    
+    /* Calculate buffer size needed */
+    size_t buffer_size = 1024; /* Base size for header */
+    for (size_t i = 0; i < count; i++) {
+        buffer_size += strlen(diagnostics[i].message) + 100; /* Message + formatting */
+    }
+    
+    char* result = malloc(buffer_size);
+    if (!result) return NULL;
+    
+    /* Create header */
+    snprintf(result, buffer_size, 
+        "Diagnostics (%zu errors, %zu warnings, %zu info)\n"
+        "Press ESC to close\n"
+        "==========================================\n\n",
+        error_count, warning_count, info_count);
+    
+    /* Add each diagnostic */
+    for (size_t i = 0; i < count; i++) {
+        char* severity_str;
+        switch (diagnostics[i].severity) {
+            case VIZERO_DIAGNOSTIC_ERROR:
+                severity_str = "ERROR";
+                break;
+            case VIZERO_DIAGNOSTIC_WARNING:
+                severity_str = "WARNING";
+                break;
+            default:
+                severity_str = "INFO";
+                break;
+        }
+        
+        char temp[512];
+        snprintf(temp, sizeof(temp), "[%s] Line %zu, Col %zu:\n  %s\n\n",
+                 severity_str,
+                 diagnostics[i].range.start.line + 1,  /* Convert 0-based to 1-based */
+                 diagnostics[i].range.start.column + 1,
+                 diagnostics[i].message);
+        
+        strncat(result, temp, buffer_size - strlen(result) - 1);
+    }
+    
+    return result;
 }
 

@@ -323,7 +323,16 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             goto keydown_handled; /* Always consume Ctrl+H */
                         }
                         
-                        /* Ctrl+D diagnostic refresh removed - keeping only hover popup functionality */
+                        /* Check for Ctrl+D to show diagnostic popup */
+                        if ((event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym == SDLK_d)) {
+                            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                            if (buffer) {
+                                printf("[DEBUG] Diagnostic popup triggered with Ctrl+D\n");
+                                vizero_editor_set_status_message(editor, "Checking for errors...");
+                                vizero_plugin_manager_show_diagnostic_popup(plugin_manager, buffer);
+                            }
+                            goto keydown_handled; /* Always consume Ctrl+D */
+                        }
                         
                         /* Check for ESC key to dismiss popups */
                         if (event.key.keysym.sym == SDLK_ESCAPE) {

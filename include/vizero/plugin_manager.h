@@ -104,6 +104,11 @@ void vizero_plugin_manager_notify_buffer_changed(
     vizero_plugin_manager_t* manager,
     vizero_buffer_t* buffer);
 
+/* Show diagnostic popup for LSP plugins */
+void vizero_plugin_manager_show_diagnostic_popup(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer);
+
 /* Process LSP messages for all plugins (non-blocking) */
 void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager);
 

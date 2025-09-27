@@ -151,6 +151,14 @@ static int api_clear_syntax_tokens(vizero_editor_t* editor) {
     return 0; /* Stub for now */
 }
 
+/* Popup operations */
+static int api_show_popup(vizero_editor_t* editor, const char* content, uint32_t duration_ms) {
+    if (!editor || !content) return -1;
+    
+    vizero_editor_show_popup((vizero_editor_state_t*)editor, content, duration_ms);
+    return 0;
+}
+
 /* Initialize a plugin API structure with all function pointers */
 void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     if (!api) return;
@@ -186,6 +194,9 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     /* Rendering operations */
     api->add_syntax_tokens = api_add_syntax_tokens;
     api->clear_syntax_tokens = api_clear_syntax_tokens;
+    
+    /* Popup operations */
+    api->show_popup = api_show_popup;
 }
 
 /* Helper function to validate plugin API version compatibility */

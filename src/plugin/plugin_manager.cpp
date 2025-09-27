@@ -716,6 +716,45 @@ void vizero_plugin_manager_notify_buffer_changed(
     }
 }
 
+/* Show diagnostic popup for LSP plugins */
+void vizero_plugin_manager_show_diagnostic_popup(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer)
+{
+    if (!manager || !buffer) {
+        return;
+    }
+    
+    /* Find LSP plugins and trigger diagnostic popup */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_get_diagnostics) {
+            /* This is an LSP plugin - check if it's the clangd plugin */
+            if (plugin->info.name && strstr(plugin->info.name, "clangd") != NULL) {
+                printf("[PLUGIN] Triggering diagnostic popup for %s\n", plugin->info.name);
+                /* Call the diagnostic popup function directly via symbol lookup */
+                typedef void (*show_popup_func_t)(vizero_buffer_t*);
+                
+#ifdef _WIN32
+                HMODULE handle = (HMODULE)plugin->dll_handle;
+                show_popup_func_t popup_func = (show_popup_func_t)GetProcAddress(handle, "clangd_show_diagnostic_popup");
+                if (!popup_func) {
+                    /* Try alternative export name */
+                    popup_func = (show_popup_func_t)GetProcAddress(handle, "_clangd_show_diagnostic_popup");
+                }
+#else
+                show_popup_func_t popup_func = (show_popup_func_t)dlsym(plugin->dll_handle, "clangd_show_diagnostic_popup");
+#endif
+                if (popup_func) {
+                    popup_func(buffer);
+                } else {
+                    printf("[PLUGIN] Diagnostic popup function not found in %s\n", plugin->info.name);
+                }
+            }
+        }
+    }
+}
+
 /* Process LSP messages in background (non-blocking) */
 void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager) {
     if (!manager) {
