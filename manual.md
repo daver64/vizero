@@ -21,11 +21,12 @@
 10. [Window Management](#window-management)
 11. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
 12. [IRC Client Integration](#irc-client-integration)
-13. [Compiler Integration](#compiler-integration)
-14. [Settings and Configuration](#settings-and-configuration)
-15. [Advanced Features](#advanced-features)
-16. [Working Directory](#working-directory)
-17. [Keyboard Reference](#keyboard-reference)
+13. [SQL REPL Integration](#sql-repl-integration)
+14. [Compiler Integration](#compiler-integration)
+15. [Settings and Configuration](#settings-and-configuration)
+16. [Advanced Features](#advanced-features)
+17. [Working Directory](#working-directory)
+18. [Keyboard Reference](#keyboard-reference)
 ## Working Directory
 
 ### Changing the Working Directory
@@ -812,6 +813,302 @@ Thanks! That fixed the memory leak issue.
 | `:buffers` | Interactive buffer selector |
 
 The IRC integration in Vizero provides a powerful combination of real-time communication and code editing, making it an ideal tool for collaborative development, getting programming help, and staying connected with development communities while working on your projects.
+
+---
+
+## SQL REPL Integration
+
+Vizero includes a comprehensive SQL REPL (Read-Eval-Print Loop) plugin that provides seamless database interaction capabilities. You can connect to PostgreSQL and MySQL databases, execute queries, explore database schemas, and manage transactions directly from within the editor.
+
+### Getting Started with SQL REPL
+
+#### Database Support
+The SQL REPL plugin supports multiple database systems:
+- **PostgreSQL**: Full native support via libpq
+- **MySQL/MariaDB**: Native support via MySQL client libraries
+- **Graceful Degradation**: Plugin loads successfully even when database libraries are unavailable
+
+#### Connection Management
+
+**PostgreSQL Connection:**
+```
+:sql-connect postgresql://username:password@hostname:port/database
+:sql-connect postgresql://postgres:mypass@localhost:5432/mydb
+:sql-connect postgresql://user@localhost:5432/testdb
+```
+
+**MySQL Connection:**
+```
+:sql-connect mysql://username:password@hostname:port/database
+:sql-connect mysql://root:password@localhost:3306/sakila
+```
+
+**Check Connection Status:**
+```
+:sql-status                        # Show current connection details
+:sql-disconnect                    # Disconnect from database
+```
+
+### Query Execution
+
+#### SELECT Queries
+Execute SELECT statements and view formatted results directly in your buffer:
+
+```
+:sql-query SELECT * FROM users LIMIT 10
+:sql-query SELECT name, email FROM customers WHERE active = true
+:sql-query SELECT COUNT(*) as total FROM orders
+:sql-query SELECT 'Hello World' as message
+```
+
+**Result Format:**
+```
+name                 email               
+-------------------- --------------------
+John Doe             john@example.com    
+Jane Smith           jane@example.com    
+Bob Wilson           bob@test.com        
+```
+
+#### DDL and DML Operations
+Execute data modification and structure commands:
+
+```
+:sql-exec CREATE TABLE test (id INTEGER, name TEXT)
+:sql-exec INSERT INTO users (name, email) VALUES ('Bob', 'bob@test.com')
+:sql-exec UPDATE products SET price = 99.99 WHERE id = 1 
+:sql-exec DELETE FROM temp_data WHERE created < '2025-01-01'
+:sql-exec DROP TABLE IF EXISTS old_table
+```
+
+### Database Exploration
+
+#### Table Listing
+List all tables in the database, organized by schema:
+
+```
+:sql-show-tables
+```
+
+**PostgreSQL Output:**
+```
+schemaname           tablename           
+-------------------- --------------------
+public               users               
+public               orders              
+public               products            
+myschema             custom_table        
+```
+
+**MySQL Output:**
+```
+tablename           
+--------------------
+users               
+orders              
+products            
+```
+
+#### Table Structure
+Examine the structure of specific tables:
+
+```
+:sql-describe users
+```
+
+**Output:**
+```
+column_name          data_type           nullable    default     
+-------------------- ------------------- ----------- ------------
+id                   integer             NO          nextval()   
+name                 character varying   YES         NULL        
+email                character varying   NO          NULL        
+created_at           timestamp           YES         now()       
+```
+
+### Transaction Management
+
+The SQL REPL provides full transaction support for safe database operations:
+
+```
+:sql-begin                         # Start transaction
+:sql-exec INSERT INTO users (name) VALUES ('Test User')
+:sql-query SELECT * FROM users WHERE name = 'Test User'
+:sql-commit                        # Commit changes
+```
+
+**Or to rollback:**
+```
+:sql-begin                         # Start transaction
+:sql-exec DELETE FROM important_data WHERE condition
+:sql-rollback                      # Undo all changes
+```
+
+### Development Workflow Examples
+
+#### Database Setup and Exploration
+```
+# Connect to development database
+:sql-connect postgresql://dev:password@localhost:5432/myproject
+
+# Check connection
+:sql-status
+
+# Explore database structure
+:sql-show-tables
+:sql-describe users
+:sql-describe orders
+
+# Check data
+:sql-query SELECT COUNT(*) FROM users
+:sql-query SELECT * FROM users LIMIT 5
+```
+
+#### Safe Data Modification
+```
+# Start transaction for safety
+:sql-begin
+
+# Make changes
+:sql-exec UPDATE products SET category = 'electronics' WHERE type = 'gadget'
+
+# Verify changes
+:sql-query SELECT * FROM products WHERE category = 'electronics'
+
+# Commit if correct, or rollback if not
+:sql-commit
+# :sql-rollback
+```
+
+#### Data Analysis Workflow
+```
+# Connect to analytics database
+:sql-connect postgresql://analyst:pass@db.company.com:5432/warehouse
+
+# Run analysis queries with results displayed in buffer
+:sql-query SELECT category, COUNT(*), AVG(price) FROM products GROUP BY category
+
+:sql-query SELECT DATE(created), COUNT(*) 
+           FROM orders 
+           GROUP BY DATE(created) 
+           ORDER BY DATE(created) DESC 
+           LIMIT 30
+
+# Export specific datasets
+:sql-query SELECT * FROM monthly_sales WHERE month = '2025-09'
+```
+
+### SQL REPL Features
+
+#### Vi-Style Integration
+- **Colon Commands**: All SQL operations use familiar `:sql-*` command syntax
+- **Buffer Integration**: Query results appear directly in your current buffer at cursor position
+- **Multi-line Results**: Properly formatted tables with column alignment
+- **Error Handling**: Clear error messages for syntax errors and connection issues
+
+#### Database-Specific Features
+- **Schema Awareness**: PostgreSQL queries show schema information
+- **Connection Pooling**: Maintain connections across multiple queries
+- **Transaction State**: Automatic tracking of transaction status
+- **Query Optimization**: Efficient handling of large result sets
+
+#### Graceful Error Handling
+```
+# Missing database support
+:sql-connect postgresql://user:pass@host:5432/db
+ERROR: PostgreSQL support not available in this build
+
+# Connection errors
+:sql-connect postgresql://user:wrongpass@localhost:5432/db  
+ERROR: PostgreSQL connection failed: FATAL: password authentication failed
+
+# Query errors
+:sql-query SELECT * FROM nonexistent_table
+ERROR: PostgreSQL query failed: relation "nonexistent_table" does not exist
+```
+
+### SQL Command Reference
+
+#### Connection Commands
+| Command | Description |
+|---------|-------------|
+| `:sql-connect <uri>` | Connect to database using connection URI |
+| `:sql-disconnect` | Disconnect from current database |
+| `:sql-status` | Show connection status and database info |
+
+#### Query Commands
+| Command | Description |
+|---------|-------------|
+| `:sql-query <SELECT>` | Execute SELECT query with formatted results |
+| `:sql-exec <DDL/DML>` | Execute INSERT/UPDATE/DELETE/CREATE/DROP |
+
+#### Schema Commands
+| Command | Description |
+|---------|-------------|
+| `:sql-show-tables` | List all tables (schema-aware) |
+| `:sql-describe <table>` | Show table structure and columns |
+
+#### Transaction Commands
+| Command | Description |
+|---------|-------------|
+| `:sql-begin` | Begin database transaction |
+| `:sql-commit` | Commit current transaction |
+| `:sql-rollback` | Rollback current transaction |
+
+### Advanced Usage
+
+#### Working with Multiple Databases
+```
+# Connect to production database (read-only operations)
+:sql-connect postgresql://readonly:pass@prod.db.com:5432/app
+
+# Check production data
+:sql-query SELECT COUNT(*) FROM active_users
+
+# Switch to development database for testing
+:sql-connect postgresql://dev:pass@localhost:5432/app_dev
+
+# Test queries safely
+:sql-begin
+:sql-exec INSERT INTO test_data VALUES (1, 'test')
+:sql-rollback
+```
+
+#### Database Administration Tasks
+```
+# Connect as admin
+:sql-connect postgresql://admin:pass@localhost:5432/postgres
+
+# Check database sizes
+:sql-query SELECT datname, pg_size_pretty(pg_database_size(datname)) 
+           FROM pg_database 
+           WHERE datistemplate = false
+
+# Monitor active connections
+:sql-query SELECT datname, count(*) 
+           FROM pg_stat_activity 
+           GROUP BY datname
+```
+
+### Troubleshooting SQL REPL
+
+#### Connection Issues
+- **Database Not Available**: Ensure PostgreSQL/MySQL server is running
+- **Authentication Failed**: Verify username and password in connection string
+- **Network Issues**: Check hostname and port accessibility
+- **Permission Denied**: Ensure user has database access permissions
+
+#### Query Issues
+- **No Results Displayed**: Verify cursor is in an editable buffer area
+- **Query Syntax Error**: Check SQL syntax for your specific database type
+- **Large Result Sets**: Results are formatted and may take time for very large queries
+
+#### Build Issues
+- **Database Support Missing**: Install PostgreSQL/MySQL development libraries and rebuild
+- **Plugin Not Loading**: Check startup log for "SQL REPL plugin initialized" message
+- **Commands Not Found**: Ensure plugin loaded successfully with database support
+
+The SQL REPL integration transforms Vizero into a powerful database development environment, combining the efficiency of vi-style editing with comprehensive database interaction capabilities. Whether you're doing database administration, data analysis, or application development, the SQL REPL provides seamless integration between your code and your data.
 
 ---
 

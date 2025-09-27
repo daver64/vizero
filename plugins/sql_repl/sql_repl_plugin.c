@@ -169,11 +169,21 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
      */
     
     if (strncmp(conn_str, "mysql://", 8) == 0) {
+#ifdef HAVE_MYSQL
         *db_type = DB_TYPE_MYSQL;
         *port = 3306; /* Default MySQL port */
+#else
+        sql_display_error("MySQL support not available in this build");
+        return -1;
+#endif
     } else if (strncmp(conn_str, "postgresql://", 13) == 0) {
+#ifdef HAVE_POSTGRESQL
         *db_type = DB_TYPE_POSTGRESQL;
         *port = 5432; /* Default PostgreSQL port */
+#else
+        sql_display_error("PostgreSQL support not available in this build");
+        return -1;
+#endif
     } else {
         return -1; /* Unsupported database type */
     }
@@ -965,7 +975,23 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     mysql_library_init(0, NULL, NULL);
 #endif
     
-    sql_log_message("SQL REPL plugin initialized");
+    /* Log available database support */
+    char support_msg[256];
+    char supported_dbs[128] = "";
+    
+#ifdef HAVE_MYSQL
+    strcat(supported_dbs, "MySQL ");
+#endif
+#ifdef HAVE_POSTGRESQL
+    strcat(supported_dbs, "PostgreSQL ");
+#endif
+    
+    if (strlen(supported_dbs) == 0) {
+        strcpy(supported_dbs, "None");
+    }
+    
+    snprintf(support_msg, sizeof(support_msg), "SQL REPL plugin initialized - Database support: %s", supported_dbs);
+    sql_log_message(support_msg);
     
     /* Store plugin and API for later use */
     plugin->user_data = &g_sql_state;

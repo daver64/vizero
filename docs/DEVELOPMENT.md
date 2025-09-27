@@ -120,6 +120,7 @@ chmod +x build.sh
    )
    ```
 4. For syntax highlighting, see any of the language plugins (Python, Lisp, C, Markdown, XML, C#) for examples of colour mapping, tokenization, and REPL buffer detection.
+5. For REPL functionality, see `plugins/lisp_repl/` for interactive language REPL or `plugins/sql_repl/` for database integration examples.
 
 #### Plugin Template
 
@@ -145,6 +146,10 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin,
     // plugin->callbacks.lsp_completion = my_lsp_completion;
     // plugin->callbacks.lsp_hover = my_lsp_hover;
     // etc.
+    
+    // For command registration (REPL/database plugins):
+    // plugin->callbacks.commands = my_commands;
+    // plugin->callbacks.command_count = my_command_count;
     
     return 0; // Success
 }
@@ -173,6 +178,23 @@ static int my_lsp_completion(vizero_buffer_t* buffer, vizero_position_t position
     // Implement code completion
     // See plugins/clangd/clangd_plugin.c for full example
     return 0;
+}
+
+// For REPL/database plugins with command registration
+static vizero_command_t my_commands[] = {
+    {
+        .name = "mycommand",
+        .handler = my_command_handler,
+        .description = "Custom command description"
+    },
+    // Add more commands as needed
+};
+
+static int my_command_handler(vizero_editor_t* editor, const char* args) {
+    // Implementation of custom command
+    // See plugins/sql_repl/sql_repl_plugin.c for database integration example
+    // See plugins/lisp_repl/lisp_repl_plugin.c for interactive REPL example
+    return 1;
 }
 ```
 

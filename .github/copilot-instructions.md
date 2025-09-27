@@ -43,7 +43,8 @@ vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window);
 2. Use `VIZERO_PLUGIN_DEFINE_INFO()` macro for metadata
 3. Implement required exports: `vizero_plugin_init()`, `vizero_plugin_cleanup()`, `vizero_plugin_get_info()`
 4. For syntax highlighting: implement `highlight_syntax` callback returning token array
-5. Add to `plugins/CMakeLists.txt` using `add_vizero_plugin()` macro
+5. For REPL/database plugins: register commands via `plugin->callbacks.commands` array
+6. Add to `plugins/CMakeLists.txt` using `add_vizero_plugin()` macro
 
 ## Project-Specific Conventions
 
@@ -87,7 +88,9 @@ Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling i
 - `src/editor/editor_state.cpp` - Core editor logic
 - `src/lsp/lsp_client.cpp` - Language Server Protocol client implementation
 - `plugins/clangd/clangd_plugin.c` - Complete LSP plugin implementation
-- `plugins/syntax_highlight/syntax_highlight.c` - Plugin implementation example
+- `plugins/lisp_repl/lisp_repl_plugin.c` - Interactive REPL plugin example
+- `plugins/sql_repl/sql_repl_plugin.c` - Database integration plugin example
+- `plugins/syntax_highlight/syntax_highlight.c` - Syntax highlighting plugin example
 - `CMakeLists.txt` - Build system with dependency handling
 
 ## Common Gotchas

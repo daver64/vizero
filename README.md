@@ -31,6 +31,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Crash-Free Completion**: Fixed all LSP completion crashes with robust JSON parsing and proper buffer management for large completion responses (42KB+).
 - **Intelligent Code Completion**: Real-time code completion with Ctrl+Space, supporting functions, variables, and type information from clangd language server.
 - **Interactive LISP REPL**: Full SBCL integration with direct buffer typing, automatic expression evaluation, vi-style command integration, and seamless buffer switching with state preservation.
+- **SQL REPL Integration**: Multi-database SQL REPL with PostgreSQL and MySQL support, featuring real-time query execution, formatted result display, transaction management, and graceful degradation when database libraries are unavailable.
 
 ## Executables
 
@@ -53,6 +54,7 @@ Both versions share identical functionality and command-line arguments. Use the 
 
 ### Plugin Documentation
 - **[LISP REPL Plugin](docs/LISP_REPL_PLUGIN.md)** - Interactive Common Lisp development with SBCL
+- **[SQL REPL Plugin](docs/SQL_REPL_PLUGIN.md)** - Multi-database SQL development with PostgreSQL and MySQL
 - **[clangd Integration](docs/CLANGD_INTEGRATION_PROGRESS.md)** - Language Server Protocol support for C/C++
 - **[JavaScript Syntax Highlighter](docs/JAVASCRIPT_SYNTAX_HIGHLIGHTER.md)** - JavaScript/TypeScript syntax highlighting
 - **[Colour Themes](docs/COLOUR_THEMES.md)** - Available themes and customization
@@ -145,6 +147,21 @@ Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
 # Press Enter when parentheses are balanced to evaluate
 # Use Escape+: for vi commands, automatic state restoration
 :lisp-slime-connect localhost 4005  # Connect to Swank server (SLIME protocol)
+```
+
+#### SQL REPL
+```
+:sql-connect postgresql://user:pass@host:port/db  # Connect to PostgreSQL
+:sql-connect mysql://user:pass@host:port/db       # Connect to MySQL
+:sql-query SELECT * FROM table_name               # Execute SELECT query
+:sql-exec UPDATE table SET col = value            # Execute DDL/DML statement
+:sql-show-tables                                  # List database tables
+:sql-describe table_name                          # Show table structure
+:sql-status                                       # Show connection status
+:sql-disconnect                                   # Disconnect from database
+:sql-begin                                        # Begin transaction
+:sql-commit                                       # Commit transaction
+:sql-rollback                                     # Rollback transaction
 ```
 
 #### File Operations
@@ -399,6 +416,14 @@ static int highlight_syntax(/* ... */) {
 | `:lisp-slime-connect` | Connect to SLIME/Swank server |
 | `:lisp-disconnect` | Stop LISP REPL |
 | `:lisp-status` | Show REPL status |
+| `:sql-connect <uri>` | Connect to SQL database |
+| `:sql-query <sql>` | Execute SELECT query |
+| `:sql-exec <sql>` | Execute DDL/DML statement |
+| `:sql-show-tables` | List database tables |
+| `:sql-describe <table>` | Show table structure |
+| `:sql-status` | Show SQL connection status |
+| `:sql-disconnect` | Disconnect from database |
+| `:sql-begin/:sql-commit/:sql-rollback` | Transaction management |
 | `:d/:y/:p/:P` | Delete/yank/paste lines |
 | `:j` | Join lines |
 | `:u/:redo` | Undo/redo |
@@ -436,6 +461,7 @@ MIT License - see LICENSE file for details.
 
 ### Specialized Guides
 - **[🐍 LISP Development](docs/LISP_REPL_PLUGIN.md)** - Interactive Common Lisp with SBCL
+- **[🗄️ SQL Development](docs/SQL_REPL_PLUGIN.md)** - Multi-database SQL REPL with PostgreSQL/MySQL
 - **[⚡ C/C++ Development](docs/CLANGD_INTEGRATION_PROGRESS.md)** - LSP-powered code completion
 - **[🌐 JavaScript Support](docs/JAVASCRIPT_SYNTAX_HIGHLIGHTER.md)** - Modern JS/TS highlighting
 - **[🔌 SLIME Integration](docs/SLIME_TESTING_GUIDE.md)** - Connect to Swank servers

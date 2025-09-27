@@ -145,6 +145,33 @@
 - ✅ `:set assembler nasm|fasm` - Set assembler
 - ✅ `:set <compiler>_path <path>` - Set compiler executable paths
 
+### LISP REPL Plugin (✅ Complete)
+- ✅ `:lisp-connect` - Start interactive SBCL REPL
+- ✅ `:lisp-disconnect` - Stop LISP REPL session
+- ✅ `:lisp-status` - Show REPL connection status
+- ✅ `:lisp-slime-connect <host> <port>` - Connect to SLIME/Swank server
+- ✅ `:lisp-eval <expression>` - Evaluate Lisp expression
+- ✅ `:lisp-package <package>` - Change current package
+- ✅ `:lisp-complete <prefix>` - Show completion suggestions
+- ✅ `:lisp-inspect <object>` - Inspect Lisp object
+- ✅ `:lisp-trace <function>` - Trace function calls
+- ✅ `:lisp-load <file>` - Load Lisp file
+- ✅ `:lisp-compile <file>` - Compile Lisp file
+- ✅ `:lisp-quicklisp` - Load Quicklisp package manager
+- ✅ `:lisp-help` - Show LISP REPL help
+
+### SQL REPL Plugin (✅ Complete)
+- ✅ `:sql-connect <uri>` - Connect to database (postgresql://user:pass@host:port/db)
+- ✅ `:sql-disconnect` - Disconnect from database
+- ✅ `:sql-status` - Show database connection status
+- ✅ `:sql-query <SELECT_statement>` - Execute SELECT query with formatted results
+- ✅ `:sql-exec <DDL_or_DML>` - Execute INSERT/UPDATE/DELETE/CREATE/DROP statements
+- ✅ `:sql-show-tables` - List all tables in database (schema-aware)
+- ✅ `:sql-describe <table>` - Show table structure and column information
+- ✅ `:sql-begin` - Begin database transaction
+- ✅ `:sql-commit` - Commit current transaction
+- ✅ `:sql-rollback` - Rollback current transaction
+
 ## Commands Still To Be Implemented (❌ Not Implemented)
 
 ### Session Management (Framework Complete, Implementation Pending)
