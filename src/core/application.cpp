@@ -550,6 +550,96 @@ static void render_completion_dropdown(vizero_application_t* app, int window_wid
     }
 }
 
+static void render_hover_popup(vizero_application_t* app, int window_width, int window_height) {
+    if (!app || !app->editor) return;
+    
+    /* Get hover state */
+    vizero_editor_state_t* editor = app->editor;
+    const char* hover_text = vizero_editor_get_hover_text(editor);
+    if (!hover_text) return;
+    
+    /* Get hover screen position */
+    int hover_x, hover_y;
+    vizero_editor_get_hover_screen_position(editor, &hover_x, &hover_y);
+    
+    /* Calculate popup dimensions based on content */
+    size_t text_len = strlen(hover_text);
+    int lines = 1;
+    for (size_t i = 0; i < text_len; i++) {
+        if (hover_text[i] == '\n') lines++;
+    }
+    
+    const int char_width = 8;
+    const int char_height = 16;
+    const int padding = 8;
+    const int max_width = 400;
+    
+    /* Estimate width (simple approach - use max line width) */
+    int popup_width = 200; /* Default minimum */
+    const char* line_start = hover_text;
+    for (int line = 0; line < lines; line++) {
+        const char* line_end = strchr(line_start, '\n');
+        if (!line_end) line_end = hover_text + text_len;
+        
+        int line_width = (int)(line_end - line_start) * char_width + padding * 2;
+        if (line_width > popup_width) popup_width = line_width;
+        
+        if (*line_end == '\n') line_start = line_end + 1;
+        else break;
+    }
+    
+    if (popup_width > max_width) popup_width = max_width;
+    int popup_height = lines * char_height + padding * 2;
+    
+    /* Adjust position to keep popup on screen */
+    if (hover_x + popup_width > window_width) {
+        hover_x = window_width - popup_width - 10;
+    }
+    if (hover_y + popup_height > window_height - 30) { /* Leave space for status bar */
+        hover_y = hover_y - popup_height - 20; /* Show above cursor */
+        if (hover_y < 10) hover_y = 10;
+    }
+    
+    /* Draw popup background - same colors as completion popup */
+    vizero_colour_t bg_colour = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
+    vizero_renderer_fill_rect(app->renderer, (float)hover_x, (float)hover_y, 
+                             (float)popup_width, (float)popup_height, bg_colour);
+    
+    /* Draw popup border - same colors as completion popup */
+    vizero_colour_t border_colour = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
+    vizero_renderer_draw_rect(app->renderer, (float)hover_x, (float)hover_y,
+                             (float)popup_width, (float)popup_height, border_colour);
+    
+    /* Draw hover text line by line */
+    vizero_colour_t text_colour = {1.0f, 1.0f, 1.0f, 1.0f}; /* White text */
+    const char* current_line = hover_text;
+    
+    for (int line = 0; line < lines; line++) {
+        const char* line_end = strchr(current_line, '\n');
+        if (!line_end) line_end = hover_text + text_len;
+        
+        /* Copy line to buffer for rendering */
+        int line_len = (int)(line_end - current_line);
+        char line_buf[512];
+        if (line_len >= (int)sizeof(line_buf)) line_len = (int)sizeof(line_buf) - 1;
+        
+        memcpy(line_buf, current_line, line_len);
+        line_buf[line_len] = '\0';
+        
+        /* Draw the line */
+        vizero_text_info_t text_info;
+        text_info.x = (float)(hover_x + padding);
+        text_info.y = (float)(hover_y + padding + line * char_height);
+        text_info.colour = text_colour;
+        text_info.font = NULL;
+        vizero_renderer_draw_text(app->renderer, line_buf, &text_info);
+        
+        /* Move to next line */
+        if (*line_end == '\n') current_line = line_end + 1;
+        else break;
+    }
+}
+
 int vizero_application_run(vizero_application_t* app) {
     if (!app) {
         return -1;
@@ -561,6 +651,14 @@ int vizero_application_run(vizero_application_t* app) {
 
         /* Process input events */
         vizero_input_manager_process_events(app->input);
+        
+        /* Process LSP messages from plugins */
+        if (app->plugin_manager) {
+            vizero_plugin_manager_process_lsp_messages(app->plugin_manager);
+        }
+        
+        /* Diagnostic updates are now event-driven only (on text changes, file save, etc.) */
+        /* No automatic periodic updates to prevent crashes and improve performance */
         
         /* Clear screen with theme background colour */
         vizero_colour_t clear_colour = {0.1f, 0.1f, 0.2f, 1.0f}; /* Default fallback */
@@ -741,6 +839,11 @@ int vizero_application_run(vizero_application_t* app) {
         /* Render completion dropdown if visible */
         if (vizero_editor_is_completion_visible(app->editor)) {
             render_completion_dropdown(app, window_width, window_height);
+        }
+        
+        /* Render hover popup if visible */
+        if (vizero_editor_is_hover_visible(app->editor)) {
+            render_hover_popup(app, window_width, window_height);
         }
         
         /* File change polling temporarily disabled for debugging corruption. */

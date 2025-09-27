@@ -283,10 +283,58 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             goto keydown_handled; /* Always consume Ctrl+Space and skip all other processing */
                         }
                         
-                        /* Check for ESC key to dismiss popup */
-                        if (event.key.keysym.sym == SDLK_ESCAPE && vizero_editor_is_popup_visible(editor)) {
-                            vizero_editor_hide_popup(editor);
-                            break; /* Consume the ESC key */
+                        /* Check for Ctrl+H to trigger LSP hover */
+                        if ((event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym == SDLK_h)) {
+                            vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
+                            if (cursor) {
+                                size_t cursor_line = vizero_cursor_get_line(cursor);
+                                size_t cursor_col = vizero_cursor_get_column(cursor);
+                                vizero_position_t position = { cursor_line, cursor_col };
+                                
+                                printf("[DEBUG] Triggering LSP hover at line %zu, column %zu\n", 
+                                       position.line, position.column);
+                                
+                                vizero_plugin_manager_t* lsp_plugin_manager = vizero_application_get_plugin_manager(input->app);
+                                if (lsp_plugin_manager) {
+                                    char* hover_text = NULL;
+                                    int result = vizero_plugin_manager_lsp_hover(lsp_plugin_manager, 
+                                                vizero_editor_get_current_buffer(editor), position, &hover_text);
+                                    
+                                    printf("[DEBUG] LSP hover returned result=%d, hover_text=%p\n", 
+                                           result, (void*)hover_text);
+                                    
+                                    if (result == 0 && hover_text) {
+                                        printf("[DEBUG] Got hover text: %s\n", hover_text);
+                                        
+                                        /* Calculate screen position for hover popup */
+                                        int screen_x = (int)(cursor_col * 8 + 50); /* 8px per char + left margin */
+                                        int screen_y = (int)(cursor_line * 16 + 80); /* 16px per line + top margin */
+                                        
+                                        /* Show hover popup */
+                                        vizero_editor_show_hover(editor, hover_text, position, screen_x, screen_y);
+                                        
+                                        /* Clean up hover text */
+                                        free(hover_text);
+                                    } else {
+                                        printf("[DEBUG] No hover information available\n");
+                                    }
+                                }
+                            }
+                            goto keydown_handled; /* Always consume Ctrl+H */
+                        }
+                        
+                        /* Ctrl+D diagnostic refresh removed - keeping only hover popup functionality */
+                        
+                        /* Check for ESC key to dismiss popups */
+                        if (event.key.keysym.sym == SDLK_ESCAPE) {
+                            if (vizero_editor_is_popup_visible(editor)) {
+                                vizero_editor_hide_popup(editor);
+                                break; /* Consume the ESC key */
+                            }
+                            if (vizero_editor_is_hover_visible(editor)) {
+                                vizero_editor_hide_hover(editor);
+                                break; /* Consume the ESC key */
+                            }
                         }
                         
                         /* Handle ESC key for mode manager when no popup is visible */
@@ -638,6 +686,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         
                                         if (vizero_buffer_delete_char(buffer, line, col - 1) == 0) {
                                             vizero_cursor_move_left(cursor);
+                                            /* Diagnostic updates removed to prevent crashes - will update on file save */
                                         }
                                     } else if (line > 0) {
                                         /* At start of line, join with previous line */
@@ -656,8 +705,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         char deleted_char[2] = {line_text[col], '\0'};
                                         vizero_position_t pos = {line, col};
                                         vizero_editor_push_undo_operation(editor, VIZERO_UNDO_DELETE_CHAR, pos, pos, deleted_char);
+                                        
+                                        if (vizero_buffer_delete_char(buffer, line, col) == 0) {
+                                            /* Diagnostic updates removed to prevent crashes - will update on file save */
+                                        }
                                     }
-                                    vizero_buffer_delete_char(buffer, line, col);
                                     break;
                                 }
                                 case SDLK_TAB: {
@@ -823,6 +875,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
                         if (buffer && cursor) {
                             /* Insert each character from the text input */
+                            bool text_changed = false;
                             for (const char* c = text; *c; c++) {
                                 size_t line = vizero_cursor_get_line(cursor);
                                 size_t col = vizero_cursor_get_column(cursor);
@@ -833,8 +886,10 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 if (vizero_buffer_insert_char(buffer, line, col, *c) == 0) {
                                     /* Move cursor forward after successful insertion */
                                     vizero_cursor_move_right(cursor);
+                                    text_changed = true;
                                 }
                             }
+                            /* Diagnostic updates removed to prevent crashes - will update on file save */
                         }
                     } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_COMMAND) {
                         /* In command mode, append text to command buffer */

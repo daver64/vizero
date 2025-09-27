@@ -634,7 +634,13 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                         8.0f, 16.0f, bg_colour);
                 }
                 
+                /* Diagnostic error underlines disabled during character rendering for performance */
+                /* TODO: Implement efficient batch diagnostic rendering outside the character loop */
+                
                 vizero_renderer_draw_text(renderer, ch, &info);
+                
+                /* Diagnostic underlines disabled during character rendering for performance */
+                /* TODO: Implement efficient batch diagnostic rendering outside the character loop */
             }
             // No free needed, stack buffer
         } else {
@@ -663,6 +669,8 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             found_cursor = 1;
         }
     }
+    /* Diagnostic underlines disabled - keeping only hover popup functionality */
+
     // Scroll vertically to keep the cursor visible
     if (window->is_focused && found_cursor) {
         int visible_rows = content_height / 16;

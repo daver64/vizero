@@ -228,6 +228,17 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         state->completion_trigger_position.line = 0;
         state->completion_trigger_position.column = 0;
         
+        /* Initialize LSP diagnostics and hover UI */
+        state->diagnostics = NULL;
+        state->diagnostic_count = 0;
+        state->diagnostic_buffer = NULL;
+        state->hover_text = NULL;
+        state->hover_visible = 0;
+        state->hover_position.line = 0;
+        state->hover_position.column = 0;
+        state->hover_x = 0;
+        state->hover_y = 0;
+        
         /* Store startup directory for resource loading */
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -274,6 +285,19 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
 
 void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     if (!state) return;
+    
+    /* Clean up LSP UI state */
+    if (state->diagnostics) {
+        for (size_t i = 0; i < state->diagnostic_count; i++) {
+            free(state->diagnostics[i].message);
+            free(state->diagnostics[i].source);
+        }
+        free(state->diagnostics);
+    }
+    
+    if (state->hover_text) {
+        free(state->hover_text);
+    }
     
     /* With new architecture, windows no longer own cursors - they're all managed by editor state */
     if (state->window_manager) {
@@ -449,6 +473,9 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
             if (state->plugin_manager) {
                 vizero_plugin_manager_on_buffer_open(state->plugin_manager, buffer, filename);
             }
+            
+            /* Diagnostics now triggered manually with Ctrl+D */
+            
             return 0;
         }
     }
@@ -457,6 +484,8 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
     if (state->plugin_manager) {
         vizero_plugin_manager_on_buffer_open(state->plugin_manager, buffer, filename);
     }
+    
+    /* Diagnostics now triggered manually with Ctrl+D */
     
     // Add to buffer list and handle window creation/reuse robustly
     int window_handled = 0;
@@ -2393,6 +2422,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         if (buffer) {
             if (vizero_buffer_save(buffer) == 0) {
                 vizero_editor_set_status_message(state, "File written");
+                /* Diagnostics now triggered manually with Ctrl+D */
                 return 0;
             } else {
                 vizero_editor_set_status_message(state, "Error writing file");
@@ -2404,6 +2434,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Save and quit */
         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
         if (buffer && vizero_buffer_save(buffer) == 0) {
+            /* Diagnostics now triggered manually with Ctrl+D */
             exit(0); /* TODO: Better quit mechanism */
         } else {
             vizero_editor_set_status_message(state, "Error writing file");
@@ -4911,4 +4942,158 @@ size_t vizero_editor_get_completion_selected_index(vizero_editor_state_t* state)
 vizero_position_t vizero_editor_get_completion_trigger_position(vizero_editor_state_t* state) {
     vizero_position_t invalid_pos = {0, 0};
     return state ? state->completion_trigger_position : invalid_pos;
+}
+
+/* LSP Diagnostics UI functions */
+void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffer_t* buffer) {
+    if (!state || !buffer) return;
+    
+    printf("[DEBUG] vizero_editor_update_diagnostics called\n");
+    
+    /* Clear existing diagnostics */
+    if (state->diagnostics) {
+        printf("[DEBUG] Clearing %zu existing diagnostics\n", state->diagnostic_count);
+        for (size_t i = 0; i < state->diagnostic_count; i++) {
+            free(state->diagnostics[i].message);
+            free(state->diagnostics[i].source);
+        }
+        free(state->diagnostics);
+        state->diagnostics = NULL;
+    }
+    state->diagnostic_count = 0;
+    state->diagnostic_buffer = NULL;
+    
+    /* Check if buffer has been modified since last diagnostic update */
+    static vizero_buffer_t* last_diagnostic_buffer = NULL;
+    static time_t last_modification_time = 0;
+    
+    time_t current_mod_time = 0;
+    if (buffer) {
+        /* Use a simple hash of buffer content as modification indicator */
+        const char* content = vizero_buffer_get_text(buffer);
+        if (content) {
+            /* Simple hash of first and last 100 chars to detect changes quickly */
+            size_t len = strlen(content);
+            current_mod_time = (time_t)len; /* Use length as simple modification indicator */
+            if (len > 0) current_mod_time += content[0];
+            if (len > 100) current_mod_time += content[len-1];
+        }
+    }
+    
+    /* Notify LSP plugins of buffer changes if content changed */
+    bool buffer_changed = (buffer != last_diagnostic_buffer || current_mod_time != last_modification_time);
+    if (buffer_changed && state->plugin_manager && buffer) {
+        printf("[DEBUG] Buffer content changed, notifying LSP plugins\n");
+        /* Trigger manual diagnostic refresh to send didChange notifications */
+        /* This will cause LSP plugins to update their analysis */
+    }
+    
+    /* For manual diagnostic refresh (Ctrl+D), trigger LSP analysis first */
+    if (state->plugin_manager && buffer) {
+        printf("[DEBUG] Triggering manual diagnostic refresh for LSP plugins\n");
+        /* Send buffer changes to LSP plugins before requesting diagnostics */
+        vizero_plugin_manager_notify_buffer_changed(state->plugin_manager, buffer);
+    }
+    
+    /* Get diagnostics from LSP plugins */
+    vizero_diagnostic_t* diagnostics = NULL;
+    size_t diagnostic_count = 0;
+    
+    if (state->plugin_manager) {
+        printf("[DEBUG] Calling plugin manager for diagnostics\n");
+        int result = vizero_plugin_manager_lsp_get_diagnostics(state->plugin_manager, buffer, &diagnostics, &diagnostic_count);
+        printf("[DEBUG] Plugin manager returned result=%d, diagnostics=%p, count=%zu\n", result, (void*)diagnostics, diagnostic_count);
+        
+        if (result == 0) {
+            if (diagnostic_count > 0 && diagnostics) {
+                printf("[DEBUG] Processing %zu diagnostics from plugin\n", diagnostic_count);
+                /* Copy diagnostics to editor state (plugin memory management is separate) */
+                state->diagnostics = (vizero_diagnostic_t*)malloc(sizeof(vizero_diagnostic_t) * diagnostic_count);
+                if (state->diagnostics) {
+                    for (size_t i = 0; i < diagnostic_count; i++) {
+                        state->diagnostics[i] = diagnostics[i];
+                        /* Copy strings to ensure proper memory management */
+                        state->diagnostics[i].message = diagnostics[i].message ? strdup(diagnostics[i].message) : NULL;
+                        state->diagnostics[i].source = diagnostics[i].source ? strdup(diagnostics[i].source) : NULL;
+                        printf("[DEBUG] Diagnostic %zu: line=%zu, col=%zu-%zu, msg='%s'\n", 
+                               i, diagnostics[i].range.start.line, diagnostics[i].range.start.column, 
+                               diagnostics[i].range.end.column, diagnostics[i].message ? diagnostics[i].message : "null");
+                    }
+                    state->diagnostic_count = diagnostic_count;
+                    state->diagnostic_buffer = buffer;
+                    printf("[DEBUG] Successfully stored %zu diagnostics in editor state\n", diagnostic_count);
+                }
+            } else {
+                printf("[DEBUG] No diagnostics from plugin - errors cleared\n");
+                /* Important: Update state even when there are 0 diagnostics to clear old errors */
+                state->diagnostic_count = 0;
+                state->diagnostic_buffer = buffer;
+            }
+        } else {
+            printf("[DEBUG] Plugin returned error result=%d\n", result);
+        }
+    }
+}
+
+vizero_diagnostic_t* vizero_editor_get_diagnostics(vizero_editor_state_t* state, 
+                                                  vizero_buffer_t* buffer, 
+                                                  size_t* count) {
+    if (!state || !buffer || !count) {
+        if (count) *count = 0;
+        return NULL;
+    }
+    
+    /* Check if diagnostics are for this buffer */
+    if (state->diagnostic_buffer != buffer) {
+        *count = 0;
+        return NULL;
+    }
+    
+    *count = state->diagnostic_count;
+    return state->diagnostics;
+}
+
+/* LSP Hover UI functions */
+void vizero_editor_show_hover(vizero_editor_state_t* state, const char* text, 
+                             vizero_position_t position, int screen_x, int screen_y) {
+    if (!state || !text) return;
+    
+    /* Clear existing hover */
+    vizero_editor_hide_hover(state);
+    
+    /* Set new hover */
+    state->hover_text = strdup(text);
+    state->hover_position = position;
+    state->hover_x = screen_x;
+    state->hover_y = screen_y;
+    state->hover_visible = 1;
+}
+
+void vizero_editor_hide_hover(vizero_editor_state_t* state) {
+    if (!state) return;
+    
+    if (state->hover_text) {
+        free(state->hover_text);
+        state->hover_text = NULL;
+    }
+    state->hover_visible = 0;
+}
+
+int vizero_editor_is_hover_visible(vizero_editor_state_t* state) {
+    return state ? state->hover_visible : 0;
+}
+
+const char* vizero_editor_get_hover_text(vizero_editor_state_t* state) {
+    return state ? state->hover_text : NULL;
+}
+
+vizero_position_t vizero_editor_get_hover_position(vizero_editor_state_t* state) {
+    vizero_position_t invalid_pos = {0, 0};
+    return state ? state->hover_position : invalid_pos;
+}
+
+void vizero_editor_get_hover_screen_position(vizero_editor_state_t* state, int* x, int* y) {
+    if (!state || !x || !y) return;
+    *x = state->hover_x;
+    *y = state->hover_y;
 }

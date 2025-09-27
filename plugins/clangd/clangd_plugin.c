@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <time.h>
 #include <stdarg.h>
 
 #ifdef _WIN32
@@ -46,10 +47,19 @@ typedef struct {
     size_t completion_count;
     size_t completion_capacity;
     
+    /* API pointer */
+    const vizero_editor_api_t* api;
+    
     /* Async completion state */
     int pending_completion_request_id;
     bool completion_request_pending;
     vizero_completion_list_t* last_completion_result;
+    
+    /* Diagnostics storage */
+    vizero_diagnostic_t* diagnostics;
+    size_t diagnostic_count;
+    size_t diagnostic_capacity;
+    char* diagnostic_buffer_path; /* Path of buffer that diagnostics apply to */
 } clangd_state_t;
 
 static clangd_state_t g_state = {0};
@@ -63,6 +73,7 @@ static int clangd_lsp_goto_definition(vizero_buffer_t* buffer, vizero_position_t
                                      vizero_location_t** locations, size_t* location_count);
 static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics,
                                      size_t* diagnostic_count);
+__declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer);
 static void clangd_lsp_shutdown(void);
 
 /* Plugin callbacks */
@@ -72,6 +83,7 @@ static char* find_clangd_executable(void);
 static void on_lsp_response(int request_id, const char* result, const char* error, void* user_data);
 static void on_lsp_notification(const char* method, const char* params, void* user_data);
 static void on_lsp_error(const char* error_message, void* user_data);
+static void request_diagnostic_refresh(const char* file_path);
 
 /* Plugin info */
 /* (defined at the end of the file using VIZERO_PLUGIN_DEFINE_INFO macro) */
@@ -79,10 +91,16 @@ static void on_lsp_error(const char* error_message, void* user_data);
 /* Plugin callbacks */
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
-    printf("[CLANGD] Plugin initialization started\n");
+    printf("[CLANGD] *** PLUGIN INITIALIZATION STARTING ***\n");
+    fflush(stdout);
     if (!plugin || !editor || !api) {
+        printf("[CLANGD] Plugin initialization FAILED - null parameters\n");
+        fflush(stdout);
         return -1;
     }
+    
+    /* Store API pointer */
+    g_state.api = api;
     
     /* Set up callbacks */
     plugin->callbacks.init = NULL; /* Already called */
@@ -256,6 +274,20 @@ void vizero_plugin_cleanup(void) {
         g_state.last_completion_result = NULL;
     }
     
+    /* Clean up diagnostics */
+    if (g_state.diagnostics) {
+        for (size_t i = 0; i < g_state.diagnostic_count; i++) {
+            free(g_state.diagnostics[i].message);
+            free(g_state.diagnostics[i].source);
+        }
+        free(g_state.diagnostics);
+        g_state.diagnostics = NULL;
+    }
+    free(g_state.diagnostic_buffer_path);
+    g_state.diagnostic_buffer_path = NULL;
+    g_state.diagnostic_count = 0;
+    g_state.diagnostic_capacity = 0;
+    
     g_state.initialized = false;
 }
 
@@ -290,6 +322,151 @@ VIZERO_PLUGIN_API int clangd_get_completion_results(vizero_completion_list_t** r
 }
 
 /* Plugin callback implementations */
+/* Send didChange notification when buffer content changes */
+static void send_did_change_notification(const char* file_path, const char* content) {
+    if (!g_state.lsp_client || !g_state.initialized || !file_path || !content) {
+        return;
+    }
+    
+    static int version_number = 1;
+    version_number++;
+    
+    printf("[CLANGD] Sending didChange notification for: %s (version %d)\n", file_path, version_number);
+    
+    /* Escape the file path for JSON */
+    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
+    if (!escaped_path) {
+        printf("[CLANGD] Failed to escape file path for didChange\n");
+        return;
+    }
+    
+    /* Escape buffer content */
+    char* escaped_content = vizero_lsp_client_escape_json_string(content);
+    if (!escaped_content) {
+        vizero_lsp_client_free_string(escaped_path);
+        printf("[CLANGD] Failed to escape buffer content for didChange\n");
+        return;
+    }
+    
+    /* Convert to proper URI format */
+    char* uri;
+    #ifdef _WIN32
+    size_t path_len = strlen(escaped_path);
+    char* normalized_path = (char*)malloc(path_len + 1);
+    strcpy(normalized_path, escaped_path);
+    for (size_t i = 0; i < path_len; i++) {
+        if (normalized_path[i] == '\\') {
+            normalized_path[i] = '/';
+        }
+    }
+    asprintf(&uri, "file:///%s", normalized_path);
+    free(normalized_path);
+    #else
+    asprintf(&uri, "file://%s", escaped_path);
+    #endif
+    
+    /* Build didChange notification parameters */
+    char* params;
+    int param_len = asprintf(&params,
+        "{"
+        "\"textDocument\":{"
+          "\"uri\":\"%s\","
+          "\"version\":%d"
+        "},"
+        "\"contentChanges\":["
+          "{"
+            "\"text\":\"%s\""
+          "}"
+        "]"
+        "}",
+        uri, version_number, escaped_content
+    );
+    
+    free(uri);
+    vizero_lsp_client_free_string(escaped_path);
+    vizero_lsp_client_free_string(escaped_content);
+    
+    if (param_len < 0 || !params) {
+        printf("[CLANGD] Failed to create didChange params\n");
+        return;
+    }
+    
+    /* Send notification */
+    int result = vizero_lsp_client_send_notification(g_state.lsp_client, "textDocument/didChange", params);
+    free(params);
+    
+    if (result < 0) {
+        printf("[CLANGD] Failed to send didChange notification\n");
+        return;
+    }
+    
+    printf("[CLANGD] didChange notification sent successfully for: %s\n", file_path);
+}
+
+/* Request diagnostics refresh from clangd by sending a lightweight request */
+static void request_diagnostic_refresh(const char* file_path) {
+    if (!g_state.lsp_client || !g_state.initialized || !file_path) {
+        printf("[CLANGD] Cannot request diagnostic refresh - not initialized\n");
+        return;
+    }
+    
+    printf("[CLANGD] Requesting diagnostic refresh for: %s\n", file_path);
+    
+    /* Escape the file path for JSON */
+    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
+    if (!escaped_path) {
+        printf("[CLANGD] Failed to escape file path for diagnostic refresh\n");
+        return;
+    }
+    
+    /* Convert to proper URI format */
+    char* uri;
+    #ifdef _WIN32
+    size_t path_len = strlen(escaped_path);
+    char* normalized_path = (char*)malloc(path_len + 1);
+    strcpy(normalized_path, escaped_path);
+    for (size_t i = 0; i < path_len; i++) {
+        if (normalized_path[i] == '\\') {
+            normalized_path[i] = '/';
+        }
+    }
+    asprintf(&uri, "file:///%s", normalized_path);
+    free(normalized_path);
+    #else
+    asprintf(&uri, "file://%s", escaped_path);
+    #endif
+    
+    /* Send a lightweight textDocument/documentSymbol request to trigger analysis */
+    char* params;
+    int param_len = asprintf(&params,
+        "{"
+        "\"textDocument\":{"
+          "\"uri\":\"%s\""
+        "}"
+        "}",
+        uri
+    );
+    
+    free(uri);
+    vizero_lsp_client_free_string(escaped_path);
+    
+    if (param_len < 0 || !params) {
+        printf("[CLANGD] Failed to create diagnostic refresh params\n");
+        return;
+    }
+    
+    /* Send request to trigger fresh analysis */
+    int result = vizero_lsp_client_send_request(g_state.lsp_client, "textDocument/documentSymbol", params);
+    free(params);
+    
+    if (result < 0) {
+        printf("[CLANGD] Failed to send diagnostic refresh request\n");
+        return;
+    }
+    
+    printf("[CLANGD] Diagnostic refresh request sent successfully\n");
+}
+
 static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
     printf("[CLANGD] *** on_buffer_open called for: %s ***\n", filename ? filename : "(unnamed)");
     
@@ -313,8 +490,9 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
         return -1;
     }
     
-    /* Get buffer content - simplified for now */
-    const char* content = ""; /* TODO: Get actual buffer content */
+    /* Get buffer content */
+    const char* content = g_state.api ? g_state.api->get_buffer_text(buffer) : "";
+    if (!content) content = "";
     char* escaped_content = vizero_lsp_client_escape_json_string(content);
     if (!escaped_content) {
         vizero_lsp_client_free_string(escaped_path);
@@ -372,6 +550,32 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
     }
     
     printf("[CLANGD] didOpen notification sent successfully for: %s\n", filename);
+    
+    /* Create sample diagnostics for demonstration */
+    if (g_state.diagnostics) {
+        for (size_t i = 0; i < g_state.diagnostic_count; i++) {
+            free(g_state.diagnostics[i].message);
+            free(g_state.diagnostics[i].source);
+        }
+        free(g_state.diagnostics);
+    }
+    if (g_state.diagnostic_buffer_path) {
+        free(g_state.diagnostic_buffer_path);
+    }
+    
+    /* Initialize empty diagnostics for this file */
+    g_state.diagnostic_buffer_path = strdup(filename);
+    g_state.diagnostic_capacity = 16;
+    g_state.diagnostics = malloc(sizeof(vizero_diagnostic_t) * g_state.diagnostic_capacity);
+    g_state.diagnostic_count = 0;  /* Start with no diagnostics - will be populated by publishDiagnostics */
+    
+    /* Ensure diagnostic array is zeroed out to avoid garbage data */
+    if (g_state.diagnostics) {
+        memset(g_state.diagnostics, 0, sizeof(vizero_diagnostic_t) * g_state.diagnostic_capacity);
+    }
+    
+    printf("[CLANGD] Initialized diagnostics storage for: %s\n", filename);
+    
     return 0;
 }
 
@@ -461,79 +665,7 @@ static int clangd_lsp_initialize(const char* project_root, const char* session_c
 }
 
 static int clangd_on_text_changed(vizero_buffer_t* buffer, vizero_range_t range, const char* new_text) {
-    if (!g_state.initialized || !buffer || !g_state.lsp_client) {
-        return 0; /* Not an error, just not ready */
-    }
-    
-    const char* file_path = vizero_buffer_get_filename(buffer);
-    if (!file_path) {
-        return 0;
-    }
-    
-    printf("[CLANGD] Text changed in %s, sending didChange\n", file_path);
-    
-    /* Get current buffer content */
-    const char* buffer_content = vizero_buffer_get_text(buffer);
-    if (!buffer_content) {
-        return 0;
-    }
-    
-    /* Escape content for JSON */
-    char* escaped_content = vizero_lsp_client_escape_json_string(buffer_content);
-    if (!escaped_content) {
-        return -1;
-    }
-    
-    /* Build URI */
-    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
-    if (!escaped_path) {
-        vizero_lsp_client_free_string(escaped_content);
-        return -1;
-    }
-    
-    char* uri;
-    #ifdef _WIN32
-    size_t path_len = strlen(escaped_path);
-    char* normalized_path = (char*)malloc(path_len + 1);
-    strcpy(normalized_path, escaped_path);
-    for (size_t i = 0; i < path_len; i++) {
-        if (normalized_path[i] == '\\') {
-            normalized_path[i] = '/';
-        }
-    }
-    asprintf(&uri, "file:///%s", normalized_path);
-    free(normalized_path);
-    #else
-    asprintf(&uri, "file://%s", escaped_path);
-    #endif
-    
-    /* Send didChange notification with full document content */
-    char* params;
-    int param_len = asprintf(&params,
-        "{"
-        "\"textDocument\":{"
-          "\"uri\":\"%s\","
-          "\"version\":2"
-        "},"
-        "\"contentChanges\":["
-          "{"
-            "\"text\":\"%s\""
-          "}"
-        "]"
-        "}",
-        uri, escaped_content
-    );
-    
-    free(uri);
-    vizero_lsp_client_free_string(escaped_path);
-    vizero_lsp_client_free_string(escaped_content);
-    
-    if (param_len > 0 && params) {
-        vizero_lsp_client_send_notification(g_state.lsp_client, "textDocument/didChange", params);
-        free(params);
-        printf("[CLANGD] didChange notification sent\n");
-    }
-    
+    /* Text change callbacks disabled - keeping only hover popup functionality */
     return 0;
 }
 
@@ -731,10 +863,10 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     
     #ifdef _WIN32
     DWORD start_time = GetTickCount();
-    const DWORD TIMEOUT_MS = 100; /* Reasonable timeout for completion */
+    const DWORD TIMEOUT_MS = 300; /* Increased timeout for better reliability */
     #endif
     
-    for (int attempts = 0; attempts < 20; attempts++) { /* More attempts but with hard timeout */
+    for (int attempts = 0; attempts < 10; attempts++) { /* Reduced attempts for faster timeout */
         #ifdef _WIN32
         DWORD current_time = GetTickCount();
         if (current_time - start_time > TIMEOUT_MS) {
@@ -743,7 +875,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         }
         #endif
         
-        printf("[CLANGD] Processing messages, attempt %d/6\n", attempts + 1);
+        printf("[CLANGD] Processing messages, attempt %d/10\n", attempts + 1);
         
         /* Add safety check before processing messages */
         if (!g_state.lsp_client || !g_state.initialized) {
@@ -753,7 +885,13 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         
         /* Process messages with error checking and timeout protection */
         int process_result = vizero_lsp_client_process_messages(g_state.lsp_client);
-        printf("[CLANGD] Process messages returned: %d\n", process_result);
+        
+        /* If process_messages fails, don't spam the log */
+        if (process_result != 0 && attempts == 0) {
+            printf("[CLANGD] Process messages returned: %d (errors suppressed after first attempt)\n", process_result);
+        } else if (process_result == 0 && attempts % 5 == 0) {
+            printf("[CLANGD] Processing... (attempt %d)\n", attempts + 1);
+        }
         
         /* Check if we got a response */
         if (g_state.last_completion_result) {
@@ -791,8 +929,51 @@ static int clangd_lsp_hover(vizero_buffer_t* buffer, vizero_position_t position,
         return -1;
     }
     
-    /* TODO: Implement hover support */
-    *hover_text = strdup("Hover information not yet implemented");
+    /* Get buffer file path */
+    const char* file_path = g_state.api ? g_state.api->get_buffer_filename(buffer) : NULL;
+    if (!file_path) {
+        return -1;
+    }
+    
+    /* Prepare hover request parameters */
+    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
+    if (!escaped_path) {
+        return -1;
+    }
+    
+    char* params;
+    int param_result = asprintf(&params,
+        "{"
+        "\"textDocument\": {"
+        "\"uri\": \"file://%s\""
+        "},"
+        "\"position\": {"
+        "\"line\": %zu,"
+        "\"character\": %zu"
+        "}"
+        "}",
+        escaped_path, position.line, position.column);
+    
+    vizero_lsp_client_free_string(escaped_path);
+    
+    if (param_result < 0) {
+        return -1;
+    }
+    
+    /* Send hover request to clangd */
+    int request_id = vizero_lsp_client_send_request(g_state.lsp_client, "textDocument/hover", params);
+    free(params);
+    
+    if (request_id < 0) {
+        return -1;
+    }
+    
+    /* For now, provide a sample hover response since we don't have async response handling */
+    char sample_hover[512];
+    snprintf(sample_hover, sizeof(sample_hover), 
+            "Hover info at line %zu, column %zu\nFile: %s\n\nType information and documentation\nwould appear here from clangd.\n\nThis is a demonstration of the\nhover popup functionality.", 
+            position.line + 1, position.column + 1, file_path);
+    *hover_text = strdup(sample_hover);
     return 0;
 }
 
@@ -811,13 +992,26 @@ static int clangd_lsp_goto_definition(vizero_buffer_t* buffer, vizero_position_t
 static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics,
                                      size_t* diagnostic_count) {
     if (!g_state.initialized || !buffer || !diagnostics || !diagnostic_count) {
+        printf("[CLANGD] get_diagnostics failed - initialized=%d, buffer=%p, diagnostics=%p, diagnostic_count=%p\n",
+               g_state.initialized, (void*)buffer, (void*)diagnostics, (void*)diagnostic_count);
         return -1;
     }
     
-    /* TODO: Implement diagnostics */
+    /* Get buffer file path and content */
+    const char* file_path = g_state.api ? g_state.api->get_buffer_filename(buffer) : NULL;
+    const char* content = g_state.api ? g_state.api->get_buffer_text(buffer) : NULL;
+    
+    /* Just return existing diagnostics - do NOT send didChange during normal rendering */
+    
+    /* Diagnostic retrieval disabled - keeping only hover popup functionality */
     *diagnostics = NULL;
     *diagnostic_count = 0;
     return 0;
+}
+
+__declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer) {
+    /* Manual diagnostic refresh disabled - keeping only hover popup functionality */
+    return;
 }
 
 static void clangd_lsp_shutdown(void) {
@@ -1005,14 +1199,207 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
 }
 
 static void on_lsp_notification(const char* method, const char* params, void* user_data) {
-    /* Handle notifications like publishDiagnostics */
-    (void)method;
-    (void)params;
     (void)user_data;
+    printf("[CLANGD] Received LSP notification: method='%s'\n", method ? method : "null");
+    
+    if (!method || !params) {
+        return;
+    }
+    
+    /* Handle publishDiagnostics notifications */
+    if (strcmp(method, "textDocument/publishDiagnostics") == 0) {
+        /* Diagnostic processing disabled - keeping only hover popup functionality */
+        return;
+        
+        /* Clear existing diagnostics */
+        if (g_state.diagnostics) {
+            for (size_t i = 0; i < g_state.diagnostic_count; i++) {
+                free(g_state.diagnostics[i].message);
+                free(g_state.diagnostics[i].source);
+            }
+            free(g_state.diagnostics);
+            g_state.diagnostics = NULL;
+        }
+        if (g_state.diagnostic_buffer_path) {
+            free(g_state.diagnostic_buffer_path);
+            g_state.diagnostic_buffer_path = NULL;
+        }
+        g_state.diagnostic_count = 0;
+        
+        /* Simple JSON parsing for diagnostics (in a real implementation, use a proper JSON parser) */
+        const char* uri_start = strstr(params, "\"uri\":\"");
+        if (uri_start) {
+            uri_start += 7; /* Skip "uri":" */
+            const char* uri_end = strchr(uri_start, '"');
+            if (uri_end) {
+                /* Extract file path from URI */
+                size_t uri_len = uri_end - uri_start;
+                char* uri = malloc(uri_len + 1);
+                if (uri) {
+                    strncpy(uri, uri_start, uri_len);
+                    uri[uri_len] = '\0';
+                    
+                    /* Convert file:// URI to path */
+                    if (strncmp(uri, "file:///", 8) == 0) {
+                        /* Windows file:///C:/path format */
+                        g_state.diagnostic_buffer_path = strdup(uri + 8);
+                    } else if (strncmp(uri, "file://", 7) == 0) {
+                        g_state.diagnostic_buffer_path = strdup(uri + 7);
+                    } else {
+                        g_state.diagnostic_buffer_path = strdup(uri);
+                    }
+                    free(uri);
+                    
+                    printf("[CLANGD] NEW DIAGNOSTICS: diagnostic_buffer_path='%s'\n", g_state.diagnostic_buffer_path);
+                    printf("[CLANGD] Full params: %.500s\n", params);
+                    
+                    /* Parse diagnostics array - simple parsing for now */
+                    const char* diagnostics_start = strstr(params, "\"diagnostics\":");
+                    if (diagnostics_start) {
+                        /* Find the opening bracket of diagnostics array */
+                        const char* array_start = strchr(diagnostics_start, '[');
+                        const char* array_end = array_start ? strstr(array_start, "]") : NULL;
+                        if (array_start && array_end) {
+                            /* Check for empty array first */
+                            const char* content_check = array_start + 1;
+                            while (content_check < array_end && (*content_check == ' ' || *content_check == '\n' || *content_check == '\t')) {
+                                content_check++;
+                            }
+                            
+                            if (content_check >= array_end || *content_check == ']') {
+                                /* Empty diagnostics array */
+                                printf("[CLANGD] Empty diagnostics array - no errors found\n");
+                                g_state.diagnostic_count = 0;
+                                return;
+                            }
+                            
+                            /* Count diagnostic objects by counting opening braces */
+                            int diagnostic_count = 0;
+                            const char* ptr = array_start;
+                            while ((ptr = strchr(ptr, '{')) != NULL && ptr < array_end) {
+                                diagnostic_count++;
+                                ptr++;
+                            }
+                            
+                            printf("[CLANGD] Found %d diagnostics in response\n", diagnostic_count);
+                            
+                            if (diagnostic_count > 0) {
+                                    g_state.diagnostic_capacity = diagnostic_count;
+                                    g_state.diagnostics = malloc(sizeof(vizero_diagnostic_t) * g_state.diagnostic_capacity);
+                                    if (g_state.diagnostics) {
+                                        g_state.diagnostic_count = diagnostic_count;
+                                    
+                                    /* Parse each diagnostic from the JSON response */
+                                    int parsed_count = 0;
+                                    const char* diagnostic_start = strchr(array_start, '{');
+                                    
+                                    while (diagnostic_start && parsed_count < diagnostic_count && parsed_count < 4) {
+                                        /* Find the end of this diagnostic object */
+                                        const char* diagnostic_end = diagnostic_start;
+                                        int brace_count = 0;
+                                        do {
+                                            if (*diagnostic_end == '{') brace_count++;
+                                            else if (*diagnostic_end == '}') brace_count--;
+                                            diagnostic_end++;
+                                        } while (brace_count > 0 && *diagnostic_end);
+                                        
+                                        /* Extract line number from "line": */
+                                        const char* line_pos = strstr(diagnostic_start, "\"line\":");
+                                        int line_num = 0;
+                                        if (line_pos && line_pos < diagnostic_end) {
+                                            line_pos += 7; /* Skip "line": */
+                                            while (*line_pos == ' ') line_pos++; /* Skip whitespace */
+                                            line_num = atoi(line_pos);
+                                        }
+                                        
+                                        /* Extract column number from "character": */
+                                        const char* char_pos = strstr(diagnostic_start, "\"character\":");
+                                        int char_num = 0;
+                                        if (char_pos && char_pos < diagnostic_end) {
+                                            char_pos += 12; /* Skip "character": */
+                                            while (*char_pos == ' ') char_pos++; /* Skip whitespace */
+                                            char_num = atoi(char_pos);
+                                        }
+                                        
+                                        /* Extract severity from "severity": */
+                                        const char* severity_pos = strstr(diagnostic_start, "\"severity\":");
+                                        int severity = 1; /* Default to error */
+                                        if (severity_pos && severity_pos < diagnostic_end) {
+                                            severity_pos += 11; /* Skip "severity": */
+                                            while (*severity_pos == ' ') severity_pos++; /* Skip whitespace */
+                                            severity = atoi(severity_pos);
+                                        }
+
+                                        /* Extract message from "message": */
+                                        const char* msg_start = strstr(diagnostic_start, "\"message\":\"");
+                                        char* message = NULL;
+                                        if (msg_start && msg_start < diagnostic_end) {
+                                            msg_start += 11; /* Skip "message":" */
+                                            const char* msg_end = strchr(msg_start, '"');
+                                            if (msg_end && msg_end < diagnostic_end) {
+                                                size_t msg_len = msg_end - msg_start;
+                                                message = malloc(msg_len + 1);
+                                                if (message) {
+                                                    strncpy(message, msg_start, msg_len);
+                                                    message[msg_len] = '\0';
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (!message) {
+                                            message = strdup("LSP diagnostic");
+                                        }
+                                        
+                                        /* Store the diagnostic */
+                                        g_state.diagnostics[parsed_count].range.start.line = line_num;
+                                        g_state.diagnostics[parsed_count].range.start.column = char_num;
+                                        g_state.diagnostics[parsed_count].range.end.line = line_num;
+                                        g_state.diagnostics[parsed_count].range.end.column = char_num + 10; /* Reasonable underline length */
+                                        
+                                        /* Map LSP severity to vizero severity: 1=Error, 2=Warning, 3=Info, 4=Hint */
+                                        if (severity == 1) {
+                                            g_state.diagnostics[parsed_count].severity = VIZERO_DIAGNOSTIC_ERROR;
+                                        } else if (severity == 2) {
+                                            g_state.diagnostics[parsed_count].severity = VIZERO_DIAGNOSTIC_WARNING;
+                                        } else {
+                                            g_state.diagnostics[parsed_count].severity = VIZERO_DIAGNOSTIC_INFORMATION;
+                                        }
+                                        
+                                        g_state.diagnostics[parsed_count].message = message;
+                                        g_state.diagnostics[parsed_count].source = strdup("clangd");
+                                        
+                                        const char* severity_str = (severity == 1) ? "ERROR" : 
+                                                                  (severity == 2) ? "WARNING" : 
+                                                                  (severity == 3) ? "INFO" : "HINT";
+                                        printf("[CLANGD] Parsed diagnostic %d: line=%d, col=%d, severity=%s, msg='%s'\n", 
+                                               parsed_count, line_num, char_num, severity_str, message);
+                                        
+                                        parsed_count++;
+                                        
+                                        /* Find next diagnostic */
+                                        diagnostic_start = strchr(diagnostic_end, '{');
+                                    }
+                                    
+                                    g_state.diagnostic_count = parsed_count;
+                                    
+                                    printf("[CLANGD] Created %zu diagnostics from clangd response\n", g_state.diagnostic_count);
+                                }
+                            } else {
+                                printf("[CLANGD] No diagnostics in response\n");
+                                g_state.diagnostic_count = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 static void on_lsp_error(const char* error_message, void* user_data) {
     /* Handle LSP client errors */
     (void)error_message;
     (void)user_data;
+    printf("[CLANGD] LSP Error: %s\n", error_message ? error_message : "Unknown error");
 }
+

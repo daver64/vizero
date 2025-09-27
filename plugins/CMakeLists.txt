@@ -97,6 +97,6 @@ add_subdirectory(irc)
 # Lisp REPL plugin
 add_subdirectory(lisp_repl)
 
-# clangd LSP plugin (directory not yet created)
-# add_subdirectory(clangd)
+# clangd LSP plugin
+add_subdirectory(clangd)
 

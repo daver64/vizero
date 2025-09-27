@@ -93,6 +93,17 @@ int vizero_plugin_manager_lsp_goto_definition(
     vizero_location_t** locations,
     size_t* location_count);
 
+int vizero_plugin_manager_lsp_get_diagnostics(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_diagnostic_t** diagnostics,
+    size_t* diagnostic_count);
+
+/* Notify LSP plugins of buffer changes for manual diagnostic refresh */
+void vizero_plugin_manager_notify_buffer_changed(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer);
+
 /* Process LSP messages for all plugins (non-blocking) */
 void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager);
 

@@ -648,6 +648,74 @@ int vizero_plugin_manager_lsp_goto_definition(
     return -1;
 }
 
+/* LSP get diagnostics function */
+int vizero_plugin_manager_lsp_get_diagnostics(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer,
+    vizero_diagnostic_t** diagnostics,
+    size_t* diagnostic_count) 
+{
+    if (!manager || !buffer || !diagnostics || !diagnostic_count) {
+        return -1;
+    }
+    
+    *diagnostics = NULL;
+    *diagnostic_count = 0;
+    
+    /* Find plugins that support LSP diagnostics */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_get_diagnostics) {
+            int ret = plugin->callbacks.lsp_get_diagnostics(buffer, diagnostics, diagnostic_count);
+            if (ret == 0 && *diagnostics && *diagnostic_count > 0) {
+                return 0;
+            }
+        }
+    }
+    
+    return -1;
+}
+
+/* Notify LSP plugins of buffer changes for manual diagnostic refresh */
+void vizero_plugin_manager_notify_buffer_changed(
+    vizero_plugin_manager_t* manager,
+    vizero_buffer_t* buffer)
+{
+    if (!manager || !buffer) {
+        return;
+    }
+    
+    /* Find LSP plugins and trigger manual diagnostic refresh */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.lsp_get_diagnostics) {
+            /* This is an LSP plugin - check if it's the clangd plugin */
+            if (plugin->info.name && strstr(plugin->info.name, "clangd") != NULL) {
+                printf("[PLUGIN] Triggering manual diagnostic refresh for %s\n", plugin->info.name);
+                /* Call the manual refresh function directly via symbol lookup */
+                /* For now, we'll use a direct call since we know it's the clangd plugin */
+                typedef void (*manual_refresh_func_t)(vizero_buffer_t*);
+                
+#ifdef _WIN32
+                HMODULE handle = (HMODULE)plugin->dll_handle;
+                manual_refresh_func_t refresh_func = (manual_refresh_func_t)GetProcAddress(handle, "clangd_manual_diagnostic_refresh");
+                if (!refresh_func) {
+                    /* Try alternative export name */
+                    refresh_func = (manual_refresh_func_t)GetProcAddress(handle, "_clangd_manual_diagnostic_refresh");
+                }
+#else
+                manual_refresh_func_t refresh_func = (manual_refresh_func_t)dlsym(plugin->dll_handle, "clangd_manual_diagnostic_refresh");
+#endif
+                if (refresh_func) {
+                    refresh_func(buffer);
+                } else {
+                    printf("[PLUGIN] Manual refresh function not found in %s\n", plugin->info.name);
+                }
+            }
+        }
+    }
+}
+
 /* Process LSP messages in background (non-blocking) */
 void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager) {
     if (!manager) {

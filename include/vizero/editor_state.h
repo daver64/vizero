@@ -1280,6 +1280,157 @@ vizero_position_t vizero_editor_get_completion_trigger_position(vizero_editor_st
 
 /** @} */ // end of lsp_completion group
 
+/**
+ * @defgroup lsp_diagnostics LSP Diagnostics and Hover
+ * @brief Functions for managing LSP diagnostic messages and hover information
+ * @{
+ */
+
+/**
+ * @brief Update diagnostics for a buffer
+ * 
+ * Updates the diagnostic information displayed for the specified buffer,
+ * typically called when LSP diagnostics are received from a language server.
+ * 
+ * @param state Editor state to modify (must not be NULL)
+ * @param buffer Buffer to update diagnostics for (must not be NULL)
+ * 
+ * @pre state must not be NULL
+ * @pre buffer must not be NULL
+ * @post Diagnostic underlines are updated for the buffer
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffer_t* buffer);
+
+/**
+ * @brief Get diagnostics for a buffer
+ * 
+ * Returns the array of diagnostic messages for the specified buffer.
+ * 
+ * @param state Editor state to query (must not be NULL)
+ * @param buffer Buffer to get diagnostics for (must not be NULL)
+ * @param count Pointer to store the number of diagnostics (must not be NULL)
+ * @return Array of diagnostics, or NULL if none exist
+ * 
+ * @pre state must not be NULL
+ * @pre buffer must not be NULL
+ * @pre count must not be NULL
+ * @post count is set to the number of diagnostics returned
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+vizero_diagnostic_t* vizero_editor_get_diagnostics(vizero_editor_state_t* state, 
+                                                  vizero_buffer_t* buffer, 
+                                                  size_t* count);
+
+/**
+ * @brief Show hover information
+ * 
+ * Displays hover information popup with the provided text at the specified
+ * position. The popup appears near the cursor with contextual information.
+ * 
+ * @param state Editor state to modify (must not be NULL)
+ * @param text Hover text to display (must not be NULL)
+ * @param position Buffer position for the hover (line/column)
+ * @param screen_x Screen X coordinate for popup positioning
+ * @param screen_y Screen Y coordinate for popup positioning
+ * 
+ * @pre state must not be NULL
+ * @pre text must not be NULL
+ * @post Hover popup is displayed with the provided text
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_show_hover(vizero_editor_state_t* state, const char* text, 
+                             vizero_position_t position, int screen_x, int screen_y);
+
+/**
+ * @brief Hide hover information
+ * 
+ * Dismisses any currently visible hover popup.
+ * 
+ * @param state Editor state to modify (must not be NULL)
+ * 
+ * @pre state must not be NULL
+ * @post Hover popup is hidden if it was visible
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_hide_hover(vizero_editor_state_t* state);
+
+/**
+ * @brief Check if hover popup is visible
+ * 
+ * Returns whether a hover information popup is currently displayed.
+ * 
+ * @param state Editor state to query (must not be NULL)
+ * @return Non-zero if hover popup is visible, 0 otherwise
+ * 
+ * @pre state must not be NULL
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+int vizero_editor_is_hover_visible(vizero_editor_state_t* state);
+
+/**
+ * @brief Get hover text content
+ * 
+ * Returns the text content of the currently visible hover popup.
+ * 
+ * @param state Editor state to query (must not be NULL)
+ * @return Hover text content, or NULL if no hover is visible
+ * 
+ * @pre state must not be NULL
+ * 
+ * @note The returned string should not be modified or freed
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+const char* vizero_editor_get_hover_text(vizero_editor_state_t* state);
+
+/**
+ * @brief Get hover buffer position
+ * 
+ * Returns the buffer position (line/column) associated with the current hover.
+ * 
+ * @param state Editor state to query (must not be NULL)
+ * @return Buffer position for the hover
+ * 
+ * @pre state must not be NULL
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+vizero_position_t vizero_editor_get_hover_position(vizero_editor_state_t* state);
+
+/**
+ * @brief Get hover screen position
+ * 
+ * Returns the screen coordinates where the hover popup should be positioned.
+ * 
+ * @param state Editor state to query (must not be NULL)
+ * @param x Pointer to store screen X coordinate (must not be NULL)
+ * @param y Pointer to store screen Y coordinate (must not be NULL)
+ * 
+ * @pre state must not be NULL
+ * @pre x must not be NULL
+ * @pre y must not be NULL
+ * @post x and y are set to the hover screen coordinates
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_get_hover_screen_position(vizero_editor_state_t* state, int* x, int* y);
+
+/** @} */ // end of lsp_diagnostics group
+
 #ifdef __cplusplus
 }
 #endif

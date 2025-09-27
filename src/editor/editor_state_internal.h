@@ -78,6 +78,17 @@ struct vizero_editor_state_t {
     size_t completion_count;
     size_t completion_selected_index;
     vizero_position_t completion_trigger_position;
+    
+    /* LSP Diagnostics UI state */
+    vizero_diagnostic_t* diagnostics;
+    size_t diagnostic_count;
+    vizero_buffer_t* diagnostic_buffer; /* Buffer these diagnostics apply to */
+    
+    /* LSP Hover UI state */
+    int hover_visible;
+    char* hover_text;
+    vizero_position_t hover_position;
+    int hover_x, hover_y; /* Screen coordinates for hover popup */
 };
 
 #ifdef __cplusplus
