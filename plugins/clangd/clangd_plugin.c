@@ -263,7 +263,9 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     return 0;
 }
 
-void vizero_plugin_cleanup(void) {
+VIZERO_PLUGIN_API void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
+    (void)plugin; /* Unused parameter */
+    
     if (g_state.lsp_client) {
         vizero_lsp_client_destroy(g_state.lsp_client);
         g_state.lsp_client = NULL;
