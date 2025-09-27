@@ -11,6 +11,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shlwapi.h>
+#include <sys/stat.h>
 #pragma comment(lib, "shlwapi.lib")
 #define asprintf _asprintf
 
@@ -91,8 +92,8 @@ static int clangd_lsp_goto_definition(vizero_buffer_t* buffer, vizero_position_t
                                      vizero_location_t** locations, size_t* location_count);
 static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic_t** diagnostics,
                                      size_t* diagnostic_count);
-__declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer);
-__declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer);
+VIZERO_PLUGIN_API void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer);
+VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer);
 static void clangd_lsp_shutdown(void);
 
 /* Diagnostic popup functions */
@@ -169,29 +170,20 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     /* Found clangd at specified path */
     
     /* Test if clangd actually exists before creating LSP client */
+    /* Cross-platform file existence check */
+    int file_exists = 0;
 #ifdef _WIN32
-    if (!PathFileExistsA(clangd_path)) {
-        free(clangd_path);
-        /* clangd executable not found - disable functionality */
-        printf("[CLANGD] clangd executable not accessible, disabling LSP functionality\n");
-        printf("[CLANGD] Plugin will load but LSP features will be unavailable\n");
-        
-        /* Clear LSP callback functions */
-        plugin->callbacks.lsp_initialize = NULL;
-        plugin->callbacks.lsp_completion = NULL;
-        plugin->callbacks.lsp_hover = NULL;
-        plugin->callbacks.lsp_goto_definition = NULL;
-        plugin->callbacks.lsp_get_diagnostics = NULL;
-        plugin->callbacks.lsp_shutdown = NULL;
-        
-        /* Mark as disabled */
-        g_state.initialized = false;
-        g_state.lsp_client = NULL;
-        return 0;
+    if (PathFileExistsA(clangd_path)) {
+        file_exists = 1;
     }
 #else
     struct stat st;
-    if (stat(clangd_path, &st) != 0 || !(st.st_mode & S_IXUSR)) {
+    if (stat(clangd_path, &st) == 0) {
+        file_exists = 1;
+    }
+#endif
+    
+    if (!file_exists) {
         free(clangd_path);
         /* clangd executable not found - disable functionality */
         printf("[CLANGD] clangd executable not accessible, disabling LSP functionality\n");
@@ -210,7 +202,6 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
         g_state.lsp_client = NULL;
         return 0;
     }
-#endif
     
     /* Create LSP client */
     g_state.lsp_client = vizero_lsp_client_create(clangd_path, NULL);
@@ -1038,12 +1029,12 @@ static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic
     return 0;
 }
 
-__declspec(dllexport) void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer) {
+VIZERO_PLUGIN_API void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer) {
     /* Legacy function - now redirects to diagnostic popup */
     clangd_show_diagnostic_popup(buffer);
 }
 
-__declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
+VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
     if (!g_state.initialized || !buffer || !g_state.lsp_client) {
         printf("[CLANGD] Show diagnostic popup failed - not initialized or invalid buffer\n");
         return;
@@ -1101,13 +1092,19 @@ static char* find_clangd_executable(void) {
     /* Try to find clangd.exe in the clangd/ directory next to the executable */
     char exe_path[MAX_PATH];
     if (GetModuleFileNameA(NULL, exe_path, MAX_PATH) > 0) {
-        PathRemoveFileSpecA(exe_path); /* Remove filename, keep directory */
+        /* Remove filename, keep directory - cross-platform way */
+        char* last_slash = strrchr(exe_path, '\\');
+        if (last_slash) {
+            *last_slash = '\0';
+        }
         
         char* test_path = (char*)malloc(MAX_PATH);
         if (test_path) {
             snprintf(test_path, MAX_PATH, "%s\\clangd\\bin\\clangd.exe", exe_path);
             
-            if (PathFileExistsA(test_path)) {
+            /* Cross-platform file existence check */
+            struct stat st;
+            if (stat(test_path, &st) == 0) {
                 clangd_path = test_path;
             } else {
                 free(test_path);
