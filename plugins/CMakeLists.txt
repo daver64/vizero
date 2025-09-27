@@ -97,6 +97,9 @@ add_subdirectory(irc)
 # Lisp REPL plugin
 add_subdirectory(lisp_repl)
 
+# SQL REPL plugin
+add_subdirectory(sql_repl)
+
 # clangd LSP plugin
 add_subdirectory(clangd)
 

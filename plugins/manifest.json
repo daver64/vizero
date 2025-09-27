@@ -16,6 +16,13 @@
       "description": "File system navigation plugin",
       "always_load": true
     },
+    "sql_repl": {
+      "type": "generic",
+      "load_on_demand": false,
+      "dll_path": "sql_repl.dll",
+      "description": "SQL REPL Plugin with multi-database support",
+      "always_load": true
+    },
     "syntax_c": {
       "type": "syntax_highlighter",
       "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],
@@ -128,3 +135,4 @@
     }
   }
 }
+<!-- Directory scan mode loads all plugins including SQL REPL -->
