@@ -20,6 +20,9 @@ quicklisp.lisp
 
 # Visual Studio Code
 .vscode/
+#clangd
+.clangd
+/.cache
 
 # CMake
 CMakeCache.txt
