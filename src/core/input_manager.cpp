@@ -177,31 +177,33 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             vizero_editor_mode_t current_mode = vizero_editor_get_mode(editor);
                             if (current_mode == VIZERO_MODE_INSERT) {
                                 vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
-                                if (cursor) {
+                                vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
+                                if (cursor && buffer) {
                                     size_t cursor_line = vizero_cursor_get_line(cursor);
                                     size_t cursor_col = vizero_cursor_get_column(cursor);
                                     
                                     /* Find the start of the current word for proper replacement */
-                                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                                     size_t word_start_col = cursor_col;
-                                    if (buffer && cursor_col > 0) {
+                                    if (cursor_col > 0) {
                                         const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
                                         if (line_text) {
                                             size_t line_len = strlen(line_text);
                                             /* Look backwards to find start of identifier */
                                             for (size_t i = cursor_col; i > 0; i--) {
-                                                if (i - 1 >= line_len) {
-                                                    /* Safety check: don't go beyond line length */
+                                                size_t char_idx = i - 1;
+                                                /* Safety check: don't go beyond line length */
+                                                if (char_idx >= line_len) {
+                                                    /* Cursor is beyond line end, no word to complete */
                                                     word_start_col = cursor_col;
                                                     break;
                                                 }
-                                                char ch = line_text[i - 1];
+                                                char ch = line_text[char_idx];
                                                 if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || 
                                                       (ch >= '0' && ch <= '9') || ch == '_')) {
                                                     word_start_col = i;
                                                     break;
                                                 }
-                                                word_start_col = i - 1;
+                                                word_start_col = char_idx;
                                             }
                                         }
                                     }
@@ -214,7 +216,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         vizero_completion_list_t* completion_list = NULL;
                                         
                                         int result = vizero_plugin_manager_lsp_completion(lsp_plugin_manager, 
-                                                    vizero_editor_get_current_buffer(editor), position, &completion_list);
+                                                    buffer, position, &completion_list);
                                         
                                         if (result == 0 && completion_list && completion_list->item_count > 0) {
                                             

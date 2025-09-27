@@ -8,12 +8,12 @@
 #include <stdbool.h>
 #include <time.h>
 #include <stdarg.h>
-#include <unistd.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlwapi.h>
 #include <sys/stat.h>
+#include <direct.h>
 #pragma comment(lib, "shlwapi.lib")
 #define asprintf _asprintf
 
@@ -777,6 +777,17 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     
     /* Ensure we have absolute path for URI */
     char* absolute_path = NULL;
+    #ifdef _WIN32
+    if (file_path[0] != '/' && (strlen(file_path) < 2 || file_path[1] != ':')) {
+        /* Relative path - make it absolute */
+        char* cwd = _getcwd(NULL, 0);
+        if (cwd) {
+            asprintf(&absolute_path, "%s/%s", cwd, file_path);
+            free(cwd);
+            file_path = absolute_path;
+        }
+    }
+    #else
     if (file_path[0] != '/') {
         /* Relative path - make it absolute */
         char* cwd = getcwd(NULL, 0);
@@ -786,6 +797,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
             file_path = absolute_path;
         }
     }
+    #endif
     
     CLANGD_DBG("Requesting completion for file: %s at line %zu, column %zu", 
            file_path, position.line, position.column);
@@ -904,70 +916,8 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     
     CLANGD_DBG("Set pending completion request ID: %d", request_id);
     
-    /* Wait briefly for response with strict timeout to prevent hangs */
-    CLANGD_DBG("Starting completion wait loop with hang protection...");
-    
-    #ifdef _WIN32
-    DWORD start_time = GetTickCount();
-    const DWORD TIMEOUT_MS = 300; /* Increased timeout for better reliability */
-    #endif
-    
-    for (int attempts = 0; attempts < 10; attempts++) { /* Reduced attempts for faster timeout */
-        #ifdef _WIN32
-        DWORD current_time = GetTickCount();
-        if (current_time - start_time > TIMEOUT_MS) {
-        CLANGD_DBG("Hard timeout after %ums, breaking to prevent hang", TIMEOUT_MS);
-            break;
-        }
-        #endif
-        
-    CLANGD_DBG("Processing messages, attempt %d/10", attempts + 1);
-        
-        /* Add safety check before processing messages */
-        if (!g_state.lsp_client || !g_state.initialized) {
-            printf("[CLANGD] LSP client became invalid during wait\n");
-            break;
-        }
-        
-        /* Process messages with error checking and timeout protection */
-        int process_result = vizero_lsp_client_process_messages(g_state.lsp_client);
-        
-        /* If process_messages fails, don't spam the log */
-        if (process_result != 0 && attempts == 0) {
-            CLANGD_DBG("Process messages returned: %d (errors suppressed after first attempt)", process_result);
-        } else if (process_result == 0 && attempts % 5 == 0) {
-            CLANGD_DBG("Processing... (attempt %d)", attempts + 1);
-        }
-        
-        /* Check if we got a response */
-        if (g_state.last_completion_result) {
-            CLANGD_DBG("Got completion result!");
-            *result = g_state.last_completion_result;
-            g_state.last_completion_result = NULL;
-            g_state.completion_request_pending = false;
-            CLANGD_DBG("Completion result ready with %zu items", (*result)->item_count);
-            if (absolute_path) free(absolute_path);
-            return 0;
-        }
-        
-        /* Break early if LSP client indicates error */
-        if (process_result < 0) {
-            CLANGD_ERR("Message processing failed, breaking");
-            break;
-        }
-        
-        /* Wait 5ms before next attempt */
-        #ifdef _WIN32
-        Sleep(5);
-        #else
-        usleep(5000);
-        #endif
-    }
-    
-    /* Timeout - no result within 100ms, reset state to prevent corruption */
-    CLANGD_DBG("Completion request timeout after 100ms");
-    g_state.completion_request_pending = false;
-    g_state.pending_completion_request_id = -1;
+    /* Return immediately for async operation - results will be polled later */
+    CLANGD_DBG("Completion request sent asynchronously, returning -1 to indicate pending operation");
     if (absolute_path) free(absolute_path);
     return -1;
 }
