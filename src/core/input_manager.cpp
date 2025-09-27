@@ -70,9 +70,6 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
             int completion_check_result = vizero_plugin_manager_check_completion_results(plugin_manager, &completion_result);
             
             if (completion_check_result == 0 && completion_result) {
-                printf("[DEBUG] Async completion result arrived with %zu items\n", 
-                       completion_result->item_count);
-                
                 /* Show completion UI if we have results */
                 if (completion_result->item_count > 0) {
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
@@ -88,7 +85,6 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         /* Show completion dropdown */
                         vizero_editor_show_completion(editor, completion_result->items, 
                                                     completion_result->item_count, trigger_pos);
-                        printf("[DEBUG] Completion UI shown with %zu items\n", completion_result->item_count);
                     }
                 }
                 
@@ -213,36 +209,22 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     vizero_position_t position = { cursor_line, cursor_col };
                                     vizero_position_t trigger_position = { cursor_line, word_start_col };
                                     
-                                    printf("[DEBUG] Word boundaries: cursor=%zu, word_start=%zu\n", cursor_col, word_start_col);
-                                    
-                                    printf("[DEBUG] Triggering LSP completion at line %zu, column %zu\n", 
-                                           position.line, position.column);
-                                    
                                     vizero_plugin_manager_t* lsp_plugin_manager = vizero_application_get_plugin_manager(input->app);
                                     if (lsp_plugin_manager) {
-                                        printf("[DEBUG] Plugin manager found, requesting LSP completion\n");
-                                        
                                         vizero_completion_list_t* completion_list = NULL;
-                                        printf("[DEBUG] Calling vizero_plugin_manager_lsp_completion...\n");
                                         
                                         int result = vizero_plugin_manager_lsp_completion(lsp_plugin_manager, 
                                                     vizero_editor_get_current_buffer(editor), position, &completion_list);
                                         
-                                        printf("[DEBUG] LSP completion returned result=%d, completion_list=%p\n", 
-                                               result, (void*)completion_list);
-                                        
                                         if (result == 0 && completion_list && completion_list->item_count > 0) {
-                                            printf("[DEBUG] Got completion with %zu items, showing UI\n", completion_list->item_count);
                                             
                                             /* Show completion UI immediately */
                                             vizero_editor_show_completion(editor, completion_list->items, 
                                                                         completion_list->item_count, trigger_position);
                                             
                                             /* Clean up completion list (editor copied the data) */
-                                            printf("[DEBUG] Cleaning up completion list with %zu items\n", completion_list->item_count);
                                             if (completion_list->items) {
                                                 for (size_t i = 0; i < completion_list->item_count; i++) {
-                                                    printf("[DEBUG] Cleaning up completion item %zu\n", i);
                                                     if (completion_list->items[i].label) {
                                                         free(completion_list->items[i].label);
                                                     }
@@ -262,22 +244,16 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                         free(completion_list->items[i].sort_text);
                                                     }
                                                 }
-                                                printf("[DEBUG] Freeing completion items array\n");
                                                 free(completion_list->items);
                                             }
-                                            printf("[DEBUG] Freeing completion list\n");
                                             free(completion_list);
                                         } else {
-                                            printf("[DEBUG] No immediate LSP completion results, result=%d\n", result);
                                             if (completion_list) {
-                                                printf("[DEBUG] Freeing empty completion list\n");
                                                 free(completion_list);
                                             }
                                         }
                                     }
                                 }
-                            } else {
-                                printf("[DEBUG] LSP completion only available in insert mode (current: %d)\n", current_mode);
                             }
                             input->suppress_next_textinput = 1; /* Prevent space insertion from SDL_TEXTINPUT */
                             goto keydown_handled; /* Always consume Ctrl+Space and skip all other processing */
@@ -291,21 +267,13 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 size_t cursor_col = vizero_cursor_get_column(cursor);
                                 vizero_position_t position = { cursor_line, cursor_col };
                                 
-                                printf("[DEBUG] Triggering LSP hover at line %zu, column %zu\n", 
-                                       position.line, position.column);
-                                
                                 vizero_plugin_manager_t* lsp_plugin_manager = vizero_application_get_plugin_manager(input->app);
                                 if (lsp_plugin_manager) {
                                     char* hover_text = NULL;
                                     int result = vizero_plugin_manager_lsp_hover(lsp_plugin_manager, 
                                                 vizero_editor_get_current_buffer(editor), position, &hover_text);
                                     
-                                    printf("[DEBUG] LSP hover returned result=%d, hover_text=%p\n", 
-                                           result, (void*)hover_text);
-                                    
                                     if (result == 0 && hover_text) {
-                                        printf("[DEBUG] Got hover text: %s\n", hover_text);
-                                        
                                         /* Calculate screen position for hover popup */
                                         int screen_x = (int)(cursor_col * 8 + 50); /* 8px per char + left margin */
                                         int screen_y = (int)(cursor_line * 16 + 80); /* 16px per line + top margin */
@@ -315,8 +283,6 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         
                                         /* Clean up hover text */
                                         free(hover_text);
-                                    } else {
-                                        printf("[DEBUG] No hover information available\n");
                                     }
                                 }
                             }
@@ -327,7 +293,6 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         if ((event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym == SDLK_d)) {
                             vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor);
                             if (buffer) {
-                                printf("[DEBUG] Diagnostic popup triggered with Ctrl+D\n");
                                 vizero_editor_set_status_message(editor, "Checking for errors...");
                                 vizero_plugin_manager_show_diagnostic_popup(plugin_manager, buffer);
                             }

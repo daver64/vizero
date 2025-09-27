@@ -512,7 +512,6 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
         /* Move remaining data to start of buffer */
         size_t message_total_len = header_len + content_length;
         if (message_total_len > client->read_buffer_used || message_total_len == 0) {
-            printf("[LSP] Invalid message length calculation, breaking\n");
             break; /* Safety check */
         }
         
@@ -801,13 +800,11 @@ static int safe_extract_json_int(const char* json, const char* field_name, size_
 /* Message parsing (platform-independent) with robust JSON handling */
 static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* content) {
     if (!client || !content) {
-        printf("[LSP] Parse message: NULL client or content\n");
         return;
     }
     
     size_t content_len = strlen(content);
     if (content_len == 0 || content_len > 1024 * 1024) {
-        printf("[LSP] Parse message: Invalid content length %zu\n", content_len);
         return;
     }
     
@@ -816,8 +813,6 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
     /* Check if it's a response (has "id" field) */
     int id = safe_extract_json_int(content, "id", content_len);
     if (id >= 0) {
-        printf("[LSP] Parsing response with ID %d\n", id);
-        
         /* Extract result and error fields safely */
         char* result_str = safe_extract_json_string(content, "result", content_len);
         char* error_str = safe_extract_json_string(content, "error", content_len);
@@ -831,20 +826,14 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
         if (error_str) free(error_str);
         
     } else {
-        printf("[LSP] Parsing notification\n");
-        
         /* Extract method name safely */
         char* method = safe_extract_json_string(content, "method", content_len);
         if (method) {
-            printf("[LSP] Notification method: %s\n", method);
-            
             if (client->callbacks.on_notification) {
                 client->callbacks.on_notification(method, content, client->user_data);
             }
             
             free(method);
-        } else {
-            printf("[LSP] Failed to extract method from notification\n");
         }
     }
     

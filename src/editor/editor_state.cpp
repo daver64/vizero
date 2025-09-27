@@ -574,10 +574,7 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     int can_replace = (!existing_filename || strlen(existing_filename) == 0) && 
                                      (!existing_text || strlen(existing_text) == 0);
                     
-                    printf("[DEBUG] Window management: can_replace=%d for buffer at index %zu\n", can_replace, focused_buffer_index);
-                    
                     if (can_replace) {
-                        printf("[DEBUG] Window management: replacing buffer at index %zu\n", focused_buffer_index);
                         if (state->buffers[focused_buffer_index] && state->buffers[focused_buffer_index] != buffer) {
                             /* Notify plugins of buffer close */
                             if (state->plugin_manager) {
@@ -595,7 +592,6 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                         state->current_buffer_index = focused_buffer_index;
                     } else {
                         // Cannot replace, add to new slot
-                        printf("[DEBUG] Window management: cannot replace, adding to new slot\n");
                         // Check if buffer already exists first
                         int buffer_exists = 0;
                         size_t existing_index = 0;
@@ -608,7 +604,6 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                         }
                         
                         if (buffer_exists) {
-                            printf("[DEBUG] Buffer already exists at index %zu, switching to it\n", existing_index);
                             focused_window->buffer_index = existing_index;
                             state->current_buffer_index = existing_index;
                         } else if (state->buffer_count < MAX_BUFFERS) {
@@ -621,7 +616,6 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     }
                 } else {
                     // Other windows use this index, so add buffer to a new slot
-                    printf("[DEBUG] Window management: adding buffer to new slot (other windows exist)\n");
                     // Check if buffer already exists first
                     int buffer_exists = 0;
                     size_t existing_index = 0;
@@ -634,7 +628,6 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                     }
                     
                     if (buffer_exists) {
-                        printf("[DEBUG] Buffer already exists at index %zu, switching to it\n", existing_index);
                         focused_window->buffer_index = existing_index;
                         state->current_buffer_index = existing_index;
                     } else if (state->buffer_count < MAX_BUFFERS) {
@@ -723,14 +716,10 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
         vizero_plugin_manager_on_buffer_close(state->plugin_manager, state->buffers[buffer_index]);
     }
     if (state->cursors[buffer_index]) {
-        printf("[DEBUG] vizero_editor_close_buffer: destroying cursor %p (index %zu)\n", (void*)state->cursors[buffer_index], buffer_index);
         vizero_cursor_destroy(state->cursors[buffer_index]);
-        printf("[DEBUG] vizero_editor_close_buffer: destroyed cursor %p (index %zu)\n", (void*)state->cursors[buffer_index], buffer_index);
     }
     state->cursors[buffer_index] = NULL;
-    printf("[DEBUG] vizero_editor_close_buffer: destroying buffer %p (index %zu)\n", (void*)state->buffers[buffer_index], buffer_index);
     vizero_buffer_destroy(state->buffers[buffer_index]);
-    printf("[DEBUG] vizero_editor_close_buffer: destroyed buffer %p (index %zu)\n", (void*)state->buffers[buffer_index], buffer_index);
     state->buffers[buffer_index] = NULL;
     
     /* Shift remaining buffers down */
@@ -4947,57 +4936,49 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     size_t cursor_line = vizero_cursor_get_line(cursor);
     size_t cursor_col = vizero_cursor_get_column(cursor);
     
-    /* Calculate partial word to replace */
+    /* Calculate partial word to replace - find actual word boundaries */
     size_t trigger_col = state->completion_trigger_position.column;
     size_t trigger_line = state->completion_trigger_position.line;
     
-    printf("[DEBUG] Completion replacement: cursor(%zu,%zu) trigger(%zu,%zu) text='%s'\n", 
-           cursor_line, cursor_col, trigger_line, trigger_col, text_to_insert);
+
     
     if (cursor_col >= trigger_col && cursor_line == trigger_line) {
-        size_t partial_len = cursor_col - trigger_col;
-        
-        printf("[DEBUG] Replacing partial word of length %zu\n", partial_len);
-        
-        /* Safety check: don't try to delete more characters than exist */
-        if (partial_len > cursor_col) {
-            printf("[DEBUG] Safety: partial_len %zu > cursor_col %zu, using fallback\n", partial_len, cursor_col);
-            partial_len = 0; /* Fall back to simple insertion */
-        }
-        
-        /* Get line text to validate deletion bounds */
+        /* Find the actual partial word that was typed after the trigger position */
         const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
-        size_t line_len = line_text ? strlen(line_text) : 0;
+        size_t word_end_col = cursor_col;
+        size_t word_start_col = trigger_col;
         
-        printf("[DEBUG] Line %zu has length %zu, cursor at column %zu\n", cursor_line, line_len, cursor_col);
-        
-        /* Additional safety: ensure cursor position is valid */
-        if (cursor_col > line_len) {
-            printf("[DEBUG] Safety: cursor_col %zu > line_len %zu, using fallback\n", cursor_col, line_len);
-            goto fallback_insertion;
-        }
-        
-        /* Validate deletion bounds */
-        if (partial_len > 0 && cursor_col >= partial_len) {
-            /* Delete the partial word backwards from current cursor position */
-            for (size_t i = 0; i < partial_len; i++) {
-                if (cursor_col == 0) {
-                    printf("[DEBUG] Safety: reached column 0, stopping deletion\n");
+        if (line_text && cursor_col <= strlen(line_text)) {
+            /* Find the end of the current word (cursor might be in middle) */
+            while (word_end_col < strlen(line_text)) {
+                char ch = line_text[word_end_col];
+                if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || 
+                      (ch >= '0' && ch <= '9') || ch == '_')) {
                     break;
                 }
-                
-                /* Double-check bounds before each deletion */
-                const char* current_line = vizero_buffer_get_line_text(buffer, cursor_line);
-                size_t current_len = current_line ? strlen(current_line) : 0;
-                if (cursor_col - 1 >= current_len) {
-                    printf("[DEBUG] Safety: deletion position %zu >= line length %zu, stopping\n", cursor_col - 1, current_len);
-                    break;
-                }
-                
-                vizero_buffer_delete_char(buffer, cursor_line, cursor_col - 1);
-                cursor_col--; /* Update cursor position after each deletion */
-                printf("[DEBUG] Deleted char at (%zu,%zu), new cursor_col=%zu\n", cursor_line, cursor_col, cursor_col);
+                word_end_col++;
             }
+            
+            /* Calculate the partial word length from trigger to current word end */
+            size_t partial_len = word_end_col - word_start_col;
+            
+            /* Position cursor at word start for replacement */
+            vizero_cursor_set_position(cursor, cursor_line, word_start_col);
+            cursor_col = word_start_col;
+            
+            /* Delete the partial word characters */
+            if (partial_len > 0) {
+                for (size_t i = 0; i < partial_len; i++) {
+                    if (cursor_col >= strlen(line_text)) {
+                        break;
+                    }
+                    
+                    vizero_buffer_delete_char(buffer, cursor_line, cursor_col);
+                }
+
+            }
+        } else {
+            goto fallback_insertion;
         }
         
         /* Insert the completion text at the now-cleared position */
@@ -5008,7 +4989,7 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
         /* Move cursor to end of inserted text */
         vizero_cursor_set_position(cursor, cursor_line, cursor_col + insert_len);
         
-        printf("[DEBUG] Replacement complete, cursor at (%zu,%zu)\n", cursor_line, cursor_col + insert_len);
+
     } else {
         printf("[DEBUG] Using fallback insertion\n");
         goto fallback_insertion;
@@ -5017,7 +4998,6 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     goto cleanup;
     
 fallback_insertion:
-    printf("[DEBUG] Fallback: inserting '%s' at position (%zu,%zu)\n", text_to_insert, cursor_line, cursor_col);
     /* Fallback: just insert at current position */
     for (size_t i = 0; i < insert_len; i++) {
         vizero_buffer_insert_char(buffer, cursor_line, cursor_col + i, text_to_insert[i]);
@@ -5062,11 +5042,8 @@ vizero_position_t vizero_editor_get_completion_trigger_position(vizero_editor_st
 void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffer_t* buffer) {
     if (!state || !buffer) return;
     
-    printf("[DEBUG] vizero_editor_update_diagnostics called\n");
-    
     /* Clear existing diagnostics */
     if (state->diagnostics) {
-        printf("[DEBUG] Clearing %zu existing diagnostics\n", state->diagnostic_count);
         for (size_t i = 0; i < state->diagnostic_count; i++) {
             free(state->diagnostics[i].message);
             free(state->diagnostics[i].source);
@@ -5096,15 +5073,8 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
     
     /* Notify LSP plugins of buffer changes if content changed */
     bool buffer_changed = (buffer != last_diagnostic_buffer || current_mod_time != last_modification_time);
-    if (buffer_changed && state->plugin_manager && buffer) {
-        printf("[DEBUG] Buffer content changed, notifying LSP plugins\n");
-        /* Trigger manual diagnostic refresh to send didChange notifications */
-        /* This will cause LSP plugins to update their analysis */
-    }
-    
     /* For manual diagnostic refresh (Ctrl+D), trigger LSP analysis first */
     if (state->plugin_manager && buffer) {
-        printf("[DEBUG] Triggering manual diagnostic refresh for LSP plugins\n");
         /* Send buffer changes to LSP plugins before requesting diagnostics */
         vizero_plugin_manager_notify_buffer_changed(state->plugin_manager, buffer);
     }
@@ -5114,13 +5084,10 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
     size_t diagnostic_count = 0;
     
     if (state->plugin_manager) {
-        printf("[DEBUG] Calling plugin manager for diagnostics\n");
         int result = vizero_plugin_manager_lsp_get_diagnostics(state->plugin_manager, buffer, &diagnostics, &diagnostic_count);
-        printf("[DEBUG] Plugin manager returned result=%d, diagnostics=%p, count=%zu\n", result, (void*)diagnostics, diagnostic_count);
         
         if (result == 0) {
             if (diagnostic_count > 0 && diagnostics) {
-                printf("[DEBUG] Processing %zu diagnostics from plugin\n", diagnostic_count);
                 /* Copy diagnostics to editor state (plugin memory management is separate) */
                 state->diagnostics = (vizero_diagnostic_t*)malloc(sizeof(vizero_diagnostic_t) * diagnostic_count);
                 if (state->diagnostics) {

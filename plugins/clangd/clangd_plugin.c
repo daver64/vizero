@@ -1576,9 +1576,7 @@ static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t
         /* Get current editor from API - we need a way to get this */
         /* For now, we'll store editor reference in plugin state */
         if (g_state.editor && g_state.api->show_popup) {
-            printf("[CLANGD] DEBUG: About to call API show_popup function\n");
             int result = g_state.api->show_popup(g_state.editor, popup_text, 0); /* No timeout - stays until ESC */
-            printf("[CLANGD] DEBUG: API show_popup returned %d\n", result);
             printf("[CLANGD] Showing diagnostic popup with %zu diagnostics (%zu errors, %zu warnings, %zu info)\n",
                    count, popup->error_count, popup->warning_count, popup->info_count);
         } else {

@@ -1980,32 +1980,32 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     
     printf("[IRC] Handling key %d ('%c') in IRC mode\n", key, (char)key);
     
+    /* Check first if we're in an IRC buffer - if not, don't process at all */
+    bool currently_in_irc_buffer = irc_is_in_irc_buffer(editor);
+    if (!currently_in_irc_buffer) {
+        /* Not in IRC buffer - let editor handle all keys normally without any IRC processing */
+        return 0;
+    }
+    
     /* Track buffer switching to clear escape flag when returning to IRC */
     static bool was_in_irc_buffer_last_time = false;
-    bool currently_in_irc_buffer = irc_is_in_irc_buffer(editor);
     
-    /* Track buffer changes for internal logic */
-    static bool last_in_irc_buffer = false;
-    last_in_irc_buffer = currently_in_irc_buffer;
+    /* We're in an IRC buffer - proceed with IRC key handling */
     
-    /* Check if we're currently in an IRC buffer */
-    if (currently_in_irc_buffer) {
-        /* We're in an IRC buffer - check for vi commands */
-        
-        /* If we switched back to IRC buffer from another buffer, clear the just_escaped flag and enable full-screen */
-        if (!was_in_irc_buffer_last_time) {
-            printf("[IRC] Detected switch back to IRC buffer - enabling full-screen mode\n");
-            g_irc_state->just_escaped = false;
-            g_irc_state->wants_full_window = true; /* Force full-screen when entering *IRC* buffer */
-        }
-        
-        /* FORCE IRC full-screen mode whenever we're in IRC buffer and not escaped recently */
-        /* This ensures that switching to *IRC* buffer always shows the IRC interface */
-        if (!g_irc_state->wants_full_window && !g_irc_state->just_escaped) {
-            g_irc_state->wants_full_window = true;
-        }
-        
-        was_in_irc_buffer_last_time = true;
+    /* If we switched back to IRC buffer from another buffer, clear the just_escaped flag and enable full-screen */
+    if (!was_in_irc_buffer_last_time) {
+        printf("[IRC] Detected switch back to IRC buffer - enabling full-screen mode\n");
+        g_irc_state->just_escaped = false;
+        g_irc_state->wants_full_window = true; /* Force full-screen when entering *IRC* buffer */
+    }
+    
+    /* FORCE IRC full-screen mode whenever we're in IRC buffer and not escaped recently */
+    /* This ensures that switching to *IRC* buffer always shows the IRC interface */
+    if (!g_irc_state->wants_full_window && !g_irc_state->just_escaped) {
+        g_irc_state->wants_full_window = true;
+    }
+    
+    was_in_irc_buffer_last_time = true;
         
         /* Handle Escape - toggle between IRC full-screen and normal editor mode */
         if (key == 27) { /* Escape */
@@ -2057,17 +2057,6 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         
         /* Handle other IRC-specific keys - regular text input for chat */
         printf("[IRC] In IRC buffer - processing key %d for IRC input\n", key);
-        /* Process the key for IRC functionality below */
-        
-    } else {
-        /* Not in an IRC buffer - let Vizero handle the key normally */
-        printf("[IRC] Not in IRC buffer - letting Vizero handle key %d\n", key);
-        
-        /* Update tracking variable */
-        was_in_irc_buffer_last_time = false;
-        
-        return 0;
-    }
     
     /* === IRC KEY PROCESSING (only runs when in an IRC buffer) === */
     
