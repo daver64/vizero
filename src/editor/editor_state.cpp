@@ -16,6 +16,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <vector>
+#include <string>
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -67,6 +69,14 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
         state->command_length = 0;
         state->command_buffer[0] = '\0';
         state->should_quit = 0;
+        
+        /* Initialize search results popup system */
+        state->popup_is_search_results = 0;
+        state->popup_selected_search_result = 0;
+        state->search_result_files = NULL;
+        state->search_result_lines = NULL;
+        state->search_result_columns = NULL;
+        state->search_result_count = 0;
         
         /* Initialize clipboard */
         state->clipboard_content = NULL;
@@ -340,6 +350,18 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     
     /* Clean up popup content */
     if (state->popup_content) free(state->popup_content);
+    
+    /* Clean up search results data */
+    if (state->search_result_files) {
+        for (size_t i = 0; i < state->search_result_count; i++) {
+            if (state->search_result_files[i]) {
+                free(state->search_result_files[i]);
+            }
+        }
+        free(state->search_result_files);
+    }
+    if (state->search_result_lines) free(state->search_result_lines);
+    if (state->search_result_columns) free(state->search_result_columns);
     
     /* Clean up startup directory */
     if (state->startup_directory) free(state->startup_directory);
@@ -1077,6 +1099,43 @@ void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state) 
     state->popup_duration_ms = 0; /* No timeout */
 }
 
+void vizero_editor_update_search_result_selector_content(vizero_editor_state_t* state) {
+    if (!state || !state->popup_is_search_results) return;
+    
+    char popup[4096]; /* Larger buffer for search results */
+    snprintf(popup, sizeof(popup), "Search Results (Total: %zu) - Use arrows to select, Enter to jump\n\n", state->search_result_count);
+    
+    for (size_t i = 0; i < state->search_result_count; i++) {
+        char line[512];
+        char indicator[8] = "   ";
+        
+        if (i == state->popup_selected_search_result) {
+            strcpy(indicator, " > ");  /* Selected result */
+        }
+        
+        snprintf(line, sizeof(line), "%s%2zu: %s:%d:%d\n",
+                indicator,
+                i + 1,
+                state->search_result_files[i] ? state->search_result_files[i] : "[No Name]",
+                state->search_result_lines[i] + 1,  /* Convert to 1-based for display */
+                state->search_result_columns[i] + 1);
+        strncat(popup, line, sizeof(popup) - strlen(popup) - 1);
+    }
+    
+    strncat(popup, "\nPress ENTER to jump to selected result, ESC to cancel", sizeof(popup) - strlen(popup) - 1);
+    
+    /* Clean up existing popup content */
+    if (state->popup_content) {
+        free(state->popup_content);
+    }
+    
+    /* Set new popup */
+    state->popup_content = strdup(popup);
+    state->popup_visible = 1;
+    state->popup_start_time = SDL_GetTicks();
+    state->popup_duration_ms = 0; /* No timeout */
+}
+
 int vizero_editor_handle_buffer_selector_key(vizero_editor_state_t* state, int key) {
     if (!state || !state->popup_is_buffer_list) return 0;
     
@@ -1126,6 +1185,77 @@ int vizero_editor_handle_buffer_selector_key(vizero_editor_state_t* state, int k
             /* Cancel selection */
             vizero_editor_hide_popup(state);
             state->popup_is_buffer_list = 0;
+            return 1; /* Consumed */
+    }
+    
+    return 0; /* Not consumed */
+}
+
+int vizero_editor_handle_search_result_selector_key(vizero_editor_state_t* state, int key) {
+    if (!state || !state->popup_is_search_results) return 0;
+    
+    switch (key) {
+        case SDLK_UP:
+            if (state->popup_selected_search_result > 0) {
+                state->popup_selected_search_result--;
+                vizero_editor_update_search_result_selector_content(state);
+            }
+            return 1; /* Consumed */
+            
+        case SDLK_DOWN:
+            if (state->popup_selected_search_result < state->search_result_count - 1) {
+                state->popup_selected_search_result++;
+                vizero_editor_update_search_result_selector_content(state);
+            }
+            return 1; /* Consumed */
+            
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            {
+                /* Jump to selected search result */
+                if (state->popup_selected_search_result < state->search_result_count) {
+                    const char* filename = state->search_result_files[state->popup_selected_search_result];
+                    int line = state->search_result_lines[state->popup_selected_search_result];
+                    int column = state->search_result_columns[state->popup_selected_search_result];
+                    
+                    /* Find or open the buffer for this file */
+                    size_t buffer_index = SIZE_MAX;
+                    for (size_t i = 0; i < state->buffer_count; i++) {
+                        vizero_buffer_t* buffer = state->buffers[i];
+                        const char* buffer_filename = vizero_buffer_get_filename(buffer);
+                        if (buffer_filename && strcmp(buffer_filename, filename) == 0) {
+                            buffer_index = i;
+                            break;
+                        }
+                    }
+                    
+                    /* Switch to the buffer */
+                    if (buffer_index != SIZE_MAX) {
+                        vizero_editor_switch_buffer(state, buffer_index);
+                        
+                        /* Move cursor to the search result position */
+                        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+                        if (cursor) {
+                            vizero_cursor_set_position(cursor, line, column);
+                        }
+                        
+                        /* Show status message */
+                        char msg[512];
+                        snprintf(msg, sizeof(msg), "Jumped to %s:%d:%d", filename, line + 1, column + 1);
+                        vizero_editor_set_status_message(state, msg);
+                    }
+                }
+                
+                /* Hide popup */
+                vizero_editor_hide_popup(state);
+                state->popup_is_search_results = 0;
+                return 1; /* Consumed */
+            }
+            
+        case SDLK_ESCAPE:
+            /* Cancel selection */
+            vizero_editor_hide_popup(state);
+            state->popup_is_search_results = 0;
             return 1; /* Consumed */
     }
     
@@ -2405,12 +2535,28 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             has_unsaved = 1;
         }
         
-        /* Check buffer level changes */
+        /* Check buffer level changes - skip scratch buffers */
         if (!has_unsaved) {
+            printf("[QUIT] Checking %zu buffers for unsaved changes...\n", state->buffer_count);
             for (size_t i = 0; i < state->buffer_count; i++) {
-                if (vizero_buffer_is_modified(state->buffers[i])) {
+                int is_modified = vizero_buffer_is_modified(state->buffers[i]);
+                int is_scratch = vizero_buffer_is_scratch(state->buffers[i]);
+                const char* filename = vizero_buffer_get_filename(state->buffers[i]);
+                
+                printf("[QUIT] Buffer %zu: '%s' - modified=%d, scratch=%d\n", 
+                       i, filename ? filename : "NULL", is_modified, is_scratch);
+                
+                if (is_modified && !is_scratch) {
+                    printf("[QUIT] Buffer %zu ('%s') has unsaved changes and is not scratch - blocking quit\n", 
+                           i, filename ? filename : "NULL");
                     has_unsaved = 1;
                     break;
+                } else if (is_modified && is_scratch) {
+                    printf("[QUIT] Buffer %zu ('%s') has unsaved changes but is scratch - allowing quit\n", 
+                           i, filename ? filename : "NULL");
+                } else {
+                    printf("[QUIT] Buffer %zu ('%s') - no unsaved changes\n", 
+                           i, filename ? filename : "NULL");
                 }
             }
         }
@@ -2662,6 +2808,56 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return -1;
         }
         
+    } else if (command[0] == 'b' && command[1] == ' ') {
+        /* Buffer name command (:b filename) */
+        const char* buffer_name = command + 2; /* Skip "b " */
+        
+        /* Search for buffer by filename */
+        size_t found_index = SIZE_MAX;
+        for (size_t i = 0; i < state->buffer_count; i++) {
+            const char* filename = vizero_buffer_get_filename(state->buffers[i]);
+            if (filename) {
+                /* Check for exact match first */
+                if (strcmp(filename, buffer_name) == 0) {
+                    found_index = i;
+                    break;
+                }
+                /* Also check for basename match (filename without path) */
+                const char* basename = strrchr(filename, '/');
+                if (!basename) basename = strrchr(filename, '\\');
+                if (basename) basename++; else basename = filename;
+                
+                if (strcmp(basename, buffer_name) == 0) {
+                    found_index = i;
+                    break;
+                }
+            }
+        }
+        
+        if (found_index != SIZE_MAX) {
+            state->current_buffer_index = found_index;
+            
+            /* Update focused window's buffer index */
+            if (state->window_manager) {
+                vizero_editor_window_t* focused_window = vizero_window_manager_get_focused_window(state->window_manager);
+                if (focused_window) {
+                    vizero_editor_window_set_buffer_index(focused_window, found_index);
+                }
+            }
+            
+            char msg[256];
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
+            sprintf(msg, "Switched to buffer: %s", filename ? filename : "[No Name]");
+            vizero_editor_set_status_message(state, msg);
+            return 0;
+        } else {
+            char msg[256];
+            sprintf(msg, "No buffer matching '%s'", buffer_name);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+        
     } else if (strcmp(command, "buffers") == 0) {
         /* Show interactive buffer selection popup */
         vizero_editor_show_buffer_selector(state);
@@ -2808,6 +3004,133 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return -1;
         }
         
+    } else if (strncmp(command, "search ", 7) == 0 || strncmp(command, "grep ", 5) == 0) {
+        /* Cross-buffer search command */
+        const char* pattern = strchr(command, ' ');
+        if (!pattern) {
+            vizero_editor_set_status_message(state, "Usage: :search <pattern> or :grep <pattern>");
+            return -1;
+        }
+        pattern++; /* Skip space */
+        
+        if (strlen(pattern) == 0) {
+            vizero_editor_set_status_message(state, "Usage: :search <pattern> or :grep <pattern>");
+            return -1;
+        }
+        
+        /* Store original buffer index to return to it */
+        size_t original_buffer_index = state->current_buffer_index;
+        std::vector<std::string> results;
+        bool found_any = false;
+        
+        /* Search across all buffers */
+        for (size_t i = 0; i < state->buffer_count; i++) {
+            /* Switch to buffer i temporarily */
+            if (vizero_editor_switch_buffer(state, i) != 0) continue;
+            
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            if (!buffer) continue;
+            
+            const char* filename = vizero_buffer_get_filename(buffer);
+            if (!filename) filename = "[No Name]";
+            
+            /* Find all matches in this buffer directly */
+            vizero_search_match_t buffer_matches[256]; /* Max 256 matches per buffer */
+            int match_count = vizero_search_find_all_in_buffer(buffer, pattern, buffer_matches, 256);
+            
+            if (match_count > 0) {
+                found_any = true;
+                
+                for (int j = 0; j < match_count; j++) {
+                    const vizero_search_match_t* match = &buffer_matches[j];
+                    
+                    /* Get the line text for context */
+                    const char* line_text = vizero_buffer_get_line_text(buffer, match->line);
+                    if (!line_text) continue;
+                    
+                    /* Create result string with proper formatting */
+                    char result_line[1024];
+                    snprintf(result_line, sizeof(result_line), "%s:%d:%d: %s", 
+                            filename, match->line + 1, match->column + 1, line_text);
+                    
+                    results.push_back(std::string(result_line));
+                }
+            }
+        }
+        
+        /* Return to original buffer */
+        vizero_editor_switch_buffer(state, original_buffer_index);
+        
+        if (!found_any) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Pattern not found: %s", pattern);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+        
+        /* Clean up any existing search results */
+        if (state->search_result_files) {
+            for (size_t k = 0; k < state->search_result_count; k++) {
+                free(state->search_result_files[k]);
+            }
+            free(state->search_result_files);
+        }
+        if (state->search_result_lines) {
+            free(state->search_result_lines);
+        }
+        if (state->search_result_columns) {
+            free(state->search_result_columns);
+        }
+        
+        /* Store search results for interactive navigation */
+        state->search_result_count = results.size();
+        state->search_result_files = (char**)malloc(results.size() * sizeof(char*));
+        state->search_result_lines = (int*)malloc(results.size() * sizeof(int));
+        state->search_result_columns = (int*)malloc(results.size() * sizeof(int));
+        
+        /* Parse results and store them */
+        for (size_t k = 0; k < results.size(); k++) {
+            const std::string& result = results[k];
+            
+            /* Parse filename:line:column from result string */
+            size_t first_colon = result.find(':');
+            size_t second_colon = result.find(':', first_colon + 1);
+            
+            if (first_colon != std::string::npos && second_colon != std::string::npos) {
+                std::string filename = result.substr(0, first_colon);
+                std::string line_str = result.substr(first_colon + 1, second_colon - first_colon - 1);
+                std::string column_str = result.substr(second_colon + 1);
+                
+                /* Find the end of the column number (before the colon and space) */
+                size_t column_end = column_str.find(':');
+                if (column_end != std::string::npos) {
+                    column_str = column_str.substr(0, column_end);
+                }
+                
+                state->search_result_files[k] = strdup(filename.c_str());
+                state->search_result_lines[k] = atoi(line_str.c_str()) - 1; /* Convert to 0-based */
+                state->search_result_columns[k] = atoi(column_str.c_str()) - 1; /* Convert to 0-based */
+            } else {
+                /* Fallback if parsing fails */
+                state->search_result_files[k] = strdup("unknown");
+                state->search_result_lines[k] = 0;
+                state->search_result_columns[k] = 0;
+            }
+        }
+        
+        /* Set up interactive search results popup */
+        state->popup_is_search_results = 1;
+        state->popup_is_buffer_list = 0;
+        state->popup_selected_search_result = 0;
+        
+        /* Generate and display the interactive popup */
+        vizero_editor_update_search_result_selector_content(state);
+        
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Found %zu matches - use arrows and Enter to navigate", results.size());
+        vizero_editor_set_status_message(state, msg);
+        return 0;
+        
     } else if (strcmp(command, "help") == 0 || strcmp(command, "h") == 0) {
         /* Load manual.md into current buffer */
         if (vizero_editor_enter_help_mode(state) == 0) {
@@ -2839,6 +3162,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 "  :wq               - Write and quit\n"
                 "  :bn, :bp          - Next/Previous buffer\n"
                 "  :b1, :b2, :b3     - Switch to buffer number\n"
+                "  :b filename       - Switch to buffer by filename\n"
                 "  :ls               - List all buffers\n"
                 "  :bd               - Delete current buffer\n"
                 "  :new              - Create new empty buffer\n\n"
@@ -2846,6 +3170,12 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 "  :split (:sp)      - Split window horizontally\n"
                 "  :vsplit (:vsp)    - Split window vertically\n"
                 "  :close (:clo)     - Close current window\n\n"
+                "SEARCH COMMANDS:\n"
+                "  /pattern          - Search forward in current buffer\n"
+                "  ?pattern          - Search backward in current buffer\n"
+                "  n, N              - Next/Previous search result\n"
+                "  :search pattern   - Search across all open buffers\n"
+                "  :grep pattern     - Same as :search\n\n"
                 "OTHER COMMANDS:\n"
                 "  :10               - Go to line 10\n"
                 "  :syntax           - Toggle syntax highlighting\n"

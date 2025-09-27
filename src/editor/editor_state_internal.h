@@ -45,6 +45,13 @@ struct vizero_editor_state_t {
     /* Buffer selection popup state */
     int popup_is_buffer_list;
     size_t popup_selected_buffer;
+    /* Search results popup state */
+    int popup_is_search_results;
+    size_t popup_selected_search_result;
+    char** search_result_files;        /* Array of filenames for each result */
+    int* search_result_lines;          /* Array of line numbers for each result */
+    int* search_result_columns;        /* Array of column numbers for each result */
+    size_t search_result_count;        /* Number of search results */
     /* Settings */
     vizero_settings_t* settings;
     /* Text selection */

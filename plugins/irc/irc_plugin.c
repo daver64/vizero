@@ -182,6 +182,19 @@ typedef struct {
 /* Global IRC state */
 static irc_state_t* g_irc_state = NULL;
 
+/* Static state variables that need to be reset between plugin loads */
+static struct {
+    bool was_in_irc_buffer_previously;
+    bool was_in_irc_buffer_last_time;
+} g_static_state = {false, false};
+
+/* Reset static variables to prevent state persistence across plugin reloads */
+static void irc_reset_static_state(void) {
+    printf("[IRC] Resetting static state variables to prevent stale state from previous sessions\n");
+    g_static_state.was_in_irc_buffer_previously = false;
+    g_static_state.was_in_irc_buffer_last_time = false;
+}
+
 /* Forward declarations */
 static void irc_send_raw(const char* message);
 
@@ -1531,20 +1544,58 @@ static int irc_cmd_connect(vizero_editor_t* editor, const char* args) {
     if (result == 0) {
         printf("[IRC] Connected successfully!\n");
         
-        /* Create dedicated IRC buffer using :enew command with name */
+        /* Create dedicated IRC buffer using enew with name parameter */
         if (g_irc_state && g_irc_state->api && g_irc_state->api->execute_command) {
             printf("[IRC] Creating dedicated IRC buffer...\n");
+            /* Create new buffer with explicit name */
             int enew_result = g_irc_state->api->execute_command(editor, "enew *IRC*");
             if (enew_result == 0) {
-                /* Get the newly created buffer */
-                if (g_irc_state->api->get_current_buffer) {
-                    g_irc_state->irc_buffer = g_irc_state->api->get_current_buffer(editor);
-                    printf("[IRC] Dedicated IRC buffer created and active\n");
+                printf("[IRC] enew command succeeded, now trying to find IRC buffer...\n");
+                
+                /* Try switching with buffer number instead - check buffers 1, 2, 3 */
+                vizero_buffer_t* irc_buffer_found = NULL;
+                
+                for (int buf_num = 1; buf_num <= 5; buf_num++) {
+                    char cmd[32];
+                    snprintf(cmd, sizeof(cmd), "b%d", buf_num);
+                    
+                    int switch_result = g_irc_state->api->execute_command(editor, cmd);
+                    if (switch_result == 0) {
+                        /* Check if this buffer is the IRC buffer */
+                        if (g_irc_state->api->get_current_buffer && g_irc_state->api->get_buffer_filename) {
+                            vizero_buffer_t* current = g_irc_state->api->get_current_buffer(editor);
+                            const char* filename = g_irc_state->api->get_buffer_filename(current);
+                            
+                            printf("[IRC] Checking buffer %d: %p, filename='%s'\n", 
+                                   buf_num, (void*)current, filename ? filename : "NULL");
+                            
+                            if (filename && strcmp(filename, "*IRC*") == 0) {
+                                irc_buffer_found = current;
+                                printf("[IRC] Found IRC buffer at buffer %d!\n", buf_num);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (irc_buffer_found) {
+                    g_irc_state->irc_buffer = irc_buffer_found;
+                    printf("[IRC] Successfully identified IRC buffer: %p\n", (void*)g_irc_state->irc_buffer);
+                    
+                    /* Mark IRC buffer as scratch so it doesn't trigger unsaved changes warning */
+                    if (g_irc_state->api->set_buffer_scratch) {
+                        g_irc_state->api->set_buffer_scratch(g_irc_state->irc_buffer, 1);
+                        printf("[IRC] Marked IRC buffer as scratch/transient\n");
+                    }
+                    /* Enable IRC full-screen mode immediately since we're now in the IRC buffer */
+                    g_irc_state->wants_full_window = true;
+                    g_irc_state->just_escaped = false;
+                    printf("[IRC] Enabled full-screen mode for IRC buffer\n");
                 } else {
-                    printf("[IRC] Warning: Could not get reference to new IRC buffer\n");
+                    printf("[IRC] ERROR: Could not find IRC buffer after enew!\n");
                 }
             } else {
-                printf("[IRC] Warning: Failed to create dedicated IRC buffer (error %d)\n", enew_result);
+                printf("[IRC] Warning: Failed to create IRC buffer (error %d)\n", enew_result);
             }
         }
         
@@ -1785,10 +1836,16 @@ static int irc_wants_full_window(vizero_editor_t* editor) {
     int connected = g_irc_state->connection.connected;
     int in_irc_buffer = irc_is_in_irc_buffer(editor);
     int user_wants_full = g_irc_state->wants_full_window;
-    int wants = (connected && in_irc_buffer && user_wants_full) ? 1 : 0;
     
-    static int last_wants = -1; 
-    last_wants = wants;
+    /* DEFENSIVE: If we're not in IRC buffer but wants_full_window is true, reset it */
+    if (!in_irc_buffer && user_wants_full) {
+        printf("[IRC] Not in IRC buffer but wants_full_window=true, resetting it\n");
+        g_irc_state->wants_full_window = false;
+        g_irc_state->just_escaped = false;
+        user_wants_full = false;
+    }
+    
+    int wants = (connected && in_irc_buffer && user_wants_full) ? 1 : 0;
     
     return wants;
 }
@@ -1823,14 +1880,24 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     
     if (!g_irc_state) return 0;
     
-    /* Only handle input when we're connected to IRC or in an IRC buffer */
-    if (!g_irc_state->connection.connected && !irc_is_in_irc_buffer(editor)) {
+    /* Check if we've left the IRC buffer and need to clean up state */
+    bool currently_in_irc_buffer = irc_is_in_irc_buffer(editor);
+    
+    if (g_static_state.was_in_irc_buffer_previously && !currently_in_irc_buffer) {
+        /* We just left the IRC buffer - clean up IRC display state */
+        printf("[IRC] Left IRC buffer - disabling full-screen mode\n");
+        g_irc_state->wants_full_window = false;
+        g_irc_state->just_escaped = false;
+    }
+    g_static_state.was_in_irc_buffer_previously = currently_in_irc_buffer;
+    
+    /* Only handle input when we're in an IRC buffer */
+    if (!currently_in_irc_buffer) {
         return 0; /* Let other plugins/editor handle the input */
     }
     
     /* If we're in vi command mode but not in full-window mode, reset and let editor handle */
     if (g_irc_state->in_vi_command && !g_irc_state->wants_full_window) {
-        printf("[IRC] In vi command mode but not full-window - resetting and letting editor handle\n");
         g_irc_state->in_vi_command = false;
         g_irc_state->vi_command_buffer[0] = '\0';
         return 0; /* Let editor handle it */
@@ -1920,22 +1987,30 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     }
     
     /* ONLY intercept the initial colon when in IRC buffer AND in full-window mode */
+    /* Only intercept ':' for vi command mode if we're NOT typing a message */
     if (key == ':' && !g_in_command_mode && g_irc_state->irc_buffer && g_irc_state->wants_full_window) {
-        /* Check if we're currently in the IRC buffer */
+        /* Check if we're currently in the IRC buffer AND not typing a message */
         if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
             vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
             if (current_buffer == g_irc_state->irc_buffer) {
-                printf("[IRC] Initial colon detected in IRC buffer - making readonly to prevent text bleeding\n");
-                g_in_command_mode = 1;
-                
-                /* Make IRC buffer readonly immediately */
-                if (g_irc_state->api->set_buffer_readonly) {
-                    printf("[IRC] Setting IRC buffer readonly for command mode protection\n");
-                    g_irc_state->api->set_buffer_readonly(current_buffer, 1);
+                /* Only intercept ':' if the input buffer is empty (not typing a message) */
+                if (strlen(g_irc_state->input_buffer) == 0) {
+                    printf("[IRC] Initial colon detected in IRC buffer (not typing message) - entering vi command mode\n");
+                    g_in_command_mode = 1;
+                    
+                    /* Make IRC buffer readonly immediately */
+                    if (g_irc_state->api->set_buffer_readonly) {
+                        printf("[IRC] Setting IRC buffer readonly for command mode protection\n");
+                        g_irc_state->api->set_buffer_readonly(current_buffer, 1);
+                    }
+                    
+                    /* Let colon pass through to enter command mode */
+                    return 0;
+                } else {
+                    printf("[IRC] Colon detected but user is typing message ('%s') - treating as regular character\n", 
+                           g_irc_state->input_buffer);
+                    /* Fall through to normal IRC input processing */
                 }
-                
-                /* Let colon pass through to enter command mode */
-                return 0;
             }
         }
     }
@@ -1975,25 +2050,23 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         return 0; /* Not consumed - let vim handle normally */
     }
     
+    /* DOUBLE-CHECK: Only proceed with IRC key handling if we're actually in an IRC buffer */
+    if (!irc_is_in_irc_buffer(editor)) {
+        printf("[IRC] Key %d ('%c') received but not in IRC buffer - letting editor handle\n", key, (char)key);
+        return 0; /* Not in IRC buffer - let editor handle normally */
+    }
+    
     /* Process incoming IRC messages on every input event */
     irc_process_incoming();
     
-    printf("[IRC] Handling key %d ('%c') in IRC mode\n", key, (char)key);
-    
-    /* Check first if we're in an IRC buffer - if not, don't process at all */
-    bool currently_in_irc_buffer = irc_is_in_irc_buffer(editor);
-    if (!currently_in_irc_buffer) {
-        /* Not in IRC buffer - let editor handle all keys normally without any IRC processing */
-        return 0;
-    }
+    /* Key handling in IRC mode */
     
     /* Track buffer switching to clear escape flag when returning to IRC */
-    static bool was_in_irc_buffer_last_time = false;
     
     /* We're in an IRC buffer - proceed with IRC key handling */
     
     /* If we switched back to IRC buffer from another buffer, clear the just_escaped flag and enable full-screen */
-    if (!was_in_irc_buffer_last_time) {
+    if (!g_static_state.was_in_irc_buffer_last_time) {
         printf("[IRC] Detected switch back to IRC buffer - enabling full-screen mode\n");
         g_irc_state->just_escaped = false;
         g_irc_state->wants_full_window = true; /* Force full-screen when entering *IRC* buffer */
@@ -2002,10 +2075,12 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     /* FORCE IRC full-screen mode whenever we're in IRC buffer and not escaped recently */
     /* This ensures that switching to *IRC* buffer always shows the IRC interface */
     if (!g_irc_state->wants_full_window && !g_irc_state->just_escaped) {
+        printf("[IRC] Auto-enabling full-screen mode (wants=%d, just_escaped=%d)\n", 
+               g_irc_state->wants_full_window, g_irc_state->just_escaped);
         g_irc_state->wants_full_window = true;
     }
     
-    was_in_irc_buffer_last_time = true;
+    g_static_state.was_in_irc_buffer_last_time = true;
         
         /* Handle Escape - toggle between IRC full-screen and normal editor mode */
         if (key == 27) { /* Escape */
@@ -2040,7 +2115,6 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         
         /* If we're not in full-window mode and it's not a printable character, let the editor handle it */
         if (!g_irc_state->wants_full_window) {
-            printf("[IRC] Not in full-window mode - letting editor handle key %d normally\n", key);
             return 0; /* Let editor handle it */
         }
         
@@ -2285,6 +2359,9 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
         return -1;
     }
 #endif
+    
+    /* Reset static state variables to prevent stale state from previous plugin loads */
+    irc_reset_static_state();
     
     /* Create global IRC state */
     g_irc_state = calloc(1, sizeof(irc_state_t));

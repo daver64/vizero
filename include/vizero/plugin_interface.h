@@ -588,6 +588,12 @@ typedef struct {
     /** @brief Set the read-only status of a buffer */
     void (*set_buffer_readonly)(vizero_buffer_t* buffer, int readonly);
     
+    /** @brief Check if a buffer is marked as scratch/transient */
+    int (*is_buffer_scratch)(vizero_buffer_t* buffer);
+    
+    /** @brief Set the scratch/transient status of a buffer */
+    void (*set_buffer_scratch)(vizero_buffer_t* buffer, int scratch);
+    
     /** @} */ // end of buffer_operations group
     
     /**

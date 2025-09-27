@@ -309,4 +309,38 @@ const vizero_search_match_t* vizero_search_get_all_matches(vizero_editor_state_t
     return g_search_state->matches.empty() ? nullptr : g_search_state->matches.data();
 }
 
+int vizero_search_find_all_in_buffer(vizero_buffer_t* buffer, const char* pattern, 
+                                     vizero_search_match_t* matches, int max_matches) {
+    if (!buffer || !pattern || !matches || max_matches <= 0) return 0;
+    
+    try {
+        std::regex compiled_pattern(pattern, std::regex_constants::ECMAScript);
+        int match_count = 0;
+        
+        size_t line_count = vizero_buffer_get_line_count(buffer);
+        
+        for (size_t line = 0; line < line_count && match_count < max_matches; line++) {
+            const char* line_text = vizero_buffer_get_line_text(buffer, line);
+            if (!line_text) continue;
+            
+            std::string text(line_text);
+            std::sregex_iterator iter(text.begin(), text.end(), compiled_pattern);
+            std::sregex_iterator end;
+            
+            for (; iter != end && match_count < max_matches; ++iter) {
+                const std::smatch& match = *iter;
+                matches[match_count].line = (int)line;
+                matches[match_count].column = (int)match.position();
+                matches[match_count].length = (int)match.length();
+                match_count++;
+            }
+        }
+        
+        return match_count;
+    } catch (const std::regex_error& e) {
+        (void)e; /* Suppress unused variable warning */
+        return 0; /* Invalid regex */
+    }
+}
+
 } /* extern "C" */

@@ -242,6 +242,40 @@ int vizero_buffer_is_readonly(vizero_buffer_t* buffer);
  */
 void vizero_buffer_set_readonly(vizero_buffer_t* buffer, int readonly);
 
+/**
+ * @brief Check if a buffer is marked as scratch/transient
+ * 
+ * Returns whether the buffer is currently marked as scratch. Scratch
+ * buffers are temporary buffers that don't trigger unsaved change warnings
+ * when quitting the editor.
+ * 
+ * @param buffer Buffer to query (must not be NULL)
+ * @return 1 if buffer is scratch, 0 if not
+ * 
+ * @pre buffer must not be NULL
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+int vizero_buffer_is_scratch(vizero_buffer_t* buffer);
+
+/**
+ * @brief Set the scratch/transient status of a buffer
+ * 
+ * Marks a buffer as scratch or regular. Scratch buffers are temporary
+ * and don't trigger unsaved change warnings when quitting the editor.
+ * This is useful for IRC channels, REPL buffers, and other transient content.
+ * 
+ * @param buffer Buffer to modify (must not be NULL)
+ * @param scratch 1 to mark as scratch, 0 to mark as regular
+ * 
+ * @pre buffer must not be NULL
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_buffer_set_scratch(vizero_buffer_t* buffer, int scratch);
+
 /** @} */ // end of buffer_properties group
 
 /**

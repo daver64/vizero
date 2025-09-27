@@ -130,6 +130,14 @@ static void api_set_buffer_readonly(vizero_buffer_t* buffer, int readonly) {
     vizero_buffer_set_readonly(buffer, readonly);
 }
 
+static int api_is_buffer_scratch(vizero_buffer_t* buffer) {
+    return vizero_buffer_is_scratch(buffer);
+}
+
+static void api_set_buffer_scratch(vizero_buffer_t* buffer, int scratch) {
+    vizero_buffer_set_scratch(buffer, scratch);
+}
+
 /* File operations */
 static int api_open_file(vizero_editor_t* editor, const char* filename) {
     return vizero_editor_open_buffer((vizero_editor_state_t*)editor, filename);
@@ -181,6 +189,8 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     api->delete_text = api_delete_text;
     api->is_buffer_readonly = api_is_buffer_readonly;
     api->set_buffer_readonly = api_set_buffer_readonly;
+    api->is_buffer_scratch = api_is_buffer_scratch;
+    api->set_buffer_scratch = api_set_buffer_scratch;
     
     /* Cursor operations */
     api->get_cursor_position = api_get_cursor_position;

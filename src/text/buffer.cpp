@@ -43,6 +43,7 @@ struct vizero_buffer_t {
     size_t line_count;
     int modified;
     int readonly;
+    int scratch;          /* Flag to mark buffer as scratch/transient (don't warn on unsaved changes) */
     int in_undo_redo;     /* Flag to prevent undo tracking during undo/redo */
     undo_stack_t undo_stack;
     undo_stack_t redo_stack;
@@ -250,6 +251,14 @@ int vizero_buffer_is_readonly(vizero_buffer_t* buffer) {
 
 void vizero_buffer_set_readonly(vizero_buffer_t* buffer, int readonly) {
     if (buffer) buffer->readonly = readonly;
+}
+
+int vizero_buffer_is_scratch(vizero_buffer_t* buffer) {
+    return buffer ? buffer->scratch : 0;
+}
+
+void vizero_buffer_set_scratch(vizero_buffer_t* buffer, int scratch) {
+    if (buffer) buffer->scratch = scratch;
 }
 
 size_t vizero_buffer_get_line_count(vizero_buffer_t* buffer) {

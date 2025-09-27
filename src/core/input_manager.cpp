@@ -329,6 +329,11 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 break; /* Buffer selector consumed the key */
                             }
                             
+                            /* Try search result selector keys */
+                            if (vizero_editor_handle_search_result_selector_key(editor, event.key.keysym.sym)) {
+                                break; /* Search result selector consumed the key */
+                            }
+                            
                             /* Fall back to regular popup scrolling */
                             if (event.key.keysym.sym == SDLK_UP) {
                                 vizero_editor_scroll_popup(editor, -1);
