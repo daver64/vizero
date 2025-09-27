@@ -78,7 +78,8 @@ typedef struct {
         IRC_MSG_TOPIC,
         IRC_MSG_ERROR,
         IRC_MSG_NOTICE,
-        IRC_MSG_SERVER
+        IRC_MSG_SERVER,
+        IRC_MSG_MODE
     } type;
     vizero_colour_t nick_colour;
 } irc_message_t;
@@ -633,6 +634,18 @@ static void irc_remove_user_from_channel(irc_buffer_t* buffer, const char* nick)
     }
 }
 
+/* Set user operator status in channel */
+static void irc_set_user_op_status(irc_buffer_t* buffer, const char* nick, bool is_op) {
+    if (!buffer || !nick) return;
+    
+    for (size_t i = 0; i < buffer->channel_info.user_count; i++) {
+        if (strcmp(buffer->channel_info.users[i].nick, nick) == 0) {
+            buffer->channel_info.users[i].is_op = is_op;
+            break;
+        }
+    }
+}
+
 /* Clear all users from channel */
 static void irc_clear_users_from_channel(irc_buffer_t* buffer) {
     if (!buffer) return;
@@ -745,6 +758,35 @@ static void irc_parse_message(const char* line) {
                     snprintf(quit_msg, sizeof(quit_msg), "%s has quit", nick);
                 }
                 irc_add_message(buffer, NULL, quit_msg, IRC_MSG_QUIT);
+            }
+        }
+    } else if (strcmp(command, "MODE") == 0) {
+        char* channel = strtok_r(NULL, " ", &saveptr);
+        char* mode_change = strtok_r(NULL, " ", &saveptr);
+        char* target_nick = strtok_r(NULL, " ", &saveptr);
+        
+        if (channel && mode_change && target_nick && channel[0] == '#') {
+            irc_buffer_t* buffer = irc_find_buffer(channel);
+            if (buffer) {
+                /* Handle mode changes */
+                if (strcmp(mode_change, "+o") == 0) {
+                    /* Give op status */
+                    irc_set_user_op_status(buffer, target_nick, true);
+                    char mode_msg[256];
+                    snprintf(mode_msg, sizeof(mode_msg), "%s gives channel operator status to %s", nick, target_nick);
+                    irc_add_message(buffer, NULL, mode_msg, IRC_MSG_MODE);
+                } else if (strcmp(mode_change, "-o") == 0) {
+                    /* Remove op status */
+                    irc_set_user_op_status(buffer, target_nick, false);
+                    char mode_msg[256];
+                    snprintf(mode_msg, sizeof(mode_msg), "%s removes channel operator status from %s", nick, target_nick);
+                    irc_add_message(buffer, NULL, mode_msg, IRC_MSG_MODE);
+                } else {
+                    /* Other mode changes - just display the message */
+                    char mode_msg[256];
+                    snprintf(mode_msg, sizeof(mode_msg), "%s sets mode %s %s", nick, mode_change, target_nick);
+                    irc_add_message(buffer, NULL, mode_msg, IRC_MSG_MODE);
+                }
             }
         }
     } else {
@@ -1177,6 +1219,9 @@ static void irc_render_message_area_gl(vizero_renderer_t* renderer, int x, int y
                 case IRC_MSG_JOIN:
                 case IRC_MSG_PART:
                     text_info.colour = (vizero_colour_t){0.7f, 1.0f, 0.7f, 1.0f}; /* Light green for join/part */
+                    break;
+                case IRC_MSG_MODE:
+                    text_info.colour = (vizero_colour_t){1.0f, 0.8f, 0.4f, 1.0f}; /* Orange for mode changes */
                     break;
                 default:
                     text_info.colour = (vizero_colour_t){0.8f, 0.8f, 0.8f, 1.0f};
@@ -1637,7 +1682,7 @@ static int irc_cmd_disconnect(vizero_editor_t* editor, const char* args) {
 static int irc_cmd_join(vizero_editor_t* editor, const char* args) {
     (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        printf("[IRC] Usage: join #channel\n");
+        printf("[IRC] Usage: \\join #channel\n");
         return -1;
     }
     
@@ -1692,7 +1737,7 @@ static int irc_cmd_part(vizero_editor_t* editor, const char* args) {
 static int irc_cmd_msg(vizero_editor_t* editor, const char* args) {
     (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        printf("[IRC] Usage: msg target message\n");
+        printf("[IRC] Usage: \\msg target message\n");
         return -1;
     }
     
@@ -1726,7 +1771,7 @@ static int irc_cmd_prev(vizero_editor_t* editor, const char* args) {
 static int irc_cmd_buffer(vizero_editor_t* editor, const char* args) {
     (void)editor; /* Unused */
     if (!args || strlen(args) == 0) {
-        printf("[IRC] Usage: buffer name\n");
+        printf("[IRC] Usage: \\buffer name\n");
         return -1;
     }
     
@@ -1781,7 +1826,23 @@ static int irc_cmd_disable(vizero_editor_t* editor, const char* args) {
     return 0;
 }
 
-
+static int irc_cmd_help(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused */
+    (void)args; /* Unused */
+    
+    printf("[IRC] Available IRC commands (use backslash prefix in text input):\n");
+    printf("  \\join #channel      - Join a channel\n");
+    printf("  \\part [#channel]    - Leave current or specified channel\n");
+    printf("  \\msg target message - Send private message\n");
+    printf("  \\buffer name        - Switch to specific buffer\n");
+    printf("  \\next               - Switch to next buffer\n");
+    printf("  \\prev               - Switch to previous buffer\n");
+    printf("  \\quit               - Disconnect from IRC\n");
+    printf("  \\help               - Show this help\n");
+    printf("  Regular messages are sent without any prefix\n");
+    
+    return 0;
+}
 
 /* Plugin update callback for networking and UI */
 static void irc_plugin_update(void) {
@@ -2196,10 +2257,10 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
                 if (strlen(g_irc_state->input_buffer) > 0) {
                 printf("[IRC] Input received: '%s'\n", g_irc_state->input_buffer);
                 
-                /* Check if input is a command (starts with /) */
-                if (g_irc_state->input_buffer[0] == '/') {
+                /* Check if input is a command (starts with \) */
+                if (g_irc_state->input_buffer[0] == '\\') {
                     /* Parse and execute IRC command */
-                    char* command = g_irc_state->input_buffer + 1; /* Skip the '/' */
+                    char* command = g_irc_state->input_buffer + 1; /* Skip the '\' */
                     char* args = strchr(command, ' ');
                     if (args) {
                         *args = '\0'; /* Terminate command */
@@ -2217,41 +2278,24 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
                         irc_cmd_msg(g_irc_state->editor, args);
                     } else if (strcmp(command, "quit") == 0) {
                         irc_disconnect();
+                    } else if (strcmp(command, "buffer") == 0) {
+                        irc_cmd_buffer(g_irc_state->editor, args);
+                    } else if (strcmp(command, "next") == 0) {
+                        irc_cmd_next(g_irc_state->editor, args);
+                    } else if (strcmp(command, "prev") == 0) {
+                        irc_cmd_prev(g_irc_state->editor, args);
+                    } else if (strcmp(command, "help") == 0) {
+                        irc_cmd_help(g_irc_state->editor, args);
                     } else {
                         printf("[IRC] Unknown command: %s\n", command);
                     }
                 } else {
-                    /* Check if input looks like a command without / prefix */
-                    char input_copy[512];
-                    strncpy(input_copy, g_irc_state->input_buffer, sizeof(input_copy) - 1);
-                    input_copy[sizeof(input_copy) - 1] = '\0';
-                    
-                    char* first_word = strtok(input_copy, " ");
-                    char* rest = strtok(NULL, "");
-                    
-                    if (first_word && (strcmp(first_word, "join") == 0 || 
-                                      strcmp(first_word, "part") == 0 ||
-                                      strcmp(first_word, "msg") == 0 ||
-                                      strcmp(first_word, "quit") == 0)) {
-                        printf("[IRC] Executing command without /: '%s' with args: '%s'\n", first_word, rest ? rest : "");
-                        
-                        if (strcmp(first_word, "join") == 0) {
-                            irc_cmd_join(g_irc_state->editor, rest);
-                        } else if (strcmp(first_word, "part") == 0) {
-                            irc_cmd_part(g_irc_state->editor, rest);
-                        } else if (strcmp(first_word, "msg") == 0) {
-                            irc_cmd_msg(g_irc_state->editor, rest);
-                        } else if (strcmp(first_word, "quit") == 0) {
-                            irc_disconnect();
-                        }
+                    /* Regular message - send to current buffer */
+                    if (strlen(g_irc_state->current_buffer) > 0) {
+                        printf("[IRC] Current buffer: %s\n", g_irc_state->current_buffer);
+                        irc_send_message(g_irc_state->current_buffer, g_irc_state->input_buffer);
                     } else {
-                        /* Regular message - send to current buffer */
-                        if (strlen(g_irc_state->current_buffer) > 0) {
-                            printf("[IRC] Current buffer: %s\n", g_irc_state->current_buffer);
-                            irc_send_message(g_irc_state->current_buffer, g_irc_state->input_buffer);
-                        } else {
-                            printf("[IRC] No current buffer to send to\n");
-                        }
+                        printf("[IRC] No current buffer to send to\n");
                     }
                 }
                 
@@ -2322,6 +2366,12 @@ static vizero_plugin_command_t irc_commands[] = {
         .command = "buffer",
         .description = "Switch to specific IRC buffer: /buffer <name>",
         .handler = irc_cmd_buffer,
+        .user_data = NULL
+    },
+    {
+        .command = "help",
+        .description = "Show IRC commands help",
+        .handler = irc_cmd_help,
         .user_data = NULL
     },
     {

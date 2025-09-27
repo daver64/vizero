@@ -103,3 +103,5 @@ Commands parsed in `src/editor/command_parser.cpp` with mode-specific handling i
 - LSP message parsing requires 32KB+ buffer for large completion responses
 - LSP plugins must handle graceful degradation when language servers unavailable
 - JSON parsing in LSP requires bounds checking - see safe extraction functions
+- IRC plugins need MODE message handling for dynamic user list updates - add IRC_MSG_MODE enum and irc_set_user_op_status function
+- IRC commands require backslash prefix (\join, \msg, \quit) to distinguish from regular chat messages - use \help for command list
