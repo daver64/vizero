@@ -257,6 +257,7 @@ add_library(vizero_core STATIC
     src/ui/editor_window_move_visual_row.c
     src/utils/file_utils.cpp
     src/utils/string_utils.cpp
+    src/utils/json_parser.cpp
     src/lsp/lsp_client.cpp
 )
 

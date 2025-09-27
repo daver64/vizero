@@ -786,6 +786,12 @@ static bool start_sbcl_process(sbcl_process_t* proc) {
         /* Make pipes non-blocking */
         fcntl(proc->stdout_pipe, F_SETFL, O_NONBLOCK);
         fcntl(proc->stderr_pipe, F_SETFL, O_NONBLOCK);
+        
+        /* Make stdin (write end) non-blocking to prevent editor hangs */
+        int stdin_flags = fcntl(proc->stdin_pipe, F_GETFL, 0);
+        if (stdin_flags != -1) {
+            fcntl(proc->stdin_pipe, F_SETFL, stdin_flags | O_NONBLOCK);
+        }
     }
 #endif
     
@@ -1547,9 +1553,48 @@ static bool send_to_sbcl(const char* command) {
         return false;
     }
 #else
-    ssize_t bytes_written = write(g_lisp_state->sbcl.stdin_pipe, full_command, strlen(full_command));
-    if (bytes_written == -1) {
-        lisp_log_message("ERROR: Failed to write to SBCL process");
+    /* Robust non-blocking write loop to prevent editor hangs */
+    size_t total = strlen(full_command);
+    size_t written = 0;
+    int retry_count = 0;
+    const int max_retries = 10;
+    
+    while (written < total && retry_count < max_retries) {
+        ssize_t w = write(g_lisp_state->sbcl.stdin_pipe, full_command + written, total - written);
+        if (w > 0) {
+            written += (size_t)w;
+            retry_count = 0; /* reset retry count on successful write */
+            continue;
+        }
+        
+        if (w == -1) {
+            if (errno == EINTR) {
+                continue; /* interrupted, retry immediately */
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* Pipe buffer full, wait briefly for it to drain */
+                fd_set wfds;
+                struct timeval tv;
+                FD_ZERO(&wfds);
+                FD_SET(g_lisp_state->sbcl.stdin_pipe, &wfds);
+                tv.tv_sec = 0;
+                tv.tv_usec = 50000; /* 50ms timeout */
+                
+                int sel = select(g_lisp_state->sbcl.stdin_pipe + 1, NULL, &wfds, NULL, &tv);
+                if (sel > 0) {
+                    continue; /* pipe is writable, try again */
+                }
+                retry_count++;
+                continue;
+            }
+            /* Other error */
+            lisp_log_message("ERROR: Failed to write to SBCL process");
+            return false;
+        }
+    }
+    
+    if (written < total) {
+        lisp_log_message("ERROR: Could not write complete command to SBCL (partial write)");
         return false;
     }
 #endif
@@ -3333,11 +3378,19 @@ static int lisp_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t mod
         return 0;  /* Let Vizero handle input */
     }
     
+    /* Early return if no REPL buffer exists - don't interfere with other files */
+    if (!g_lisp_state->repl_buffer) {
+        return 0;  /* Let Vizero handle input */
+    }
+    
     /* Check if we're in the REPL buffer */
     int in_repl_buffer = 0;
     static vizero_buffer_t* last_buffer = NULL;
-    if (g_lisp_state->api && g_lisp_state->api->get_current_buffer && g_lisp_state->repl_buffer) {
+    if (g_lisp_state->api && g_lisp_state->api->get_current_buffer) {
         vizero_buffer_t* current = g_lisp_state->api->get_current_buffer(editor);
+        if (!current) {
+            return 0;  /* No current buffer, let Vizero handle */
+        }
         in_repl_buffer = (current == g_lisp_state->repl_buffer);
         
         /* Debug buffer switches */

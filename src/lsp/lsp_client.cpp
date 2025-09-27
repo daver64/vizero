@@ -1,4 +1,5 @@
 #include "vizero/lsp_client.h"
+#include "vizero/json_parser.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@ static int _asprintf(char** strp, const char* fmt, ...) {
 #include <sys/wait.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <fcntl.h>
 #endif
 
 /* LSP client structure */
@@ -580,6 +582,11 @@ static int lsp_client_start_process(vizero_lsp_client_t* client) {
     client->stdout_fd = stdout_pipe[0];
     client->stderr_fd = stderr_pipe[0];
     
+    /* Make pipes non-blocking to prevent editor hangs */
+    fcntl(client->stdin_fd, F_SETFL, O_NONBLOCK);
+    fcntl(client->stdout_fd, F_SETFL, O_NONBLOCK);
+    fcntl(client->stderr_fd, F_SETFL, O_NONBLOCK);
+    
     /* Close unused pipe ends */
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
@@ -623,10 +630,48 @@ static int lsp_client_write_message(vizero_lsp_client_t* client, const char* mes
         return -1;
     }
     
-    ssize_t bytes_written = write(client->stdin_fd, full_message, full_len);
-    free(full_message);
+    /* Robust non-blocking write for LSP client (similar to LISP REPL fix) */
+    size_t total = full_len;
+    size_t written = 0;
+    int retry_count = 0;
+    const int max_retries = 5;  /* Shorter retry for LSP */
     
-    return bytes_written == full_len ? 0 : -1;
+    while (written < total && retry_count < max_retries) {
+        ssize_t w = write(client->stdin_fd, full_message + written, total - written);
+        if (w > 0) {
+            written += (size_t)w;
+            retry_count = 0;
+            continue;
+        }
+        
+        if (w == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* LSP server not ready, wait briefly */
+                fd_set wfds;
+                struct timeval tv;
+                FD_ZERO(&wfds);
+                FD_SET(client->stdin_fd, &wfds);
+                tv.tv_sec = 0;
+                tv.tv_usec = 10000; /* 10ms timeout for LSP */
+                
+                int sel = select(client->stdin_fd + 1, NULL, &wfds, NULL, &tv);
+                if (sel > 0) {
+                    continue;
+                }
+                retry_count++;
+                continue;
+            }
+            /* Other error - LSP server likely crashed */
+            free(full_message);
+            return -1;
+        }
+    }
+    
+    free(full_message);
+    return (written == total) ? 0 : -1;
 }
 
 static int lsp_client_read_messages(vizero_lsp_client_t* client) {
@@ -639,8 +684,17 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
                               client->read_buffer + client->read_buffer_used, 
                               client->read_buffer_size - client->read_buffer_used - 1);
     
-    if (bytes_read <= 0) {
-        return bytes_read; /* 0 = no data, -1 = error */
+    if (bytes_read < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            /* No data available right now - this is normal with non-blocking I/O */
+            return 0;
+        }
+        return -1; /* Actual error */
+    }
+    
+    if (bytes_read == 0) {
+        /* EOF - process has closed its stdout */
+        return 0; /* Not an error, just no more data */
     }
     
     client->read_buffer_used += bytes_read;
@@ -692,112 +746,9 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
 
 #endif
 
-/* Safe JSON field extraction */
-static char* safe_extract_json_string(const char* json, const char* field_name, size_t json_len) {
-    if (!json || !field_name || json_len == 0) {
-        return NULL;
-    }
-    
-    /* Build search pattern: "fieldname": */
-    size_t pattern_len = strlen(field_name) + 4; /* "": */
-    char* pattern = (char*)malloc(pattern_len + 1);
-    if (!pattern) return NULL;
-    
-    snprintf(pattern, pattern_len + 1, "\"%s\":", field_name);
-    
-    const char* field_start = strstr(json, pattern);
-    free(pattern);
-    
-    if (!field_start || field_start >= json + json_len) {
-        return NULL;
-    }
-    
-    /* Skip to value part */
-    const char* value_start = field_start + strlen(field_name) + 3;
-    
-    /* Skip whitespace */
-    while (value_start < json + json_len && (*value_start == ' ' || *value_start == '\t' || *value_start == '\n' || *value_start == '\r')) {
-        value_start++;
-    }
-    
-    if (value_start >= json + json_len) {
-        return NULL;
-    }
-    
-    /* Handle string values */
-    if (*value_start == '"') {
-        value_start++; /* Skip opening quote */
-        const char* value_end = value_start;
-        
-        /* Find closing quote, handling escaped quotes */
-        while (value_end < json + json_len && *value_end != '"') {
-            if (*value_end == '\\' && value_end + 1 < json + json_len) {
-                value_end += 2; /* Skip escaped character */
-            } else {
-                value_end++;
-            }
-        }
-        
-        if (value_end >= json + json_len || *value_end != '"') {
-            return NULL; /* No closing quote found */
-        }
-        
-        size_t value_len = value_end - value_start;
-        if (value_len == 0 || value_len > 10000) { /* Reasonable limit */
-            return NULL;
-        }
-        
-        char* result = (char*)malloc(value_len + 1);
-        if (!result) return NULL;
-        
-        memcpy(result, value_start, value_len);
-        result[value_len] = '\0';
-        return result;
-    }
-    
-    return NULL;
-}
 
-static int safe_extract_json_int(const char* json, const char* field_name, size_t json_len) {
-    if (!json || !field_name || json_len == 0) {
-        return -1;
-    }
-    
-    /* Build search pattern */
-    size_t pattern_len = strlen(field_name) + 4;
-    char* pattern = (char*)malloc(pattern_len + 1);
-    if (!pattern) return -1;
-    
-    snprintf(pattern, pattern_len + 1, "\"%s\":", field_name);
-    
-    const char* field_start = strstr(json, pattern);
-    free(pattern);
-    
-    if (!field_start || field_start >= json + json_len) {
-        return -1;
-    }
-    
-    /* Skip to value part */
-    const char* value_start = field_start + strlen(field_name) + 3;
-    
-    /* Skip whitespace */
-    while (value_start < json + json_len && (*value_start == ' ' || *value_start == '\t' || *value_start == '\n' || *value_start == '\r')) {
-        value_start++;
-    }
-    
-    if (value_start >= json + json_len) {
-        return -1;
-    }
-    
-    /* Parse integer */
-    if (*value_start >= '0' && *value_start <= '9') {
-        return atoi(value_start);
-    }
-    
-    return -1;
-}
 
-/* Message parsing (platform-independent) with robust JSON handling */
+/* Message parsing (platform-independent) with proper JSON parser */
 static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* content) {
     if (!client || !content) {
         return;
@@ -808,26 +759,28 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
         return;
     }
     
-    /* Parsing JSON message */
+    /* Parse JSON message using proper parser */
+    vizero_json_t* json = vizero_json_parse(content, content_len);
+    if (!json) {
+        return;
+    }
     
     /* Check if it's a response (has "id" field) */
-    int id = safe_extract_json_int(content, "id", content_len);
+    int id = vizero_json_get_int(json, "id", -1);
     if (id >= 0) {
-        /* Extract result and error fields safely */
-        char* result_str = safe_extract_json_string(content, "result", content_len);
-        char* error_str = safe_extract_json_string(content, "error", content_len);
+        /* Extract error field */
+        char* error_str = vizero_json_get_string(json, "error");
         
         if (client->callbacks.on_response) {
             /* Pass the entire content as result since we need the full JSON structure */
             client->callbacks.on_response(id, content, error_str, client->user_data);
         }
         
-        if (result_str) free(result_str);
         if (error_str) free(error_str);
         
     } else {
-        /* Extract method name safely */
-        char* method = safe_extract_json_string(content, "method", content_len);
+        /* Extract method name */
+        char* method = vizero_json_get_string(json, "method");
         if (method) {
             if (client->callbacks.on_notification) {
                 client->callbacks.on_notification(method, content, client->user_data);
@@ -837,6 +790,6 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
         }
     }
     
-    /* Message parsing complete */
+    vizero_json_free(json);
 }
 

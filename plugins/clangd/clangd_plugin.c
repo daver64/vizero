@@ -1,12 +1,14 @@
 #include "vizero/plugin_interface.h"
 #include "vizero/lsp_client.h"
 #include "vizero/buffer.h"
+#include "vizero/json_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -772,6 +774,19 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         CLANGD_ERR("No file path available for buffer");
         return -1;
     }
+    
+    /* Ensure we have absolute path for URI */
+    char* absolute_path = NULL;
+    if (file_path[0] != '/') {
+        /* Relative path - make it absolute */
+        char* cwd = getcwd(NULL, 0);
+        if (cwd) {
+            asprintf(&absolute_path, "%s/%s", cwd, file_path);
+            free(cwd);
+            file_path = absolute_path;
+        }
+    }
+    
     CLANGD_DBG("Requesting completion for file: %s at line %zu, column %zu", 
            file_path, position.line, position.column);
     
@@ -826,18 +841,13 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     }
     
     /* Build completion request parameters */
-    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
-    if (!escaped_path) {
-        return -1;
-    }
-    
-    /* Convert Windows path to proper URI format */
+    /* Convert file path to proper URI format (don't JSON-escape the path for URI) */
     char* uri;
     #ifdef _WIN32
     /* Windows: Convert backslashes to forward slashes and add drive letter handling */
-    size_t path_len = strlen(escaped_path);
+    size_t path_len = strlen(file_path);
     char* normalized_path = (char*)malloc(path_len + 1);
-    strcpy(normalized_path, escaped_path);
+    strcpy(normalized_path, file_path);
     for (size_t i = 0; i < path_len; i++) {
         if (normalized_path[i] == '\\') {
             normalized_path[i] = '/';
@@ -846,8 +856,10 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     asprintf(&uri, "file:///%s", normalized_path);
     free(normalized_path);
     #else
-    asprintf(&uri, "file://%s", escaped_path);
+    asprintf(&uri, "file://%s", file_path);
     #endif
+    
+
     
     char* params;
     int param_len = asprintf(&params,
@@ -867,8 +879,6 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     );
     
     free(uri);
-    
-    vizero_lsp_client_free_string(escaped_path);
     
     if (param_len < 0 || !params) {
         return -1;
@@ -936,6 +946,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
             g_state.last_completion_result = NULL;
             g_state.completion_request_pending = false;
             CLANGD_DBG("Completion result ready with %zu items", (*result)->item_count);
+            if (absolute_path) free(absolute_path);
             return 0;
         }
         
@@ -957,6 +968,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     CLANGD_DBG("Completion request timeout after 100ms");
     g_state.completion_request_pending = false;
     g_state.pending_completion_request_id = -1;
+    if (absolute_path) free(absolute_path);
     return -1;
 }
 
@@ -1209,58 +1221,96 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
     CLANGD_DBG("Received completion response for request ID: %d", request_id);
     state->completion_request_pending = false;
         
-    /* Parse actual completion results now that crashes are fixed */
-    CLANGD_DBG("Parsing completion results from response");
+    /* Parse completion results using proper JSON parser */
+    CLANGD_DBG("Parsing completion results from response using proper JSON parser");
         
-        /* Simple parsing - look for completion items */
-        const char* items_start = strstr(result, "\"items\":[");
-        if (!items_start) {
-            printf("[CLANGD] No completion items found\n");
+        /* Parse the JSON response */
+        vizero_json_t* json = vizero_json_parse(result, result_len);
+        if (!json) {
+            CLANGD_ERR("Failed to parse JSON response");
+            printf("[CLANGD] No completion items found - invalid JSON\n");
             state->completion_count = 0;
         } else {
-            /* For now, extract a few items safely */
             state->completion_count = 0;
-            const char* search_pos = items_start + 9; /* Skip "items":[ */
             
-            for (int i = 0; i < 10 && state->completion_count < 20; i++) {
-                const char* label_start = strstr(search_pos, "\"insertText\":\"");
-                if (!label_start) break;
+            /* Get the items array */
+            vizero_json_t* items_array = vizero_json_get_object(json, "items");
+            if (!items_array) {
+                printf("[CLANGD] No completion items found - no items array\n");
+                state->completion_count = 0;
+            } else {
+                int array_size = vizero_json_array_size(items_array);
+                CLANGD_DBG("Found %d completion items in response", array_size);
                 
-                label_start += 14; /* Skip "insertText":" */
-                const char* label_end = strchr(label_start, '"');
-                if (!label_end || label_end - label_start > 100) break;
+                if (array_size > 0) {
+                    /* Process completion items */
+                    int max_items = (array_size < 20) ? array_size : 20; /* Limit to 20 items */
+                    
+                    for (int i = 0; i < max_items; i++) {
+                        vizero_json_t* item = vizero_json_array_get(items_array, i);
+                        if (!item) continue;
+                        
+                        /* Extract completion item fields */
+                        char* label = vizero_json_get_string(item, "label");
+                        char* detail = vizero_json_get_string(item, "detail");
+                        char* documentation = vizero_json_get_string(item, "documentation");
+                        char* insert_text = vizero_json_get_string(item, "insertText");
+                        char* filter_text = vizero_json_get_string(item, "filterText");
+                        char* sort_text = vizero_json_get_string(item, "sortText");
+                        int kind = vizero_json_get_int(item, "kind", 1); /* Default to text */
+                        
+                        if (label) {
+                            state->completion_items[state->completion_count].label = label;
+                            state->completion_items[state->completion_count].detail = detail ? detail : strdup("");
+                            state->completion_items[state->completion_count].documentation = documentation;
+                            state->completion_items[state->completion_count].insert_text = insert_text ? insert_text : strdup(label);
+                            state->completion_items[state->completion_count].filter_text = filter_text;
+                            state->completion_items[state->completion_count].sort_text = sort_text;
+                            
+                            /* Map LSP completion kinds to vizero kinds */
+                            switch (kind) {
+                                case 3: state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_FUNCTION; break;
+                                case 6: state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_VARIABLE; break;
+                                case 9: state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_MODULE; break;
+                                case 14: state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_KEYWORD; break;
+                                default: state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_TEXT; break;
+                            }
+                            
+                            state->completion_items[state->completion_count].deprecated = false;
+                            state->completion_count++;
+                        } else {
+                            /* Free unused strings */
+                            if (detail) free(detail);
+                            if (documentation) free(documentation);
+                            if (insert_text) free(insert_text);
+                            if (filter_text) free(filter_text);
+                            if (sort_text) free(sort_text);
+                        }
+                        
+                        vizero_json_free(item);
+                    }
+                }
                 
-                size_t label_len = label_end - label_start;
-                char* label = (char*)malloc(label_len + 1);
-                if (!label) break;
-                
-                memcpy(label, label_start, label_len);
-                label[label_len] = '\0';
-                
-                state->completion_items[state->completion_count].label = strdup(label);
-                state->completion_items[state->completion_count].detail = strdup("Function");
-                state->completion_items[state->completion_count].documentation = NULL;
-                state->completion_items[state->completion_count].insert_text = label;
-                state->completion_items[state->completion_count].filter_text = NULL;
-                state->completion_items[state->completion_count].sort_text = NULL;
-                state->completion_items[state->completion_count].kind = VIZERO_COMPLETION_FUNCTION;
-                state->completion_items[state->completion_count].deprecated = false;
-                
-                state->completion_count++;
-                search_pos = label_end + 1;
+                vizero_json_free(items_array);
             }
             
+            vizero_json_free(json);
+            
             if (state->completion_count == 0) {
-                /* Fallback to mock if parsing failed */
-                state->completion_count = 1;
+                printf("[CLANGD] No completion items found\n");
+                /* Add a placeholder item to show that completion was triggered */
                 state->completion_items[0].label = strdup("printf");
-                state->completion_items[0].detail = strdup("Function");
-                state->completion_items[0].documentation = NULL;
+                state->completion_items[0].detail = strdup("function");
+                state->completion_items[0].documentation = strdup("Standard output function");
                 state->completion_items[0].insert_text = strdup("printf");
                 state->completion_items[0].filter_text = NULL;
                 state->completion_items[0].sort_text = NULL;
                 state->completion_items[0].kind = VIZERO_COMPLETION_FUNCTION;
                 state->completion_items[0].deprecated = false;
+                state->completion_count = 1;
+                CLANGD_DBG("Added fallback printf completion item");
+            } else {
+                CLANGD_DBG("Successfully parsed %d completion items", state->completion_count);
             }
         }
         
@@ -1270,6 +1320,12 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
             list->items = (vizero_completion_item_t*)malloc(state->completion_count * sizeof(vizero_completion_item_t));
             if (list->items) {
                 memcpy(list->items, state->completion_items, state->completion_count * sizeof(vizero_completion_item_t));
+                CLANGD_DBG("Copied %zu completion items to list", state->completion_count);
+                for (size_t i = 0; i < state->completion_count; i++) {
+                    CLANGD_DBG("Item %zu: label='%s', insert_text='%s'", i, 
+                        list->items[i].label ? list->items[i].label : "NULL",
+                        list->items[i].insert_text ? list->items[i].insert_text : "NULL");
+                }
             }
             list->item_count = state->completion_count;
             list->is_incomplete = false;
