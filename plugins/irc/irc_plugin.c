@@ -11,6 +11,7 @@
 #include <string.h>
 #include <time.h>
 #include <SDL.h>
+#include "vizero/log.h"
 
 #ifdef HAVE_SDL2_TTF
 #include <SDL_ttf.h>
@@ -357,7 +358,7 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
 #ifdef _WIN32
     u_long mode = 1;
     if (ioctlsocket(conn->socket, FIONBIO, &mode) != 0) {
-        printf("[IRC] Failed to set socket non-blocking\n");
+        VIZERO_ERR("[IRC] Failed to set socket non-blocking");
         close_socket(conn->socket);
         conn->socket = INVALID_SOCKET_VALUE;
         return -1;
@@ -365,7 +366,7 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
 #else
     int flags = fcntl(conn->socket, F_GETFL, 0);
     if (flags == -1 || fcntl(conn->socket, F_SETFL, flags | O_NONBLOCK) == -1) {
-        printf("[IRC] Failed to set socket non-blocking\n");
+        VIZERO_ERR("[IRC] Failed to set socket non-blocking");
         close_socket(conn->socket);
         conn->socket = INVALID_SOCKET_VALUE;
         return -1;
@@ -392,25 +393,25 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
 #ifdef _WIN32
         int error = WSAGetLastError();
         if (error != WSAEWOULDBLOCK) {
-            printf("[IRC] Connect failed with error: %d\n", error);
+            VIZERO_ERR("[IRC] Connect failed with error: %d", error);
             close_socket(conn->socket);
             conn->socket = INVALID_SOCKET_VALUE;
             return -1;
         }
         /* Connection in progress, continue */
-        printf("[IRC] Connection in progress...\n");
+        VIZERO_INFO("[IRC] Connection in progress...");
 #else
         if (errno != EINPROGRESS) {
-            printf("[IRC] Connect failed with error: %s\n", strerror(errno));
+            VIZERO_ERR("[IRC] Connect failed with error: %s", strerror(errno));
             close_socket(conn->socket);
             conn->socket = INVALID_SOCKET_VALUE;
             return -1;
         }
         /* Connection in progress, continue */
-        printf("[IRC] Connection in progress...\n");
+        VIZERO_INFO("[IRC] Connection in progress...");
 #endif
     } else {
-        printf("[IRC] Connected immediately\n");
+        VIZERO_INFO("[IRC] Connected immediately");
     }
     
     /* Store connection info */
@@ -444,7 +445,7 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     /* Send registration only if connected immediately */
     if (conn->connected) {
         char buffer[512];
-        printf("[IRC] Registering with server...\n");
+    VIZERO_INFO("[IRC] Registering with server...");
         
         snprintf(buffer, sizeof(buffer), "NICK %s", nick);
         irc_send_raw(buffer);
@@ -474,17 +475,17 @@ static void irc_disconnect(void) {
 
 static void irc_send_raw(const char* message) {
     if (!g_irc_state || !message) {
-        printf("[IRC] send_raw: null state or message\n");
+        VIZERO_ERR("[IRC] send_raw: null state or message");
         return;
     }
     
     irc_connection_t* conn = &g_irc_state->connection;
     if (conn->socket == INVALID_SOCKET_VALUE) {
-        printf("[IRC] send_raw: invalid socket\n");
+        VIZERO_ERR("[IRC] send_raw: invalid socket");
         return;
     }
     if (!conn->connected) {
-        printf("[IRC] send_raw: not connected\n");
+        VIZERO_INFO("[IRC] send_raw: not connected");
         return;
     }
     
@@ -494,7 +495,7 @@ static void irc_send_raw(const char* message) {
     
     int bytes_sent = send(conn->socket, buffer, (int)strlen(buffer), 0);
     if (bytes_sent < 0) {
-        printf("[IRC] Send failed: %d\n", bytes_sent);
+        VIZERO_ERR("[IRC] Send failed: %d", bytes_sent);
     } else {
         /* Message sent successfully */
     }
@@ -503,7 +504,7 @@ static void irc_send_raw(const char* message) {
 static void irc_send_message(const char* target, const char* message) {
     if (!target || !message) return;
     
-    printf("[IRC] Sending message to %s: %s\n", target, message);
+    VIZERO_DBG("[IRC] Sending message to %s: %s", target, message);
     
     char buffer[512];
     snprintf(buffer, sizeof(buffer), "PRIVMSG %s :%s", target, message);
@@ -636,7 +637,7 @@ static void irc_parse_message(const char* line) {
         /* Respond to PING */
         char pong[512];
         snprintf(pong, sizeof(pong), "PONG %s", line + 5);
-        printf("[IRC] Responding to PING\n");
+        VIZERO_DBG("[IRC] Responding to PING");
         irc_send_raw(pong);
         return;
     }
@@ -826,7 +827,7 @@ static void irc_process_incoming(void) {
         if (result > 0) {
             if (FD_ISSET(conn->socket, &error_fds)) {
                 /* Connection failed */
-                printf("[IRC] Connection failed during select\n");
+                VIZERO_ERR("[IRC] Connection failed during select");
                 irc_disconnect();
                 return;
             } else if (FD_ISSET(conn->socket, &write_fds)) {
@@ -834,19 +835,19 @@ static void irc_process_incoming(void) {
                 int error = 0;
                 socklen_t len = sizeof(error);
                 if (getsockopt(conn->socket, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == 0 && error == 0) {
-                    printf("[IRC] Connection established!\n");
+                    VIZERO_INFO("[IRC] Connection established!");
                     conn->connecting = false;
                     conn->connected = true;
                     
                     /* Send registration */
                     char buffer[512];
-                    printf("[IRC] Registering with server...\n");
+                    VIZERO_INFO("[IRC] Registering with server...");
                     snprintf(buffer, sizeof(buffer), "NICK %s\r\n", conn->nickname);
                     send(conn->socket, buffer, (int)strlen(buffer), 0);
                     snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", conn->username, conn->realname);
                     send(conn->socket, buffer, (int)strlen(buffer), 0);
                 } else {
-                    printf("[IRC] Connection failed with socket error: %d\n", error);
+                    VIZERO_ERR("[IRC] Connection failed with socket error: %d", error);
                     irc_disconnect();
                     return;
                 }

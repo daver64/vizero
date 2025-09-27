@@ -40,6 +40,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <math.h>
+#include "vizero/log.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -535,7 +536,7 @@ static int generate_slime_message(slime_message_t* msg, const char* command, con
 /* Utility: Log message to main REPL buffer */
 static void lisp_log_message(const char* message) {
     /* Always log to console for debugging */
-    printf("[LISP] %s\n", message);
+    VIZERO_INFO("[LISP] %s", message);
     
     /* If we have a REPL buffer, also write to it */
     if (g_lisp_state && g_lisp_state->repl_buffer && g_lisp_state->api && g_lisp_state->api->insert_text) {

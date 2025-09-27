@@ -39,6 +39,20 @@ static int _asprintf(char** strp, const char* fmt, ...) {
 #include <libgen.h>
 #endif
 
+/* Lightweight logging macros: set CLANGD_LOG_LEVEL=1 to enable debug prints */
+#ifndef CLANGD_LOG_LEVEL
+#define CLANGD_LOG_LEVEL 0
+#endif
+
+#if CLANGD_LOG_LEVEL
+#define CLANGD_DBG(fmt, ...) fprintf(stdout, "[CLANGD] " fmt "\n", ##__VA_ARGS__)
+#else
+#define CLANGD_DBG(fmt, ...) ((void)0)
+#endif
+
+#define CLANGD_ERR(fmt, ...) fprintf(stderr, "[CLANGD][ERROR] " fmt "\n", ##__VA_ARGS__)
+
+
 /* Diagnostic popup structure */
 typedef struct {
     vizero_diagnostic_t* diagnostics;
@@ -121,7 +135,7 @@ static void request_diagnostic_refresh(const char* file_path);
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     if (!plugin || !editor || !api) {
-        printf("[CLANGD] Plugin initialization FAILED - null parameters\n");
+        CLANGD_ERR("Plugin initialization FAILED - null parameters");
         return -1;
     }
     
@@ -151,8 +165,8 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     char* clangd_path = find_clangd_executable();
     if (!clangd_path) {
         /* clangd not found - disable functionality but don't fail initialization */
-        printf("[CLANGD] clangd executable not found, disabling LSP functionality\n");
-        printf("[CLANGD] Plugin will load but LSP features will be unavailable\n");
+        CLANGD_ERR("clangd executable not found, disabling LSP functionality");
+        CLANGD_ERR("Plugin will load but LSP features will be unavailable");
         
         /* Clear LSP callback functions to prevent calls when clangd is not available */
         plugin->callbacks.lsp_initialize = NULL;
@@ -186,8 +200,8 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     if (!file_exists) {
         free(clangd_path);
         /* clangd executable not found - disable functionality */
-        printf("[CLANGD] clangd executable not accessible, disabling LSP functionality\n");
-        printf("[CLANGD] Plugin will load but LSP features will be unavailable\n");
+        CLANGD_ERR("clangd executable not accessible, disabling LSP functionality");
+        CLANGD_ERR("Plugin will load but LSP features will be unavailable");
         
         /* Clear LSP callback functions */
         plugin->callbacks.lsp_initialize = NULL;
@@ -208,7 +222,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     free(clangd_path);
     
     if (!g_state.lsp_client) {
-        printf("[CLANGD] Failed to create LSP client, disabling LSP functionality\n");
+        CLANGD_ERR("Failed to create LSP client, disabling LSP functionality");
         
         /* Clear LSP callback functions to prevent crashes */
         plugin->callbacks.lsp_initialize = NULL;
@@ -236,7 +250,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     g_state.completion_items = (vizero_completion_item_t*)malloc(
         g_state.completion_capacity * sizeof(vizero_completion_item_t));
     if (!g_state.completion_items) {
-        printf("[CLANGD] Failed to allocate completion buffer, disabling LSP functionality\n");
+        CLANGD_ERR("Failed to allocate completion buffer, disabling LSP functionality");
         vizero_lsp_client_destroy(g_state.lsp_client);
         g_state.lsp_client = NULL;
         g_state.initialized = false;
@@ -254,7 +268,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     
     /* Initialize LSP immediately since we have a clangd client */
     if (clangd_lsp_initialize(".", NULL) != 0) {
-        printf("[CLANGD] Failed to initialize LSP during plugin load\n");
+        CLANGD_ERR("Failed to initialize LSP during plugin load");
         /* Don't fail plugin loading, just disable LSP functionality */
     }
     
@@ -336,7 +350,7 @@ VIZERO_PLUGIN_API int clangd_get_completion_results(vizero_completion_list_t** r
     if (g_state.last_completion_result) {
         *result = g_state.last_completion_result;
         g_state.last_completion_result = NULL; /* Transfer ownership */
-        printf("[CLANGD] Completion results retrieved\n");
+        CLANGD_DBG("Completion results retrieved");
         return 0;
     }
     
@@ -353,12 +367,12 @@ static void send_did_change_notification(const char* file_path, const char* cont
     static int version_number = 1;
     version_number++;
     
-    printf("[CLANGD] Sending didChange notification for: %s (version %d)\n", file_path, version_number);
+    CLANGD_DBG("Sending didChange notification for: %s (version %d)", file_path, version_number);
     
     /* Escape the file path for JSON */
     char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
     if (!escaped_path) {
-        printf("[CLANGD] Failed to escape file path for didChange\n");
+        CLANGD_ERR("Failed to escape file path for didChange");
         return;
     }
     
@@ -366,7 +380,7 @@ static void send_did_change_notification(const char* file_path, const char* cont
     char* escaped_content = vizero_lsp_client_escape_json_string(content);
     if (!escaped_content) {
         vizero_lsp_client_free_string(escaped_path);
-        printf("[CLANGD] Failed to escape buffer content for didChange\n");
+        CLANGD_ERR("Failed to escape buffer content for didChange");
         return;
     }
     
@@ -409,7 +423,7 @@ static void send_did_change_notification(const char* file_path, const char* cont
     vizero_lsp_client_free_string(escaped_content);
     
     if (param_len < 0 || !params) {
-        printf("[CLANGD] Failed to create didChange params\n");
+        CLANGD_ERR("Failed to create didChange params");
         return;
     }
     
@@ -418,11 +432,11 @@ static void send_did_change_notification(const char* file_path, const char* cont
     free(params);
     
     if (result < 0) {
-        printf("[CLANGD] Failed to send didChange notification\n");
+        CLANGD_ERR("Failed to send didChange notification");
         return;
     }
     
-    printf("[CLANGD] didChange notification sent successfully for: %s\n", file_path);
+    CLANGD_DBG("didChange notification sent successfully for: %s", file_path);
 }
 
 /* Request diagnostics refresh from clangd by sending a lightweight request */
@@ -432,12 +446,12 @@ static void request_diagnostic_refresh(const char* file_path) {
         return;
     }
     
-    printf("[CLANGD] Requesting diagnostic refresh for: %s\n", file_path);
+    CLANGD_DBG("Requesting diagnostic refresh for: %s", file_path);
     
     /* Escape the file path for JSON */
     char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
     if (!escaped_path) {
-        printf("[CLANGD] Failed to escape file path for diagnostic refresh\n");
+        CLANGD_ERR("Failed to escape file path for diagnostic refresh");
         return;
     }
     
@@ -473,7 +487,7 @@ static void request_diagnostic_refresh(const char* file_path) {
     vizero_lsp_client_free_string(escaped_path);
     
     if (param_len < 0 || !params) {
-        printf("[CLANGD] Failed to create diagnostic refresh params\n");
+        CLANGD_ERR("Failed to create diagnostic refresh params");
         return;
     }
     
@@ -482,28 +496,28 @@ static void request_diagnostic_refresh(const char* file_path) {
     free(params);
     
     if (result < 0) {
-        printf("[CLANGD] Failed to send diagnostic refresh request\n");
+        CLANGD_ERR("Failed to send diagnostic refresh request");
         return;
     }
     
-    printf("[CLANGD] Diagnostic refresh request sent successfully\n");
+    CLANGD_DBG("Diagnostic refresh request sent successfully");
 }
 
 static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
     /* Buffer opened for clangd processing */
     
     if (!g_state.lsp_client || !g_state.initialized) {
-        printf("[CLANGD] LSP not available or not initialized\n");
+        CLANGD_ERR("LSP not available or not initialized");
         return 0; /* Not an error - clangd just not available */
     }
     
     if (!filename || !buffer) {
-        printf("[CLANGD] No filename or buffer provided\n");
+        CLANGD_ERR("No filename or buffer provided");
         return 0;
     }
     
     /* Send textDocument/didOpen notification to clangd */
-    printf("[CLANGD] Sending didOpen notification for: %s\n", filename);
+    CLANGD_DBG("Sending didOpen notification for: %s", filename);
     
     /* Escape the file path for JSON */
     char* escaped_path = vizero_lsp_client_escape_json_string(filename);
@@ -558,7 +572,7 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
     vizero_lsp_client_free_string(escaped_content);
     
     if (param_len < 0 || !params) {
-        printf("[CLANGD] Failed to create didOpen params\n");
+        CLANGD_ERR("Failed to create didOpen params");
         return -1;
     }
     
@@ -567,7 +581,7 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
     free(params);
     
     if (result < 0) {
-        printf("[CLANGD] Failed to send didOpen notification\n");
+        CLANGD_ERR("Failed to send didOpen notification");
         return -1;
     }
     
@@ -625,15 +639,15 @@ static int clangd_lsp_initialize(const char* project_root, const char* session_c
     }
     
     /* Start the LSP client */
-    printf("[CLANGD] Starting clangd process...\n");
+    CLANGD_DBG("Starting clangd process...");
     if (vizero_lsp_client_start(g_state.lsp_client) != 0) {
-        printf("[CLANGD] Failed to start clangd process\n");
+        CLANGD_ERR("Failed to start clangd process");
         return -1;
     }
-    printf("[CLANGD] clangd process started successfully\n");
+    CLANGD_DBG("clangd process started successfully");
     
     /* Send initialize request */
-    printf("[CLANGD] Sending LSP initialize request...\n");
+    CLANGD_DBG("Sending LSP initialize request...");
     char* init_params;
     int param_len = asprintf(&init_params,
         "{"
@@ -671,18 +685,18 @@ static int clangd_lsp_initialize(const char* project_root, const char* session_c
     free(init_params);
     
     if (request_id < 0) {
-        printf("[CLANGD] Failed to send initialize request\n");
+        CLANGD_ERR("Failed to send initialize request");
         return -1;
     }
     
-    printf("[CLANGD] Initialize request sent with ID: %d\n", request_id);
+    CLANGD_DBG("Initialize request sent with ID: %d", request_id);
     
     /* Send initialized notification */
     vizero_lsp_client_send_notification(g_state.lsp_client, "initialized", "{}");
-    printf("[CLANGD] Sent initialized notification\n");
+    CLANGD_DBG("Sent initialized notification");
     
     g_state.initialized = true;
-    printf("[CLANGD] clangd initialization complete\n");
+    CLANGD_DBG("clangd initialization complete");
     return 0;
 }
 
@@ -692,17 +706,17 @@ static int clangd_on_text_changed(vizero_buffer_t* buffer, vizero_range_t range,
 }
 
 static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t position, vizero_completion_list_t** result) {
-    printf("[CLANGD] *** LSP COMPLETION TRIGGERED ***\n");
+    CLANGD_DBG("*** LSP COMPLETION TRIGGERED ***");
     
     if (!g_state.initialized || !buffer || !result || !g_state.lsp_client) {
-        printf("[CLANGD] Completion failed: initialized=%d, buffer=%p, result=%p, lsp_client=%p\n",
-               g_state.initialized, (void*)buffer, (void*)result, (void*)g_state.lsp_client);
+     CLANGD_ERR("Completion failed: initialized=%d, buffer=%p, result=%p, lsp_client=%p",
+         g_state.initialized, (void*)buffer, (void*)result, (void*)g_state.lsp_client);
         return -1;
     }
     
     /* Prevent concurrent completion requests that could corrupt state */
     if (g_state.completion_request_pending) {
-        printf("[CLANGD] Completion request already pending, rejecting new request\n");
+        CLANGD_DBG("Completion request already pending, rejecting new request");
         return -1;
     }
     
@@ -712,7 +726,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     
     /* Clean up any existing completion result to prevent memory leaks and double-free */
     if (g_state.last_completion_result) {
-        printf("[CLANGD] Cleaning up previous completion result\n");
+    CLANGD_DBG("Cleaning up previous completion result");
         if (g_state.last_completion_result->items) {
             for (size_t i = 0; i < g_state.last_completion_result->item_count; i++) {
                 if (g_state.last_completion_result->items[i].label) {
@@ -755,14 +769,14 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     /* Get file path from buffer */
     const char* file_path = vizero_buffer_get_filename(buffer);
     if (!file_path) {
-        printf("[CLANGD] No file path available for buffer\n");
+        CLANGD_ERR("No file path available for buffer");
         return -1;
     }
-    printf("[CLANGD] Requesting completion for file: %s at line %zu, column %zu\n", 
+    CLANGD_DBG("Requesting completion for file: %s at line %zu, column %zu", 
            file_path, position.line, position.column);
     
     /* Send didOpen notification if we haven't already (workaround for timing issue) */
-    printf("[CLANGD] Sending didOpen notification before completion...\n");
+    CLANGD_DBG("Sending didOpen notification before completion...");
     char* didopen_escaped_path = vizero_lsp_client_escape_json_string(file_path);
     if (didopen_escaped_path) {
         /* Convert to proper URI format */
@@ -803,10 +817,10 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         
         free(didopen_uri);
         
-        if (param_len > 0 && didopen_params) {
+            if (param_len > 0 && didopen_params) {
             vizero_lsp_client_send_notification(g_state.lsp_client, "textDocument/didOpen", didopen_params);
             free(didopen_params);
-            printf("[CLANGD] didOpen notification sent\n");
+            CLANGD_DBG("didOpen notification sent");
         }
         vizero_lsp_client_free_string(didopen_escaped_path);
     }
@@ -871,17 +885,17 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         return -1;
     }
     
-    printf("[CLANGD] Completion request sent (ID: %d), returning immediately\n", request_id);
+    CLANGD_DBG("Completion request sent (ID: %d), returning immediately", request_id);
     
     /* Store request ID for tracking */
     g_state.pending_completion_request_id = request_id;
     g_state.completion_request_pending = true;
     g_state.completion_count = 0; /* Reset count */
     
-    printf("[CLANGD] Set pending completion request ID: %d\n", request_id);
+    CLANGD_DBG("Set pending completion request ID: %d", request_id);
     
     /* Wait briefly for response with strict timeout to prevent hangs */
-    printf("[CLANGD] Starting completion wait loop with hang protection...\n");
+    CLANGD_DBG("Starting completion wait loop with hang protection...");
     
     #ifdef _WIN32
     DWORD start_time = GetTickCount();
@@ -892,12 +906,12 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         #ifdef _WIN32
         DWORD current_time = GetTickCount();
         if (current_time - start_time > TIMEOUT_MS) {
-            printf("[CLANGD] Hard timeout after %ums, breaking to prevent hang\n", TIMEOUT_MS);
+        CLANGD_DBG("Hard timeout after %ums, breaking to prevent hang", TIMEOUT_MS);
             break;
         }
         #endif
         
-        printf("[CLANGD] Processing messages, attempt %d/10\n", attempts + 1);
+    CLANGD_DBG("Processing messages, attempt %d/10", attempts + 1);
         
         /* Add safety check before processing messages */
         if (!g_state.lsp_client || !g_state.initialized) {
@@ -910,24 +924,24 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         
         /* If process_messages fails, don't spam the log */
         if (process_result != 0 && attempts == 0) {
-            printf("[CLANGD] Process messages returned: %d (errors suppressed after first attempt)\n", process_result);
+            CLANGD_DBG("Process messages returned: %d (errors suppressed after first attempt)", process_result);
         } else if (process_result == 0 && attempts % 5 == 0) {
-            printf("[CLANGD] Processing... (attempt %d)\n", attempts + 1);
+            CLANGD_DBG("Processing... (attempt %d)", attempts + 1);
         }
         
         /* Check if we got a response */
         if (g_state.last_completion_result) {
-            printf("[CLANGD] Got completion result!\n");
+            CLANGD_DBG("Got completion result!");
             *result = g_state.last_completion_result;
             g_state.last_completion_result = NULL;
             g_state.completion_request_pending = false;
-            printf("[CLANGD] Completion result ready with %zu items\n", (*result)->item_count);
+            CLANGD_DBG("Completion result ready with %zu items", (*result)->item_count);
             return 0;
         }
         
         /* Break early if LSP client indicates error */
         if (process_result < 0) {
-            printf("[CLANGD] Message processing failed, breaking\n");
+            CLANGD_ERR("Message processing failed, breaking");
             break;
         }
         
@@ -940,7 +954,7 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     }
     
     /* Timeout - no result within 100ms, reset state to prevent corruption */
-    printf("[CLANGD] Completion request timeout after 100ms\n");
+    CLANGD_DBG("Completion request timeout after 100ms");
     g_state.completion_request_pending = false;
     g_state.pending_completion_request_id = -1;
     return -1;
@@ -1038,7 +1052,7 @@ VIZERO_PLUGIN_API void clangd_manual_diagnostic_refresh(vizero_buffer_t* buffer)
 
 VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
     if (!g_state.initialized || !buffer || !g_state.lsp_client) {
-        printf("[CLANGD] Show diagnostic popup failed - not initialized or invalid buffer\n");
+        CLANGD_ERR("Show diagnostic popup failed - not initialized or invalid buffer");
         return;
     }
     
@@ -1046,11 +1060,11 @@ VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
     const char* content = g_state.api ? g_state.api->get_buffer_text(buffer) : NULL;
     
     if (!file_path || !content) {
-        printf("[CLANGD] Show diagnostic popup failed - no file path or content\n");
+        CLANGD_ERR("Show diagnostic popup failed - no file path or content");
         return;
     }
     
-    printf("[CLANGD] Showing diagnostic popup for: %s\n", file_path);
+    CLANGD_DBG("Showing diagnostic popup for: %s", file_path);
     
     /* First, check if we already have diagnostics for this file */
     if (g_state.diagnostics && g_state.diagnostic_count > 0 && 
@@ -1059,7 +1073,7 @@ VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
         show_diagnostic_popup(&g_state.popup, g_state.diagnostics, g_state.diagnostic_count, file_path);
         
         /* Also refresh diagnostics in background for next time */
-        printf("[CLANGD] Also sending didChange to refresh diagnostics for next time...\n");
+        CLANGD_DBG("Also sending didChange to refresh diagnostics for next time...");
         send_did_change_notification(file_path, content);
         return;
     }
@@ -1076,7 +1090,7 @@ VIZERO_PLUGIN_API void clangd_show_diagnostic_popup(vizero_buffer_t* buffer) {
     send_did_change_notification(file_path, content);
     
     /* The diagnostic popup will be shown when publishDiagnostics arrives */
-    printf("[CLANGD] didChange sent - popup will show when diagnostics arrive\n");
+    CLANGD_DBG("didChange sent - popup will show when diagnostics arrive");
 }
 
 static void clangd_lsp_shutdown(void) {
@@ -1152,16 +1166,16 @@ static char* find_clangd_executable(void) {
 static void on_lsp_response(int request_id, const char* result, const char* error, void* user_data) {
     /* Add comprehensive null checking to prevent crashes */
     if (!user_data) {
-        printf("[CLANGD] ERROR: NULL user_data in LSP response\n");
+        CLANGD_ERR("NULL user_data in LSP response");
         return;
     }
     
     clangd_state_t* state = (clangd_state_t*)user_data;
     
-    printf("[CLANGD] LSP Response received: request_id=%d\n", request_id);
+    CLANGD_DBG("LSP Response received: request_id=%d", request_id);
     
     if (error) {
-        printf("[CLANGD] LSP Error: %s\n", error);
+        CLANGD_ERR("LSP Error: %s", error);
         /* Reset completion state on error */
         if (state->completion_request_pending && request_id == state->pending_completion_request_id) {
             state->completion_request_pending = false;
@@ -1171,7 +1185,7 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
     }
     
     if (!result) {
-        printf("[CLANGD] No result in LSP response\n");
+        CLANGD_DBG("No result in LSP response");
         /* Reset completion state when no result */
         if (state->completion_request_pending && request_id == state->pending_completion_request_id) {
             state->completion_request_pending = false;
@@ -1183,20 +1197,20 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
     /* Safety check: limit result size to prevent crashes */
     size_t result_len = strlen(result);
     if (result_len > 10 * 1024 * 1024) { /* 10MB limit */
-        printf("[CLANGD] ERROR: Result too large (%zu bytes), ignoring\n", result_len);
+        CLANGD_ERR("Result too large (%zu bytes), ignoring", result_len);
         return;
     }
     
-    printf("[CLANGD] LSP Result (first 200 chars): %.200s%s\n", 
-           result, result_len > 200 ? "..." : "");
+    CLANGD_DBG("LSP Result (first 200 chars): %.200s%s", 
+        result, result_len > 200 ? "..." : "");
     
     /* Check if this is a response to our pending completion request */
     if (state->completion_request_pending && request_id == state->pending_completion_request_id) {
-        printf("[CLANGD] Received completion response for request ID: %d\n", request_id);
-        state->completion_request_pending = false;
+    CLANGD_DBG("Received completion response for request ID: %d", request_id);
+    state->completion_request_pending = false;
         
-        /* Parse actual completion results now that crashes are fixed */
-        printf("[CLANGD] Parsing completion results from response\n");
+    /* Parse actual completion results now that crashes are fixed */
+    CLANGD_DBG("Parsing completion results from response");
         
         /* Simple parsing - look for completion items */
         const char* items_start = strstr(result, "\"items\":[");
@@ -1252,7 +1266,7 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
         
         /* Create completion list and store it for later retrieval */
         vizero_completion_list_t* list = (vizero_completion_list_t*)malloc(sizeof(vizero_completion_list_t));
-        if (list) {
+            if (list) {
             list->items = (vizero_completion_item_t*)malloc(state->completion_count * sizeof(vizero_completion_item_t));
             if (list->items) {
                 memcpy(list->items, state->completion_items, state->completion_count * sizeof(vizero_completion_item_t));
@@ -1262,10 +1276,10 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
             
             /* Store for later retrieval */
             state->last_completion_result = list;
-            printf("[CLANGD] Created safe completion result with %zu items\n", state->completion_count);
+            CLANGD_DBG("Created safe completion result with %zu items", state->completion_count);
         }
     } else {
-        printf("[CLANGD] Response not for completion request\n");
+        CLANGD_DBG("Response not for completion request");
     }
 }
 

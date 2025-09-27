@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdarg.h>
+#include "vizero/log.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -448,7 +449,7 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
     while (client->read_buffer_used > 10 && message_count < MAX_MESSAGES_PER_CALL) {
         /* Infinite loop detection: if buffer size didn't change, break */
         if (message_count > 0 && client->read_buffer_used == previous_buffer_used) {
-            printf("[LSP] Detected potential infinite loop, breaking\n");
+            VIZERO_ERR("[LSP] Detected potential infinite loop, breaking");
             break;
         }
         previous_buffer_used = client->read_buffer_used;
@@ -456,41 +457,41 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
         /* Look for Content-Length header */
         char* content_length_start = strstr(buffer_start, "Content-Length: ");
         if (!content_length_start || content_length_start >= client->read_buffer + client->read_buffer_used) {
-            printf("[LSP] No Content-Length header found, breaking\n");
+            VIZERO_ERR("[LSP] No Content-Length header found, breaking");
             break;
         }
         
         /* Safety: ensure we have enough bytes for length parsing */
         if (content_length_start + 16 >= client->read_buffer + client->read_buffer_used) {
-            printf("[LSP] Incomplete Content-Length header, breaking\n");
+            VIZERO_ERR("[LSP] Incomplete Content-Length header, breaking");
             break;
         }
         
         int content_length = atoi(content_length_start + 16);
         if (content_length <= 0 || content_length > 512 * 1024) { /* Max 512KB per message */
-            printf("[LSP] Invalid content length %d, breaking\n", content_length);
+            VIZERO_ERR("[LSP] Invalid content length %d, breaking", content_length);
             break;
         }
         
         /* Find start of content (after \r\n\r\n) */
         char* content_start = strstr(content_length_start, "\r\n\r\n");
         if (!content_start || content_start >= client->read_buffer + client->read_buffer_used) {
-            printf("[LSP] No message separator found, breaking\n");
+            VIZERO_ERR("[LSP] No message separator found, breaking");
             break;
         }
         content_start += 4;
         
         /* Safety: ensure content_start is within bounds */
         if (content_start >= client->read_buffer + client->read_buffer_used) {
-            printf("[LSP] Content start beyond buffer, breaking\n");
+            VIZERO_ERR("[LSP] Content start beyond buffer, breaking");
             break;
         }
         
         /* Check if we have the complete message */
         size_t header_len = content_start - buffer_start;
         if (client->read_buffer_used < header_len + content_length) {
-            printf("[LSP] Incomplete message (%zu < %zu + %d), breaking\n", 
-                   client->read_buffer_used, header_len, content_length);
+         VIZERO_DBG("[LSP] Incomplete message (%zu < %zu + %d), breaking", 
+             client->read_buffer_used, header_len, content_length);
             break; /* Incomplete message */
         }
         
@@ -504,7 +505,7 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
             lsp_client_parse_message(client, message_content);
             free(message_content);
         } else {
-            printf("[LSP] Failed to allocate message buffer\n");
+            VIZERO_ERR("[LSP] Failed to allocate message buffer");
             break;
         }
         
@@ -523,11 +524,11 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
         buffer_start = client->read_buffer;
         message_count++;
         
-        printf("[LSP] Processed message %d, %zu bytes remaining\n", message_count, client->read_buffer_used);
+        VIZERO_DBG("[LSP] Processed message %d, %zu bytes remaining", message_count, client->read_buffer_used);
     }
     
     if (message_count >= MAX_MESSAGES_PER_CALL) {
-        printf("[LSP] Hit message processing limit (%d), deferring remaining messages\n", MAX_MESSAGES_PER_CALL);
+        VIZERO_INFO("[LSP] Hit message processing limit (%d), deferring remaining messages", MAX_MESSAGES_PER_CALL);
     }
     
     return 0;
