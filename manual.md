@@ -309,7 +309,7 @@ Vizero supports multiple file buffers and windows, allowing you to work with sev
 | `:e filename` | Open file in new buffer (or switch if already open) |
 | `:edit filename` | Same as `:e` |
 | `:new` | Create new empty buffer |
-| `:enew` | Create new unnamed buffer |
+| `:enew [name]` | Create new buffer, optionally named |
 
 ### Buffer Navigation
 | Command | Action |

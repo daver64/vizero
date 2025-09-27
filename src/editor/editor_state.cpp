@@ -1999,6 +1999,30 @@ static int vizero_edit_new_unnamed_buffer(vizero_editor_state_t* state) {
     }
 }
 
+static int vizero_edit_new_buffer_with_name(vizero_editor_state_t* state, const char* name) {
+    if (!state) return -1;
+    
+    /* Create a new buffer with optional name */
+    int result = vizero_editor_create_new_buffer(state, name);
+    if (result == 0) {
+        /* Switch to the new buffer */
+        size_t new_buffer_index = vizero_editor_get_buffer_count(state) - 1;
+        vizero_editor_switch_buffer(state, new_buffer_index);
+        
+        if (name && strlen(name) > 0) {
+            char status_msg[512];
+            snprintf(status_msg, sizeof(status_msg), "New buffer '%s' created", name);
+            vizero_editor_set_status_message(state, status_msg);
+        } else {
+            vizero_editor_set_status_message(state, "New unnamed buffer created");
+        }
+        return 0;
+    } else {
+        vizero_editor_set_status_message(state, "Failed to create new buffer");
+        return -1;
+    }
+}
+
 /* External command execution functions */
 static int vizero_execute_shell_command(vizero_editor_state_t* state, const char* command) {
     if (!state || !command || strlen(command) == 0) {
@@ -3560,9 +3584,16 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Close all windows except current */
         return vizero_close_all_except_current_window(state);
         
-    } else if (strcmp(command, "enew") == 0) {
-        /* Edit new unnamed buffer */
-        return vizero_edit_new_unnamed_buffer(state);
+    } else if (strncmp(command, "enew", 4) == 0) {
+        /* Edit new buffer, optionally named */
+        const char* name = NULL;
+        if (command[4] == ' ') {
+            /* Extract optional name parameter */
+            name = command + 5;
+            while (*name == ' ') name++; /* Skip leading spaces */
+            if (*name == '\0') name = NULL; /* Empty name means unnamed */
+        }
+        return vizero_edit_new_buffer_with_name(state, name);
         
     } else if (command[0] == '!' && command[1] != '\0') {
         /* Execute shell command */

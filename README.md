@@ -171,7 +171,7 @@ Ctrl+Space     # Trigger code completion (requires clangd for C/C++)
 :bd            # Delete current buffer
 :bd N          # Delete buffer N
 :new           # Create new empty buffer
-:enew          # Create new unnamed buffer
+:enew [name]   # Create new buffer, optionally named
 ```
 
 #### Window Management
@@ -381,7 +381,7 @@ static int highlight_syntax(/* ... */) {
 | `:split/:vsplit` | Split window |
 | `:close` | Close window |
 | `:only` | Close all except current window |
-| `:enew` | Edit new unnamed buffer |
+| `:enew [name]` | Edit new buffer, optionally named |
 | `:[N]` | Go to line N |
 | `:cc/:cpp/:asm` | Compile files |
 | `:run` | Execute program |

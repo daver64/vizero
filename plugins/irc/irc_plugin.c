@@ -165,6 +165,7 @@ typedef struct {
     int texture_width;
     int texture_height;
     bool wants_full_window;
+    bool just_escaped;   /* flag to prevent immediate auto-triggering after escape */
     
     /* Buffer management for new approach */
     vizero_buffer_t* original_buffer;  /* Buffer that was active when IRC loaded */
@@ -531,9 +532,15 @@ static bool irc_is_in_irc_buffer(vizero_editor_t* editor) {
         return true;
     }
     
-    /* For the current implementation, we're using a single IRC buffer
-     * In the future, if we add support for multiple IRC buffers per channel,
-     * we would need to check against all IRC buffers here */
+    /* Fallback: check by buffer name/filename */
+    if (g_irc_state->api->get_buffer_filename) {
+        const char* filename = g_irc_state->api->get_buffer_filename(current_buffer);
+        if (filename && strcmp(filename, "*IRC*") == 0) {
+            /* Update our stored pointer since we found the IRC buffer */
+            g_irc_state->irc_buffer = current_buffer;
+            return true;
+        }
+    }
     
     return false;
 }
@@ -1523,10 +1530,10 @@ static int irc_cmd_connect(vizero_editor_t* editor, const char* args) {
     if (result == 0) {
         printf("[IRC] Connected successfully!\n");
         
-        /* Create dedicated IRC buffer using :enew command */
+        /* Create dedicated IRC buffer using :enew command with name */
         if (g_irc_state && g_irc_state->api && g_irc_state->api->execute_command) {
             printf("[IRC] Creating dedicated IRC buffer...\n");
-            int enew_result = g_irc_state->api->execute_command(editor, "enew");
+            int enew_result = g_irc_state->api->execute_command(editor, "enew *IRC*");
             if (enew_result == 0) {
                 /* Get the newly created buffer */
                 if (g_irc_state->api->get_current_buffer) {
@@ -1773,17 +1780,15 @@ static int irc_wants_full_window(vizero_editor_t* editor) {
         return 0;
     }
     
-    /* Only take over full window when we're connected to IRC AND in an IRC buffer */
+    /* Only take over full window when we're connected to IRC AND in an IRC buffer AND user wants full window */
     int connected = g_irc_state->connection.connected;
     int in_irc_buffer = irc_is_in_irc_buffer(editor);
-    int wants = (connected && in_irc_buffer) ? 1 : 0;
+    int user_wants_full = g_irc_state->wants_full_window;
+    int wants = (connected && in_irc_buffer && user_wants_full) ? 1 : 0;
     
-    static int last_wants = -1;
-    if (wants != last_wants) {
-        printf("[IRC] wants_full_window: connected=%s, in_irc_buffer=%s, wants=%d\n", 
-               connected ? "yes" : "no", in_irc_buffer ? "yes" : "no", wants);
-        last_wants = wants;
-    }
+    static int last_wants = -1; 
+    last_wants = wants;
+    
     return wants;
 }
 
@@ -1822,8 +1827,16 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         return 0; /* Let other plugins/editor handle the input */
     }
     
-    /* If we're in vi command mode, collect the command and execute it ourselves */
-    if (g_irc_state->in_vi_command) {
+    /* If we're in vi command mode but not in full-window mode, reset and let editor handle */
+    if (g_irc_state->in_vi_command && !g_irc_state->wants_full_window) {
+        printf("[IRC] In vi command mode but not full-window - resetting and letting editor handle\n");
+        g_irc_state->in_vi_command = false;
+        g_irc_state->vi_command_buffer[0] = '\0';
+        return 0; /* Let editor handle it */
+    }
+    
+    /* If we're in vi command mode AND in full-window mode, collect the command and execute it ourselves */
+    if (g_irc_state->in_vi_command && g_irc_state->wants_full_window) {
         if (key == 13) { /* Enter - execute the collected command */
             printf("[IRC] Vi command completed: '%s'\n", g_irc_state->vi_command_buffer);
             
@@ -1888,10 +1901,10 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
             g_irc_state->vi_command_buffer[0] = '\0';
             return 1; /* Consumed */
         } else if (key == 27) { /* Escape - command cancelled */
-            printf("[IRC] Vi command cancelled\n");
+            printf("[IRC] Vi command cancelled - letting editor handle escape\n");
             g_irc_state->in_vi_command = false;
             g_irc_state->vi_command_buffer[0] = '\0';
-            return 1; /* Consumed */
+            return 0; /* Let editor handle escape for proper mode transition */
         } else if (key >= 32 && key <= 126) { /* Collect printable characters */
             size_t len = strlen(g_irc_state->vi_command_buffer);
             if (len < sizeof(g_irc_state->vi_command_buffer) - 1) {
@@ -1905,8 +1918,8 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         return 0;
     }
     
-    /* ONLY intercept the initial colon when in IRC buffer to set buffer readonly */
-    if (key == ':' && !g_in_command_mode && g_irc_state->irc_buffer) {
+    /* ONLY intercept the initial colon when in IRC buffer AND in full-window mode */
+    if (key == ':' && !g_in_command_mode && g_irc_state->irc_buffer && g_irc_state->wants_full_window) {
         /* Check if we're currently in the IRC buffer */
         if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
             vizero_buffer_t* current_buffer = g_irc_state->api->get_current_buffer(editor);
@@ -1966,19 +1979,79 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     
     printf("[IRC] Handling key %d ('%c') in IRC mode\n", key, (char)key);
     
+    /* Track buffer switching to clear escape flag when returning to IRC */
+    static bool was_in_irc_buffer_last_time = false;
+    bool currently_in_irc_buffer = irc_is_in_irc_buffer(editor);
+    
+    /* Track buffer changes for internal logic */
+    static bool last_in_irc_buffer = false;
+    last_in_irc_buffer = currently_in_irc_buffer;
+    
     /* Check if we're currently in an IRC buffer */
-    if (irc_is_in_irc_buffer(editor)) {
+    if (currently_in_irc_buffer) {
         /* We're in an IRC buffer - check for vi commands */
         
-        /* Handle colon - starts vi command mode */
-        if (key == ':' || (key == ';' && (modifiers & KMOD_SHIFT))) {
+        /* If we switched back to IRC buffer from another buffer, clear the just_escaped flag and enable full-screen */
+        if (!was_in_irc_buffer_last_time) {
+            printf("[IRC] Detected switch back to IRC buffer - enabling full-screen mode\n");
+            g_irc_state->just_escaped = false;
+            g_irc_state->wants_full_window = true; /* Force full-screen when entering *IRC* buffer */
+        }
+        
+        /* FORCE IRC full-screen mode whenever we're in IRC buffer and not escaped recently */
+        /* This ensures that switching to *IRC* buffer always shows the IRC interface */
+        if (!g_irc_state->wants_full_window && !g_irc_state->just_escaped) {
+            g_irc_state->wants_full_window = true;
+        }
+        
+        was_in_irc_buffer_last_time = true;
+        
+        /* Handle Escape - toggle between IRC full-screen and normal editor mode */
+        if (key == 27) { /* Escape */
+            printf("[IRC] Escape detected - toggling IRC display mode\n");
+            
+            /* If we're currently in full-screen mode, switch to normal mode */
+            if (g_irc_state->wants_full_window) {
+                g_irc_state->wants_full_window = false;
+                g_irc_state->just_escaped = true; /* Prevent immediate auto-triggering */
+                printf("[IRC] IRC full-screen mode: OFF\n");
+                printf("[IRC] Switching to normal editor mode - letting editor handle escape for proper mode transition\n");
+                return 0; /* Let editor handle escape to switch to NORMAL mode */
+            } else {
+                /* If we're already in normal mode, switch back to full-screen */
+                g_irc_state->wants_full_window = true;
+                g_irc_state->just_escaped = false; /* Clear flag when returning to full-screen */
+                printf("[IRC] IRC full-screen mode: ON\n");
+                return 1; /* Consumed - we handled the toggle to full-screen */
+            }
+        }
+        
+        /* Auto-detect: if user types printable characters in IRC buffer, enable full-screen mode */
+        /* But don't auto-trigger immediately after an escape */
+        if (!g_irc_state->wants_full_window && !g_irc_state->just_escaped && key >= 32 && key <= 126) {
+            printf("[IRC] User typing in IRC buffer - automatically enabling full-screen mode\n");
+            g_irc_state->wants_full_window = true;
+            g_irc_state->just_escaped = false; /* Clear flag when user intentionally returns to IRC */
+            /* Continue processing the key for IRC input below */
+        }
+        
+        /* Don't clear just_escaped flag automatically - let it persist until user switches buffers or explicitly returns to IRC */
+        
+        /* If we're not in full-window mode and it's not a printable character, let the editor handle it */
+        if (!g_irc_state->wants_full_window) {
+            printf("[IRC] Not in full-window mode - letting editor handle key %d normally\n", key);
+            return 0; /* Let editor handle it */
+        }
+        
+        /* Handle colon - starts vi command mode (only in full-window mode) */
+        if (g_irc_state->wants_full_window && (key == ':' || (key == ';' && (modifiers & KMOD_SHIFT)))) {
             printf("[IRC] Colon detected (key=%d, shift=%s) - entering vi command mode\n", 
                    key, (modifiers & KMOD_SHIFT) ? "yes" : "no");
             g_irc_state->in_vi_command = true;
             return 0; /* Let vi handle the command */
         }
         
-        /* For all other keys when IRC is active and not in vi command mode, consume them for IRC input */
+        /* For all other keys when IRC is active and in full-window mode, consume them for IRC input */
         printf("[IRC] IRC active - processing key %d for IRC input\n", key);
         
         /* Handle other IRC-specific keys - regular text input for chat */
@@ -1988,6 +2061,10 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     } else {
         /* Not in an IRC buffer - let Vizero handle the key normally */
         printf("[IRC] Not in IRC buffer - letting Vizero handle key %d\n", key);
+        
+        /* Update tracking variable */
+        was_in_irc_buffer_last_time = false;
+        
         return 0;
     }
     
@@ -2234,6 +2311,7 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     g_irc_state->irc_buffer = NULL;
     g_irc_state->in_vi_command = false;
     g_irc_state->vi_command_buffer[0] = '\0';
+    g_irc_state->just_escaped = false;
 
     
     if (g_irc_state->api && g_irc_state->api->get_current_buffer) {
@@ -2259,7 +2337,7 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
 #endif
     g_irc_state->texture_width = 0;
     g_irc_state->texture_height = 0;
-    g_irc_state->wants_full_window = false;
+    g_irc_state->wants_full_window = true; /* Start in full-screen IRC mode */
     
 #ifdef HAVE_SDL2_TTF
     /* Try to load a default font - check common locations */
