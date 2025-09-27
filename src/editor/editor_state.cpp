@@ -3731,6 +3731,89 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
         }
         
+        /* Git commands */
+        if (strncmp(command, "git ", 4) == 0) {
+            const char* git_args = command + 4;
+            char full_command[1024];
+            snprintf(full_command, sizeof(full_command), "git %s", git_args);
+            
+            /* Capture output using popen */
+            FILE* pipe = popen(full_command, "r");
+            if (!pipe) {
+                vizero_editor_set_status_message(state, "Failed to execute git command");
+                return -1;
+            }
+            
+            char output[8192] = "";
+            char buffer[256];
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                if (strlen(output) + strlen(buffer) < sizeof(output) - 1) {
+                    strcat(output, buffer);
+                }
+            }
+            
+            int exit_code = pclose(pipe);
+            
+            /* Check if this is an informational command that should always show popup */
+            bool is_info_command = (strncmp(git_args, "status", 6) == 0) ||
+                                   (strncmp(git_args, "log", 3) == 0) ||
+                                   (strncmp(git_args, "diff", 4) == 0) ||
+                                   (strncmp(git_args, "show", 4) == 0) ||
+                                   (strncmp(git_args, "branch", 6) == 0) ||
+                                   (strncmp(git_args, "remote", 6) == 0);
+            
+            if (exit_code != 0) {
+                /* Error - always show popup with output */
+                char popup_text[8192 + 256];
+                snprintf(popup_text, sizeof(popup_text), "Git command failed: %s\n\nOutput:\n%s", full_command, output);
+                vizero_editor_show_popup(state, popup_text, 0);
+            } else if (is_info_command || strlen(output) > 0) {
+                /* Success with informational commands or output - show popup */
+                char popup_text[8192 + 256];
+                snprintf(popup_text, sizeof(popup_text), "Git command: %s\n\nOutput:\n%s", 
+                         full_command, strlen(output) > 0 ? output : "(no output)");
+                vizero_editor_show_popup(state, popup_text, 0);
+            } else {
+                /* Success with action commands - show brief status message */
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Git command completed: %s", git_args);
+                vizero_editor_set_status_message_with_timeout(state, msg, 2000);
+            }
+            
+            return (exit_code == 0) ? 0 : -1;
+        }
+        
+        /* Make command */
+        if (strcmp(command, "make") == 0) {
+            const char* make_command = "make";
+            
+            /* Capture output using popen */
+            FILE* pipe = popen(make_command, "r");
+            if (!pipe) {
+                vizero_editor_set_status_message(state, "Failed to execute make command");
+                return -1;
+            }
+            
+            char output[8192] = "";
+            char buffer[256];
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                if (strlen(output) + strlen(buffer) < sizeof(output) - 1) {
+                    strcat(output, buffer);
+                }
+            }
+            
+            int exit_code = pclose(pipe);
+            
+            /* Always show popup with results */
+            char popup_text[8192 + 256];
+            const char* status = (exit_code == 0) ? "SUCCESS" : "FAILED";
+            snprintf(popup_text, sizeof(popup_text), "Make result: %s (exit code: %d)\n\nOutput:\n%s", 
+                     status, exit_code, strlen(output) > 0 ? output : "(no output)");
+            vizero_editor_show_popup(state, popup_text, 0);
+            
+            return (exit_code == 0) ? 0 : -1;
+        }
+        
         /* Unknown command */
         char msg[256];
         sprintf(msg, "Not an editor command: %s", command);

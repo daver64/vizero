@@ -972,7 +972,7 @@ static int slime_connect(const char* host, int port) {
         int response_len = slime_read_response(handshake_response, sizeof(handshake_response));
         if (response_len > 0) {
             lisp_log_message("SLIME handshake successful");
-            printf("[LISP] Handshake response: %s\n", handshake_response);
+            /* SLIME handshake completed */
         } else {
             lisp_log_message("WARNING: No handshake response");
         }
@@ -1035,7 +1035,7 @@ static int slime_send_message(const char* message) {
     int msg_len = (int)strlen(message);
     snprintf(formatted_msg, sizeof(formatted_msg), "%06x%s", msg_len, message);
 
-    printf("[LISP] Sending SLIME message: %s\n", formatted_msg);
+    /* Sending SLIME message */
     
     /* Send to SLIME server */
 #ifdef _WIN32
@@ -1077,7 +1077,7 @@ static int slime_send_message(const char* message) {
     }
 #endif
 
-    printf("[LISP] Successfully sent %d bytes to SLIME\n", sent);
+    /* Message sent to SLIME */
     return 0;
 }
 

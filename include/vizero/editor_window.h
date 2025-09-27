@@ -134,6 +134,10 @@ vizero_layout_type_t vizero_window_manager_get_layout_type(vizero_window_manager
 int vizero_window_manager_get_visible_windows(vizero_window_manager_t* manager, 
                                             vizero_editor_window_t*** windows, 
                                             size_t* count);
+
+/* Position-based window lookup */
+vizero_editor_window_t* vizero_window_manager_get_window_at_position(vizero_window_manager_t* manager, int x, int y);
+
 // Place these after the typedefs and struct declarations:
 /* Window focus helpers (for vi-style window switching) */
 int vizero_window_manager_focus_direction(vizero_window_manager_t* manager, char dir);

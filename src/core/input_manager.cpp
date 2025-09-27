@@ -706,17 +706,28 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     }
                                     break;
                                 }
-                                case SDLK_DELETE: {
-                                    /* Delete key - delete character at cursor */
-                                    /* Get character to be deleted for undo */
+                                case SDLK_DELETE:
+                                case SDLK_KP_PERIOD: {  /* Numeric keypad Delete key (when Num Lock is off) */
+                                    /* Delete key - delete character to the right of cursor */
                                     const char* line_text = vizero_buffer_get_line_text(buffer, line);
+                                    
                                     if (line_text && col < strlen(line_text)) {
+                                        /* Delete character within the line */
                                         char deleted_char[2] = {line_text[col], '\0'};
                                         vizero_position_t pos = {line, col};
                                         vizero_editor_push_undo_operation(editor, VIZERO_UNDO_DELETE_CHAR, pos, pos, deleted_char);
                                         
                                         if (vizero_buffer_delete_char(buffer, line, col) == 0) {
                                             /* Diagnostic updates removed to prevent crashes - will update on file save */
+                                        }
+                                    } else if (line + 1 < vizero_buffer_get_line_count(buffer)) {
+                                        /* At end of line, join with next line (delete newline) */
+                                        vizero_position_t start_pos = {line, col};
+                                        vizero_position_t end_pos = {line + 1, 0};
+                                        vizero_editor_push_undo_operation(editor, VIZERO_UNDO_DELETE_CHAR, start_pos, end_pos, "\n");
+                                        
+                                        if (vizero_buffer_join_lines(buffer, line) == 0) {
+                                            /* Cursor stays at the same position */
                                         }
                                     }
                                     break;
@@ -936,6 +947,51 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     }
                 }
             textinput_handled:
+                break;
+            case SDL_DROPFILE:
+                /* Handle drag and drop file events */
+                if (input->app && event.drop.file) {
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        /* Hide welcome message on file drop */
+                        vizero_application_on_user_input(input->app);
+                        
+                        /* Get mouse position to determine which split to open file in */
+                        int mouse_x, mouse_y;
+                        SDL_GetMouseState(&mouse_x, &mouse_y);
+                        
+                        /* Get window manager and find window at drop position */
+                        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(editor);
+                        if (window_manager) {
+                            vizero_editor_window_t* target_window = vizero_window_manager_get_window_at_position(window_manager, mouse_x, mouse_y);
+                            if (target_window) {
+                                /* Focus the target window before opening file */
+                                vizero_window_manager_set_focus(window_manager, target_window->window_id);
+                            }
+                        }
+                        
+                        /* Open the dropped file (will open in the now-focused window) */
+                        if (vizero_editor_open_buffer(editor, event.drop.file) == 0) {
+                            /* Show success message with timeout */
+                            char msg[512];
+                            const char* filename = strrchr(event.drop.file, '/');
+                            if (!filename) filename = strrchr(event.drop.file, '\\');
+                            if (filename) filename++; /* Skip the separator */
+                            else filename = event.drop.file; /* Use full path if no separator found */
+                            
+                            snprintf(msg, sizeof(msg), "Opened: %s", filename);
+                            vizero_editor_set_status_message_with_timeout(editor, msg, 2000);
+                        } else {
+                            /* Show error message with timeout */
+                            char msg[512];
+                            snprintf(msg, sizeof(msg), "Failed to open: %s", event.drop.file);
+                            vizero_editor_set_status_message_with_timeout(editor, msg, 3000);
+                        }
+                    }
+                    
+                    /* Free the file path (SDL allocates this) */
+                    SDL_free(event.drop.file);
+                }
                 break;
             default:
                 break;

@@ -33,17 +33,15 @@ static int on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
     }
     char message[256];
     snprintf(message, sizeof(message), "Example plugin: Opened file %s", filename ? filename : "(null)");
-    if (plugin_state.api->set_status_message) {
-        plugin_state.api->set_status_message(plugin_state.editor, message);
-    }
+    plugin_state.api->set_status_message(plugin_state.editor, message);
     return 0;
 }
 
 static void on_buffer_close(vizero_buffer_t* buffer) {
     (void)buffer; /* Unused parameter */
     
-    if (plugin_state.api && plugin_state.api->set_status_message) {
-        plugin_state.api->set_status_message(plugin_state.editor, "Example plugin: Buffer closed");
+    if (plugin_state.api && plugin_state.editor) {
+        plugin_state.api->set_status_message_with_timeout(plugin_state.editor, "Example plugin: Buffer closed", 2000); /* 2 seconds */
     }
 }
 
@@ -141,9 +139,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     /* Log initialization */
     printf("Example plugin initialized successfully\n");
     
-    if (api->set_status_message) {
-        api->set_status_message(editor, "Example plugin loaded - Press F1 for info, use :example command");
-    }
+    api->set_status_message_with_timeout(editor, "Example plugin loaded - Press F1 for info, use :example command", 3000); /* 3 seconds */
     
     return 0;
 }

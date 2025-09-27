@@ -622,6 +622,9 @@ typedef struct {
     /** @brief Set a temporary status bar message */
     int (*set_status_message)(vizero_editor_t* editor, const char* message);
     
+    /** @brief Set a temporary status bar message with timeout */
+    int (*set_status_message_with_timeout)(vizero_editor_t* editor, const char* message, unsigned int timeout_ms);
+    
     /** @} */ // end of editor_operations group
     
     /**

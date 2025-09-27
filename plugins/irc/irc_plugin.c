@@ -489,13 +489,13 @@ static void irc_send_raw(const char* message) {
     
     char buffer[515];  /* Increased to accommodate message + \r\n + null terminator */
     snprintf(buffer, sizeof(buffer), "%s\r\n", message);
-    printf("[IRC] Sending raw: %s", buffer); /* buffer already has \r\n */
+    /* Sending IRC message */
     
     int bytes_sent = send(conn->socket, buffer, (int)strlen(buffer), 0);
     if (bytes_sent < 0) {
         printf("[IRC] Send failed: %d\n", bytes_sent);
     } else {
-        printf("[IRC] Sent %d bytes\n", bytes_sent);
+        /* Message sent successfully */
     }
 }
 
@@ -622,7 +622,7 @@ static void irc_clear_users_from_channel(irc_buffer_t* buffer) {
 static void irc_parse_message(const char* line) {
     if (!line || !g_irc_state) return;
     
-    printf("[IRC] Received: %s\n", line);
+    /* Received IRC message */
     
     /* Simple IRC message parsing - handle basic commands */
     if (strncmp(line, "PING ", 5) == 0) {

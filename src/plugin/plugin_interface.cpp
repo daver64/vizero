@@ -116,6 +116,11 @@ static int api_set_status_message(vizero_editor_t* editor, const char* message) 
     return 0;
 }
 
+static int api_set_status_message_with_timeout(vizero_editor_t* editor, const char* message, unsigned int timeout_ms) {
+    vizero_editor_set_status_message_with_timeout((vizero_editor_state_t*)editor, message, timeout_ms);
+    return 0;
+}
+
 /* Buffer readonly operations */
 static int api_is_buffer_readonly(vizero_buffer_t* buffer) {
     return vizero_buffer_is_readonly(buffer);
@@ -186,6 +191,7 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     api->get_current_cursor = api_get_current_cursor;
     api->execute_command = api_execute_command;
     api->set_status_message = api_set_status_message;
+    api->set_status_message_with_timeout = api_set_status_message_with_timeout;
     
     /* File operations */
     api->open_file = api_open_file;

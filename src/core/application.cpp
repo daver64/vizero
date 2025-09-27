@@ -91,6 +91,9 @@ int vizero_application_initialize(vizero_application_t* app) {
         return -1;
     }
     
+    /* Enable drag and drop events */
+    SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
+    
     /* Set OpenGL attributes */
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -756,13 +759,13 @@ int vizero_application_run(vizero_application_t* app) {
                 int popup_x = (window_width - popup_width) / 2;
                 int popup_y = (window_height - popup_height) / 2;
 
-                /* Draw popup background */
-                vizero_colour_t popup_bg = {0.1f, 0.1f, 0.1f, 0.9f}; /* Dark semi-transparent */
+                /* Draw popup background - same colors as completion popup */
+                vizero_colour_t popup_bg = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
                 vizero_renderer_fill_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_bg);
 
-                /* Draw popup border */
-                vizero_colour_t popup_border = {0.5f, 0.5f, 0.5f, 1.0f}; /* Gray border */
+                /* Draw popup border - same colors as completion popup */
+                vizero_colour_t popup_border = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
                 vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
                                         (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
 

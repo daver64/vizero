@@ -908,3 +908,22 @@ int vizero_window_manager_get_visible_windows(vizero_window_manager_t* manager,
     *count = visible_count;
     return 0;
 }
+
+/* Find which window contains the given screen coordinates */
+vizero_editor_window_t* vizero_window_manager_get_window_at_position(vizero_window_manager_t* manager, int x, int y) {
+    if (!manager) return NULL;
+    
+    /* Check all visible windows to find the one containing the point */
+    for (size_t i = 0; i < manager->window_count; i++) {
+        vizero_editor_window_t* window = manager->windows[i];
+        if (window && window->is_visible) {
+            /* Check if point is within window bounds */
+            if (x >= window->x && x < window->x + window->width &&
+                y >= window->y && y < window->y + window->height) {
+                return window;
+            }
+        }
+    }
+    
+    return NULL; /* No window found at this position */
+}

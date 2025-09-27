@@ -119,11 +119,8 @@ static void request_diagnostic_refresh(const char* file_path);
 /* Plugin callbacks */
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
-    printf("[CLANGD] *** PLUGIN INITIALIZATION STARTING ***\n");
-    fflush(stdout);
     if (!plugin || !editor || !api) {
         printf("[CLANGD] Plugin initialization FAILED - null parameters\n");
-        fflush(stdout);
         return -1;
     }
     
@@ -169,7 +166,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
         g_state.lsp_client = NULL;
         return 0;
     }
-    printf("[CLANGD] Found clangd at: %s\n", clangd_path);
+    /* Found clangd at specified path */
     
     /* Test if clangd actually exists before creating LSP client */
 #ifdef _WIN32
@@ -265,7 +262,6 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     }
     
     /* Initialize LSP immediately since we have a clangd client */
-    printf("[CLANGD] Initializing LSP during plugin load...\n");
     if (clangd_lsp_initialize(".", NULL) != 0) {
         printf("[CLANGD] Failed to initialize LSP during plugin load\n");
         /* Don't fail plugin loading, just disable LSP functionality */
@@ -273,8 +269,6 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     
     /* Initialize diagnostic popup */
     init_diagnostic_popup(&g_state.popup);
-    
-    printf("[CLANGD] Plugin initialization complete\n");
     return 0;
 }
 
@@ -503,7 +497,7 @@ static void request_diagnostic_refresh(const char* file_path) {
 }
 
 static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
-    printf("[CLANGD] *** on_buffer_open called for: %s ***\n", filename ? filename : "(unnamed)");
+    /* Buffer opened for clangd processing */
     
     if (!g_state.lsp_client || !g_state.initialized) {
         printf("[CLANGD] LSP not available or not initialized\n");
@@ -584,7 +578,7 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
         return -1;
     }
     
-    printf("[CLANGD] didOpen notification sent successfully for: %s\n", filename);
+    /* didOpen notification sent */
     
     /* Create sample diagnostics for demonstration */
     if (g_state.diagnostics) {
@@ -609,7 +603,7 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
         memset(g_state.diagnostics, 0, sizeof(vizero_diagnostic_t) * g_state.diagnostic_capacity);
     }
     
-    printf("[CLANGD] Initialized diagnostics storage for: %s\n", filename);
+    /* Diagnostics storage initialized */
     
     return 0;
 }
@@ -1068,7 +1062,7 @@ __declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer)
     /* First, check if we already have diagnostics for this file */
     if (g_state.diagnostics && g_state.diagnostic_count > 0 && 
         g_state.diagnostic_buffer_path && strcmp(g_state.diagnostic_buffer_path, file_path) == 0) {
-        printf("[CLANGD] Found existing %d diagnostics, showing popup immediately\n", g_state.diagnostic_count);
+        /* Showing existing diagnostics */
         show_diagnostic_popup(&g_state.popup, g_state.diagnostics, g_state.diagnostic_count, file_path);
         
         /* Also refresh diagnostics in background for next time */
@@ -1078,7 +1072,7 @@ __declspec(dllexport) void clangd_show_diagnostic_popup(vizero_buffer_t* buffer)
     }
     
     /* No existing diagnostics, need to wait for fresh ones */
-    printf("[CLANGD] No existing diagnostics found, sending didChange to get fresh diagnostics...\n");
+    /* Requesting fresh diagnostics */
     
     /* Show status message to user while waiting */
     if (g_state.api && g_state.api->set_status_message && g_state.editor) {
@@ -1328,8 +1322,8 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                     }
                     free(uri);
                     
-                    printf("[CLANGD] NEW DIAGNOSTICS: diagnostic_buffer_path='%s'\n", g_state.diagnostic_buffer_path);
-                    printf("[CLANGD] Full params: %.500s\n", params);
+                    /* New diagnostics received */
+                    /* Processing diagnostic parameters */
                     
                     /* Parse diagnostics array - simple parsing for now */
                     const char* diagnostics_start = strstr(params, "\"diagnostics\":");
@@ -1359,7 +1353,7 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                                 ptr++;
                             }
                             
-                            printf("[CLANGD] Found %d diagnostics in response\n", diagnostic_count);
+                            /* Processing diagnostic response */
                             
                             if (diagnostic_count > 0) {
                                     g_state.diagnostic_capacity = diagnostic_count;
@@ -1449,8 +1443,7 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                                         const char* severity_str = (severity == 1) ? "ERROR" : 
                                                                   (severity == 2) ? "WARNING" : 
                                                                   (severity == 3) ? "INFO" : "HINT";
-                                        printf("[CLANGD] Parsed diagnostic %d: line=%d, col=%d, severity=%s, msg='%s'\n", 
-                                               parsed_count, line_num, char_num, severity_str, message);
+                                        /* Diagnostic parsed successfully */
                                         
                                         parsed_count++;
                                         
@@ -1460,21 +1453,18 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                                     
                                     g_state.diagnostic_count = parsed_count;
                                     
-                                    printf("[CLANGD] Created %zu diagnostics from clangd response\n", g_state.diagnostic_count);
+                                    /* Diagnostics processed */
                                     
-                                    /* Show diagnostic popup if we have diagnostics */
+                                    /* Diagnostics parsed and stored - ready for manual Ctrl+D */
                                     if (g_state.diagnostic_count > 0) {
-                                        printf("[CLANGD] publishDiagnostics: Calling show_diagnostic_popup with %zu diagnostics\n", g_state.diagnostic_count);
-                                        show_diagnostic_popup(&g_state.popup, g_state.diagnostics, g_state.diagnostic_count, g_state.diagnostic_buffer_path);
+                                        /* Diagnostics ready for display */
                                     } else {
-                                        printf("[CLANGD] No diagnostics to show in popup\n");
+                                        printf("[CLANGD] No diagnostics found\n");
                                     }
                                 }
                             } else {
                                 printf("[CLANGD] No diagnostics in response\n");
                                 g_state.diagnostic_count = 0;
-                                /* Show empty popup or hide existing popup */
-                                hide_diagnostic_popup(&g_state.popup);
                             }
                         }
                     }

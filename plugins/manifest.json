@@ -3,9 +3,10 @@
   "plugins": {
     "example_plugin": {
       "type": "generic",
+      "file_extensions": [".example"],
       "load_on_demand": true,
       "dll_path": "example_plugin.dll",
-      "description": "Example plugin for development and testing",
+      "description": "Example plugin for development and testing (only loads for .example files)",
       "always_load": false
     },
     "file_browser": {

@@ -494,7 +494,7 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
             break; /* Incomplete message */
         }
         
-        printf("[LSP] Processing message %d: length=%d\n", message_count + 1, content_length);
+        /* Processing LSP message */
         
         /* Extract and process the message safely */
         char* message_content = (char*)malloc(content_length + 1);
@@ -810,7 +810,7 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
         return;
     }
     
-    printf("[LSP] Parsing JSON message of %zu bytes\n", content_len);
+    /* Parsing JSON message */
     
     /* Check if it's a response (has "id" field) */
     int id = safe_extract_json_int(content, "id", content_len);
@@ -847,6 +847,6 @@ static void lsp_client_parse_message(vizero_lsp_client_t* client, const char* co
         }
     }
     
-    printf("[LSP] Message parsing complete\n");
+    /* Message parsing complete */
 }
 
