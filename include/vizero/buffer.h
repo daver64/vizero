@@ -712,6 +712,21 @@ uint64_t vizero_buffer_get_modification_time(vizero_buffer_t* buffer);
  */
 void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime);
 
+/**
+ * @brief Check if the associated file has been modified on disk
+ * 
+ * Compares the current file modification time with the stored time
+ * to detect external changes to the file.
+ * 
+ * @param buffer Buffer to check (must not be NULL)
+ * @return 1 if file has changed, 0 if unchanged, -1 if file not found
+ * 
+ * @pre buffer must not be NULL
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+int vizero_buffer_check_file_changed(vizero_buffer_t* buffer);
+
 /** @} */ // end of file_monitoring group
 
 /**

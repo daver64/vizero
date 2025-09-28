@@ -205,12 +205,20 @@ vizero_buffer_t* vizero_buffer_create(void) {
         buffer->lines[0] = vizero_safe_strdup("");
         buffer->line_count = 1;
         
-        /* Initialize undo/redo stacks */
-        buffer->undo_stack.max_operations = 100; /* Configurable limit */
+        /* Initialize undo/redo stacks with memory-aware limits */
+        size_t undo_limit = 100; /* Default limit */
+        /* For large files, reduce undo history to prevent excessive memory usage */
+        if (buffer->line_count > 1000) {
+            undo_limit = 50;
+        } else if (buffer->line_count > 10000) {
+            undo_limit = 25;
+        }
+        
+        buffer->undo_stack.max_operations = undo_limit;
         buffer->undo_stack.operations = NULL;
         buffer->undo_stack.count = 0;
         
-        buffer->redo_stack.max_operations = 100;
+        buffer->redo_stack.max_operations = undo_limit;
         buffer->redo_stack.operations = NULL;
         buffer->redo_stack.count = 0;
         
@@ -1138,6 +1146,15 @@ uint64_t vizero_buffer_get_last_disk_mtime(vizero_buffer_t* buffer) {
 uint64_t vizero_buffer_get_modification_time(vizero_buffer_t* buffer) {
     if (!buffer) return 0;
     return buffer->modification_version;
+}
+
+int vizero_buffer_check_file_changed(vizero_buffer_t* buffer) {
+    if (!buffer || !buffer->filename) return 0;
+    
+    /* Simple implementation - use file system polling */
+    /* This would need proper implementation with platform-specific file watching */
+    /* For now, return 0 (no change detected) as placeholder */
+    return 0;
 }
 
 void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime) {

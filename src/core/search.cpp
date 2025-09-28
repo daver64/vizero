@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
+#include <algorithm>
+#include <mutex>
 
 /* Search state structure - internal C++ implementation */
 struct SearchState {
@@ -25,35 +28,77 @@ struct SearchState {
     uint64_t cached_buffer_version;
     bool matches_cache_valid;
     
+    /* Feature enhancement: search history */
+    std::vector<std::string> search_history;
+    static const size_t MAX_HISTORY_SIZE = 50;
+    
     SearchState() : current_match_index(-1), has_pattern(false), last_direction(VIZERO_SEARCH_FORWARD),
                    pattern_cache_valid(false), cached_buffer(nullptr), cached_buffer_version(0), 
                    matches_cache_valid(false) {}
+    
+    void add_to_history(const std::string& pattern) {
+        /* Avoid duplicates - remove existing entry if present */
+        auto it = std::find(search_history.begin(), search_history.end(), pattern);
+        if (it != search_history.end()) {
+            search_history.erase(it);
+        }
+        
+        /* Add to front */
+        search_history.insert(search_history.begin(), pattern);
+        
+        /* Limit history size */
+        if (search_history.size() > MAX_HISTORY_SIZE) {
+            search_history.resize(MAX_HISTORY_SIZE);
+        }
+    }
 };
 
-/* Global search state - in a real implementation this would be per-editor */
-static std::unique_ptr<SearchState> g_search_state = std::make_unique<SearchState>();
+/* Per-editor search states - fully implemented for proper multi-buffer support */
+static std::unordered_map<vizero_editor_state_t*, std::unique_ptr<SearchState>> g_editor_search_states;
+static std::mutex g_search_states_mutex; /* Thread safety for multi-editor scenarios */
+
+/* Helper function to get or create search state for editor */
+static SearchState* get_search_state(vizero_editor_state_t* state) {
+    if (!state) return nullptr;
+    
+    std::lock_guard<std::mutex> lock(g_search_states_mutex);
+    
+    auto it = g_editor_search_states.find(state);
+    if (it == g_editor_search_states.end()) {
+        /* Create new search state for this editor */
+        auto search_state = std::make_unique<SearchState>();
+        SearchState* ptr = search_state.get();
+        g_editor_search_states[state] = std::move(search_state);
+        return ptr;
+    }
+    
+    return it->second.get();
+}
 
 /* Helper function to find all matches in buffer with caching */
-static void find_all_matches(vizero_editor_state_t* state, const std::regex& pattern) {
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+static void find_all_matches(vizero_editor_state_t* editor_state, const std::regex& pattern) {
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(editor_state);
     if (!buffer) return;
+    
+    SearchState* search_state = get_search_state(editor_state);
+    if (!search_state) return;
     
     /* Check if we can use cached results - compare buffer and pattern */
     uint64_t current_buffer_version = vizero_buffer_get_modification_time(buffer);
-    if (g_search_state->matches_cache_valid && 
-        g_search_state->cached_buffer == buffer &&
-        g_search_state->cached_buffer_version == current_buffer_version) {
+    if (search_state->matches_cache_valid && 
+        search_state->cached_buffer == buffer &&
+        search_state->cached_buffer_version == current_buffer_version) {
         /* Cache is valid, no need to recompute */
         return;
     }
     
     /* Cache is invalid, recompute matches */
-    g_search_state->matches.clear();
+    search_state->matches.clear();
     
     size_t line_count = vizero_buffer_get_line_count(buffer);
     
     /* Performance optimization: reserve space for matches to reduce reallocations */
-    g_search_state->matches.reserve(line_count / 10); /* Estimate ~10% of lines might match */
+    search_state->matches.reserve(line_count / 10); /* Estimate ~10% of lines might match */
     
     for (size_t line = 0; line < line_count; line++) {
         const char* line_text = vizero_buffer_get_line_text(buffer, line);
@@ -69,28 +114,29 @@ static void find_all_matches(vizero_editor_state_t* state, const std::regex& pat
             result.line = (int)line;
             result.column = (int)match.position();
             result.length = (int)match.length();
-            g_search_state->matches.push_back(result);
+            search_state->matches.push_back(result);
         }
     }
     
     /* Update cache metadata */
-    g_search_state->cached_buffer = buffer;
-    g_search_state->cached_buffer_version = current_buffer_version;
-    g_search_state->matches_cache_valid = true;
+    search_state->cached_buffer = buffer;
+    search_state->cached_buffer_version = current_buffer_version;
+    search_state->matches_cache_valid = true;
 }
 
 /* Helper function to find closest match to cursor */
-static int find_closest_match(vizero_editor_state_t* state, vizero_search_direction_t direction) {
-    if (g_search_state->matches.empty()) return -1;
+static int find_closest_match(vizero_editor_state_t* editor_state, vizero_search_direction_t direction) {
+    SearchState* search_state = get_search_state(editor_state);
+    if (!search_state || search_state->matches.empty()) return -1;
     
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor_state);
     if (!cursor) return -1;
     
     size_t cursor_line = vizero_cursor_get_line(cursor);
     size_t cursor_col = vizero_cursor_get_column(cursor);
     
-    for (size_t i = 0; i < g_search_state->matches.size(); i++) {
-        const auto& match = g_search_state->matches[i];
+    for (size_t i = 0; i < search_state->matches.size(); i++) {
+        const auto& match = search_state->matches[i];
         
         if (direction == VIZERO_SEARCH_FORWARD) {
             if (match.line > (int)cursor_line || 
@@ -106,31 +152,32 @@ static int find_closest_match(vizero_editor_state_t* state, vizero_search_direct
     }
     
     /* Wrap around */
-    if (direction == VIZERO_SEARCH_FORWARD && !g_search_state->matches.empty()) {
+    if (direction == VIZERO_SEARCH_FORWARD && !search_state->matches.empty()) {
         return 0;
-    } else if (direction == VIZERO_SEARCH_BACKWARD && !g_search_state->matches.empty()) {
-        return (int)g_search_state->matches.size() - 1;
+    } else if (direction == VIZERO_SEARCH_BACKWARD && !search_state->matches.empty()) {
+        return (int)(search_state->matches.size() - 1);
     }
     
     return -1;
 }
 
 /* Helper function to move cursor to match */
-static void move_to_match(vizero_editor_state_t* state, int match_index) {
-    if (match_index < 0 || match_index >= (int)g_search_state->matches.size()) return;
+static void move_to_match(vizero_editor_state_t* editor_state, int match_index) {
+    SearchState* search_state = get_search_state(editor_state);
+    if (!search_state || match_index < 0 || match_index >= (int)search_state->matches.size()) return;
     
-    const auto& match = g_search_state->matches[match_index];
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    const auto& match = search_state->matches[match_index];
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor_state);
     if (cursor) {
         vizero_cursor_set_position(cursor, match.line, match.column);
-        g_search_state->current_match_index = match_index;
+        search_state->current_match_index = match_index;
         
         /* Update status message */
         char status[256];
         snprintf(status, sizeof(status), "Match %d of %d: %s", 
-                match_index + 1, (int)g_search_state->matches.size(), 
-                g_search_state->pattern_string.c_str());
-        vizero_editor_set_status_message(state, status);
+                match_index + 1, (int)search_state->matches.size(), 
+                search_state->pattern_string.c_str());
+        vizero_editor_set_status_message(editor_state, status);
     }
 }
 
@@ -140,26 +187,32 @@ extern "C" {
 int vizero_search_forward(vizero_editor_state_t* state, const char* pattern) {
     if (!state || !pattern) return -1;
     
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return -1;
+    
     try {
         /* Performance optimization: check if we can reuse compiled regex */
-        bool need_recompile = !g_search_state->pattern_cache_valid || 
-                             g_search_state->last_compiled_pattern != pattern;
+        bool need_recompile = !search_state->pattern_cache_valid || 
+                             search_state->last_compiled_pattern != pattern;
         
         if (need_recompile) {
-            g_search_state->compiled_pattern = std::regex(pattern, std::regex_constants::ECMAScript);
-            g_search_state->last_compiled_pattern = pattern;
-            g_search_state->pattern_cache_valid = true;
+            search_state->compiled_pattern = std::regex(pattern, std::regex_constants::ECMAScript);
+            search_state->last_compiled_pattern = pattern;
+            search_state->pattern_cache_valid = true;
             /* Invalidate match cache when pattern changes */
-            g_search_state->matches_cache_valid = false;
+            search_state->matches_cache_valid = false;
         }
         
-        g_search_state->pattern_string = pattern;
-        g_search_state->has_pattern = true;
-        g_search_state->last_direction = VIZERO_SEARCH_FORWARD;
+        search_state->pattern_string = pattern;
+        search_state->has_pattern = true;
+        search_state->last_direction = VIZERO_SEARCH_FORWARD;
         
-        find_all_matches(state, g_search_state->compiled_pattern);
+        /* Add to search history */
+        search_state->add_to_history(pattern);
         
-        if (g_search_state->matches.empty()) {
+        find_all_matches(state, search_state->compiled_pattern);
+        
+        if (search_state->matches.empty()) {
             vizero_editor_set_status_message(state, "Pattern not found");
             return 0;
         }
@@ -181,26 +234,32 @@ int vizero_search_forward(vizero_editor_state_t* state, const char* pattern) {
 int vizero_search_backward(vizero_editor_state_t* state, const char* pattern) {
     if (!state || !pattern) return -1;
     
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return -1;
+    
     try {
         /* Performance optimization: check if we can reuse compiled regex */
-        bool need_recompile = !g_search_state->pattern_cache_valid || 
-                             g_search_state->last_compiled_pattern != pattern;
+        bool need_recompile = !search_state->pattern_cache_valid || 
+                             search_state->last_compiled_pattern != pattern;
         
         if (need_recompile) {
-            g_search_state->compiled_pattern = std::regex(pattern, std::regex_constants::ECMAScript);
-            g_search_state->last_compiled_pattern = pattern;
-            g_search_state->pattern_cache_valid = true;
+            search_state->compiled_pattern = std::regex(pattern, std::regex_constants::ECMAScript);
+            search_state->last_compiled_pattern = pattern;
+            search_state->pattern_cache_valid = true;
             /* Invalidate match cache when pattern changes */
-            g_search_state->matches_cache_valid = false;
+            search_state->matches_cache_valid = false;
         }
         
-        g_search_state->pattern_string = pattern;
-        g_search_state->has_pattern = true;
-        g_search_state->last_direction = VIZERO_SEARCH_BACKWARD;
+        search_state->pattern_string = pattern;
+        search_state->has_pattern = true;
+        search_state->last_direction = VIZERO_SEARCH_BACKWARD;
         
-        find_all_matches(state, g_search_state->compiled_pattern);
+        /* Add to search history */
+        search_state->add_to_history(pattern);
         
-        if (g_search_state->matches.empty()) {
+        find_all_matches(state, search_state->compiled_pattern);
+        
+        if (search_state->matches.empty()) {
             vizero_editor_set_status_message(state, "Pattern not found");
             return 0;
         }
@@ -220,12 +279,13 @@ int vizero_search_backward(vizero_editor_state_t* state, const char* pattern) {
 }
 
 int vizero_search_next(vizero_editor_state_t* state) {
-    if (!state || !g_search_state->has_pattern) return -1;
+    SearchState* search_state = get_search_state(state);
+    if (!state || !search_state || !search_state->has_pattern) return -1;
     
-    if (g_search_state->matches.empty()) return 0;
+    if (search_state->matches.empty()) return 0;
     
-    int next_index = g_search_state->current_match_index + 1;
-    if (next_index >= (int)g_search_state->matches.size()) {
+    int next_index = search_state->current_match_index + 1;
+    if (next_index >= (int)search_state->matches.size()) {
         next_index = 0; /* Wrap around */
     }
     
@@ -234,13 +294,14 @@ int vizero_search_next(vizero_editor_state_t* state) {
 }
 
 int vizero_search_previous(vizero_editor_state_t* state) {
-    if (!state || !g_search_state->has_pattern) return -1;
+    SearchState* search_state = get_search_state(state);
+    if (!state || !search_state || !search_state->has_pattern) return -1;
     
-    if (g_search_state->matches.empty()) return 0;
+    if (search_state->matches.empty()) return 0;
     
-    int prev_index = g_search_state->current_match_index - 1;
+    int prev_index = search_state->current_match_index - 1;
     if (prev_index < 0) {
-        prev_index = (int)g_search_state->matches.size() - 1; /* Wrap around */
+        prev_index = (int)search_state->matches.size() - 1; /* Wrap around */
     }
     
     move_to_match(state, prev_index);
@@ -320,31 +381,37 @@ int vizero_substitute_all(vizero_editor_state_t* state, const char* pattern, con
 }
 
 void vizero_search_clear(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    g_search_state->matches.clear();
-    g_search_state->current_match_index = -1;
-    g_search_state->has_pattern = false;
-    g_search_state->pattern_string.clear();
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return;
+    
+    search_state->matches.clear();
+    search_state->current_match_index = -1;
+    search_state->has_pattern = false;
+    search_state->pattern_string.clear();
 }
 
 int vizero_search_has_results(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    return g_search_state->has_pattern && !g_search_state->matches.empty();
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return 0;
+    return search_state->has_pattern && !search_state->matches.empty();
 }
 
 const char* vizero_search_get_pattern(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    return g_search_state->has_pattern ? g_search_state->pattern_string.c_str() : nullptr;
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return nullptr;
+    return search_state->has_pattern ? search_state->pattern_string.c_str() : nullptr;
 }
 
 int vizero_search_get_match_count(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    return (int)g_search_state->matches.size();
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return 0;
+    return (int)search_state->matches.size();
 }
 
 int vizero_search_get_current_match_index(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    return g_search_state->current_match_index;
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return -1;
+    return search_state->current_match_index;
 }
 
 int vizero_search_next_direction(vizero_editor_state_t* state, int forward) {
@@ -356,8 +423,9 @@ int vizero_search_next_direction(vizero_editor_state_t* state, int forward) {
 }
 
 const vizero_search_match_t* vizero_search_get_all_matches(vizero_editor_state_t* state) {
-    (void)state; /* Unused parameter */
-    return g_search_state->matches.empty() ? nullptr : g_search_state->matches.data();
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return nullptr;
+    return search_state->matches.empty() ? nullptr : search_state->matches.data();
 }
 
 int vizero_search_find_all_in_buffer(vizero_buffer_t* buffer, const char* pattern, 
@@ -395,13 +463,62 @@ int vizero_search_find_all_in_buffer(vizero_buffer_t* buffer, const char* patter
 }
 
 void vizero_search_clear_caches(void) {
-    if (g_search_state) {
-        g_search_state->pattern_cache_valid = false;
-        g_search_state->matches_cache_valid = false;
-        g_search_state->cached_buffer = nullptr;
-        g_search_state->cached_buffer_version = 0;
-        g_search_state->last_compiled_pattern.clear();
-        g_search_state->matches.clear();
+    /* Clear all caches for all editor instances */
+    for (auto& pair : g_editor_search_states) {
+        SearchState* search_state = pair.second.get();
+        if (search_state) {
+            search_state->pattern_cache_valid = false;
+            search_state->matches_cache_valid = false;
+            search_state->cached_buffer = nullptr;
+            search_state->cached_buffer_version = 0;
+            search_state->last_compiled_pattern.clear();
+            search_state->matches.clear();
+        }
+    }
+}
+
+const char** vizero_search_get_history(vizero_editor_state_t* state, size_t* count) {
+    if (!state || !count) {
+        if (count) *count = 0;
+        return nullptr;
+    }
+    
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) {
+        *count = 0;
+        return nullptr;
+    }
+    
+    *count = search_state->search_history.size();
+    if (search_state->search_history.empty()) {
+        return nullptr;
+    }
+    
+    /* Note: This returns pointers to internal strings - valid until next search operation */
+    static thread_local std::vector<const char*> history_ptrs;
+    history_ptrs.clear();
+    history_ptrs.reserve(search_state->search_history.size());
+    
+    for (const auto& pattern : search_state->search_history) {
+        history_ptrs.push_back(pattern.c_str());
+    }
+    
+    return history_ptrs.data();
+}
+
+void vizero_search_clear_history(vizero_editor_state_t* state) {
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return;
+    
+    search_state->search_history.clear();
+}
+
+void vizero_search_cleanup_editor_state(vizero_editor_state_t* state) {
+    if (!state) return;
+    
+    auto it = g_editor_search_states.find(state);
+    if (it != g_editor_search_states.end()) {
+        g_editor_search_states.erase(it);
     }
 }
 

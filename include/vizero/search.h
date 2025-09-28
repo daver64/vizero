@@ -39,6 +39,13 @@ int vizero_search_find_all_in_buffer(vizero_buffer_t* buffer, const char* patter
  * Call this when buffer content changes significantly */
 void vizero_search_clear_caches(void);
 
+/* Search history management */
+const char** vizero_search_get_history(vizero_editor_state_t* state, size_t* count);
+void vizero_search_clear_history(vizero_editor_state_t* state);
+
+/* Cleanup function - call when editor state is destroyed */
+void vizero_search_cleanup_editor_state(vizero_editor_state_t* state);
+
 #ifdef __cplusplus
 }
 #endif
