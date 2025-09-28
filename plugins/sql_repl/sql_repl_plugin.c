@@ -118,7 +118,7 @@ static int sql_connect_database(const char* connection_string);
 static void sql_disconnect_database(void);
 static int sql_execute_query(const char* query, char** result, size_t* result_size);
 static int sql_handle_command(vizero_editor_t* editor, const char* command);
-static int sql_handle_enter_key(vizero_editor_t* editor);
+static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
 static void sql_display_result(const char* result);
 static void sql_display_error(const char* error);
 
