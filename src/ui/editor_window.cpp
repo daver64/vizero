@@ -151,6 +151,13 @@ vizero_editor_window_t* vizero_window_manager_create_window(vizero_window_manage
     window->y = y;
     window->width = width;
     window->height = height;
+    
+    /* Initialize restore position to current position */
+    window->restore_x = x;
+    window->restore_y = y;
+    window->restore_width = width;
+    window->restore_height = height;
+    
     window->buffer_index = buffer_index;
     
     window->is_focused = 0;
@@ -319,7 +326,13 @@ int vizero_editor_window_set_position(vizero_editor_window_t* window, int x, int
 int vizero_editor_window_maximize(vizero_editor_window_t* window) {
     if (!window) return -1;
     
-    /* TODO: Store current position/size for restore */
+    /* Store current position/size for restore */
+    if (!window->is_maximized) {
+        window->restore_x = window->x;
+        window->restore_y = window->y;
+        window->restore_width = window->width;
+        window->restore_height = window->height;
+    }
     window->is_maximized = 1;
     
     return 0;
@@ -328,7 +341,13 @@ int vizero_editor_window_maximize(vizero_editor_window_t* window) {
 int vizero_editor_window_restore(vizero_editor_window_t* window) {
     if (!window) return -1;
     
-    /* TODO: Restore previous position/size */
+    /* Restore previous position/size if available */
+    if (window->restore_width > 0 && window->restore_height > 0) {
+        window->x = window->restore_x;
+        window->y = window->restore_y;
+        window->width = window->restore_width;
+        window->height = window->restore_height;
+    }
     window->is_maximized = 0;
     
     return 0;

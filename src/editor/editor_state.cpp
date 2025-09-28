@@ -1537,8 +1537,10 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
                 result, output[0] ? output : "(no output)");
     }
     
-    /* For now, we'll show a truncated version in status message */
-    /* TODO: Implement popup window for full output */
+    /* Show compilation result in popup window for full output */
+    vizero_editor_show_popup(state, result_msg, 10000); /* Show for 10 seconds */
+    
+    /* Also show a truncated version in status message for quick reference */
     char short_msg[256];
     if (result == 0) {
         snprintf(short_msg, sizeof(short_msg), "SUCCESS: %s", output_file);
@@ -5813,10 +5815,37 @@ vizero_position_t vizero_editor_screen_to_buffer_position(vizero_editor_window_t
         
         /* Handle word wrap or simple line mapping */
         if (word_wrap) {
-            /* TODO: Implement proper word wrap coordinate mapping */
-            /* For now, use simple mapping */
-            pos.line = (size_t)text_row;
-            pos.column = (size_t)text_col;
+            /* Word wrap coordinate mapping: visual row to logical position */
+            size_t wrap_width = (size_t)(window->width / CHAR_WIDTH);
+            if (wrap_width == 0) wrap_width = 80; /* Default wrap width */
+            
+            size_t current_visual_row = 0;
+            size_t target_line = 0;
+            size_t target_column = 0;
+            
+            /* Find which logical line contains the visual row */
+            for (size_t logical_line = 0; logical_line < line_count && current_visual_row <= (size_t)text_row; logical_line++) {
+                const char* line_text = vizero_buffer_get_line_text(buffer, logical_line);
+                if (!line_text) continue;
+                
+                size_t line_length = strlen(line_text);
+                size_t visual_rows_for_line = (line_length / wrap_width) + 1;
+                
+                if (current_visual_row + visual_rows_for_line > (size_t)text_row) {
+                    /* Target row is within this logical line */
+                    target_line = logical_line;
+                    size_t row_within_line = (size_t)text_row - current_visual_row;
+                    target_column = (row_within_line * wrap_width) + (size_t)text_col;
+                    /* Clamp column to line length */
+                    if (target_column > line_length) target_column = line_length;
+                    break;
+                }
+                current_visual_row += visual_rows_for_line;
+                target_line = logical_line;
+            }
+            
+            pos.line = target_line;
+            pos.column = target_column;
         } else {
             pos.line = (size_t)text_row;
             pos.column = (size_t)text_col;

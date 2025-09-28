@@ -39,6 +39,10 @@ struct vizero_editor_window_t {
     int x, y;
     int width, height;
     
+    /* Restore position and size (for unmaximizing) */
+    int restore_x, restore_y;
+    int restore_width, restore_height;
+    
     /* Associated buffer index (references editor state buffer/cursor arrays) */
     size_t buffer_index;
     

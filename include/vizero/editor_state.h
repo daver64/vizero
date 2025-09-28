@@ -776,6 +776,10 @@ void* vizero_editor_get_theme_manager(vizero_editor_state_t* state);
 void vizero_editor_set_session_manager(vizero_editor_state_t* state, void* manager);
 void* vizero_editor_get_session_manager(vizero_editor_state_t* state);
 
+/* Session operations */
+int vizero_editor_save_session(vizero_editor_state_t* state, const char* filename);
+int vizero_editor_load_session(vizero_editor_state_t* state, const char* filename);
+
 /* Mode Manager */
 typedef struct vizero_mode_manager_t vizero_mode_manager_t;
 vizero_mode_manager_t* vizero_editor_get_mode_manager(vizero_editor_state_t* state);

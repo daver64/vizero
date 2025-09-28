@@ -39,6 +39,10 @@ struct vizero_application_t {
     int scroll_x;
     int scroll_y;
     
+    /* File change polling state */
+    uint32_t last_poll_time;
+    uint32_t poll_interval_ms;
+    
     /* Welcome message state */
     int show_welcome;
     
@@ -61,6 +65,8 @@ vizero_application_t* vizero_application_create(const vizero_app_config_t* confi
     app->should_quit = 0;
     app->scroll_x = 0;
     app->scroll_y = 0;
+    app->last_poll_time = 0;
+    app->poll_interval_ms = 1000; /* Poll every 1 second */
     app->show_welcome = 1; /* Show welcome message initially */
     app->logo_image = NULL;
     
@@ -888,8 +894,8 @@ int vizero_application_run(vizero_application_t* app) {
         
         /* File change polling - re-enabled with safety checks */
         uint32_t now = SDL_GetTicks();
-        if (now - last_poll_time > poll_interval_ms) {
-            last_poll_time = now;
+        if (now - app->last_poll_time > app->poll_interval_ms) {
+            app->last_poll_time = now;
             vizero_editor_state_t* editor = app->editor;
             if (editor) {
                 size_t buffer_count = vizero_editor_get_buffer_count(editor);
@@ -997,7 +1003,13 @@ void vizero_application_on_window_resize(vizero_application_t* app, int width, i
         vizero_renderer_update_viewport(app->renderer, width, height);
     }
     
-    /* TODO: Update editor layout */
+    /* Update editor layout */
+    if (app->editor) {
+        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(app->editor);
+        if (window_manager) {
+            vizero_window_manager_update_layout(window_manager, width, height);
+        }
+    }
 }
 
 void vizero_application_on_file_drop(vizero_application_t* app, const char* filename) {

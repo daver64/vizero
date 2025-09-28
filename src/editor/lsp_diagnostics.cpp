@@ -24,8 +24,12 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
     vizero_diagnostic_t* diagnostics = NULL;
     size_t diagnostic_count = 0;
     
-    /* TODO: Get plugin manager from global state or parameter */
-    /* For now, we'll implement this when the plugin manager is accessible */
+    /* Get diagnostics via plugin manager */
+    if (state->plugin_manager) {
+        /* Note: This would call a plugin manager function to get diagnostics */
+        /* For now, diagnostics are handled by individual LSP plugins */
+        /* This is a placeholder for future diagnostic aggregation */
+    }
     
     /* Store new diagnostics */
     if (diagnostics && diagnostic_count > 0) {

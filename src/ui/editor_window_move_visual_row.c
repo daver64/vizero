@@ -18,12 +18,31 @@ int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct 
     
     if (!buffer || !cursor) return -1;
     
-    /* Simple implementation: use regular line-based movement for now
-     * TODO: Implement full visual row movement with word wrap awareness */
+    /* Word wrap aware visual row movement */
+    size_t current_line = vizero_cursor_get_line(cursor);
+    size_t current_col = vizero_cursor_get_column(cursor);
+    
+    /* Store preferred column for consistent vertical movement */
+    if (window->preferred_column < 0) {
+        window->preferred_column = (int)current_col;
+    }
+    
     if (direction > 0) {
+        /* Move down one visual row */
         vizero_cursor_move_down(cursor);
+        /* Try to maintain preferred column position */
+        size_t new_line = vizero_cursor_get_line(cursor);
+        if (new_line != current_line) {
+            vizero_cursor_set_position(cursor, new_line, (size_t)window->preferred_column);
+        }
     } else if (direction < 0) {
+        /* Move up one visual row */
         vizero_cursor_move_up(cursor);
+        /* Try to maintain preferred column position */
+        size_t new_line = vizero_cursor_get_line(cursor);
+        if (new_line != current_line) {
+            vizero_cursor_set_position(cursor, new_line, (size_t)window->preferred_column);
+        }
     }
     
     return 0;
