@@ -1782,6 +1782,10 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
             }
         }
         
+        /* Set system clipboard using SDL2 */
+        SDL_SetClipboardText(lines_text);
+        
+        /* Also update internal clipboard */
         if (state->clipboard_content) free(state->clipboard_content);
         state->clipboard_content = strdup(lines_text);
         
