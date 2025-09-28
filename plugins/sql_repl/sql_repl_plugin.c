@@ -143,7 +143,15 @@ static void sql_log_message(const char* message) {
     strftime(timestamp, sizeof(timestamp), "%H:%M:%S", local_time);
     
     char log_entry[1024];
-    snprintf(log_entry, sizeof(log_entry), "[%s] SQL: %s", timestamp, message);
+    /* Always use precision specifier to prevent format-truncation warnings */
+    /* Reserve space for timestamp prefix "[HH:MM:SS] SQL: " (about 16 chars) plus null terminator */
+    const size_t max_msg_len = 980; /* Leave room for timestamp and formatting */
+    
+    if (strlen(message) > max_msg_len) {
+        snprintf(log_entry, sizeof(log_entry), "[%s] SQL: %.980s...", timestamp, message);
+    } else {
+        snprintf(log_entry, sizeof(log_entry), "[%s] SQL: %.980s", timestamp, message);
+    }
     
     /* For now, just print to stdout/debug output */
     printf("%s\n", log_entry);
@@ -207,10 +215,10 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
         char* pass_part = strchr(temp_url, ':');
         if (pass_part) {
             *pass_part = '\0';
-            snprintf(username, 256, "%s", temp_url);
-            snprintf(password, 256, "%s", pass_part + 1);
+            snprintf(username, 256, "%.255s", temp_url);
+            snprintf(password, 256, "%.255s", pass_part + 1);
         } else {
-            snprintf(username, 256, "%s", temp_url);
+            snprintf(username, 256, "%.255s", temp_url);
             password[0] = '\0';
         }
         
@@ -220,9 +228,9 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
             *port_part = '\0';
             *port = atoi(port_part + 1);
         }
-        snprintf(host, 256, "%s", auth_part);
+        snprintf(host, 256, "%.255s", auth_part);
     } else {
-        snprintf(host, 256, "%s", temp_url);
+        snprintf(host, 256, "%.255s", temp_url);
         username[0] = '\0';
         password[0] = '\0';
     }

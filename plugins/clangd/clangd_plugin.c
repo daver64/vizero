@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#define _GNU_SOURCE  /* For asprintf on Linux */
+#endif
+
 #include "vizero/plugin_interface.h"
 #include "vizero/lsp_client.h"
 #include "vizero/buffer.h"
@@ -116,9 +120,7 @@ static void clangd_lsp_shutdown(void);
 static void init_diagnostic_popup(diagnostic_popup_t* popup);
 static void cleanup_diagnostic_popup(diagnostic_popup_t* popup);
 static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t* diagnostics, size_t count, const char* buffer_path);
-static void hide_diagnostic_popup(diagnostic_popup_t* popup);
-static int handle_diagnostic_popup_input(diagnostic_popup_t* popup, int key, int modifiers);
-static void render_diagnostic_popup(diagnostic_popup_t* popup, void* renderer);
+
 static char* format_diagnostics_for_popup(vizero_diagnostic_t* diagnostics, size_t count, size_t error_count, size_t warning_count, size_t info_count);
 
 /* Plugin callbacks */
@@ -128,7 +130,7 @@ static char* find_clangd_executable(void);
 static void on_lsp_response(int request_id, const char* result, const char* error, void* user_data);
 static void on_lsp_notification(const char* method, const char* params, void* user_data);
 static void on_lsp_error(const char* error_message, void* user_data);
-static void request_diagnostic_refresh(const char* file_path);
+
 
 /* Plugin info */
 /* (defined at the end of the file using VIZERO_PLUGIN_DEFINE_INFO macro) */
@@ -397,10 +399,15 @@ static void send_did_change_notification(const char* file_path, const char* cont
             normalized_path[i] = '/';
         }
     }
-    asprintf(&uri, "file:///%s", normalized_path);
+    if (asprintf(&uri, "file:///%s", normalized_path) < 0) {
+        free(normalized_path);
+        return;
+    }
     free(normalized_path);
     #else
-    asprintf(&uri, "file://%s", escaped_path);
+    if (asprintf(&uri, "file://%s", escaped_path) < 0) {
+        return;
+    }
     #endif
     
     /* Build didChange notification parameters */
@@ -441,69 +448,7 @@ static void send_did_change_notification(const char* file_path, const char* cont
     CLANGD_DBG("didChange notification sent successfully for: %s", file_path);
 }
 
-/* Request diagnostics refresh from clangd by sending a lightweight request */
-static void request_diagnostic_refresh(const char* file_path) {
-    if (!g_state.lsp_client || !g_state.initialized || !file_path) {
-        printf("[CLANGD] Cannot request diagnostic refresh - not initialized\n");
-        return;
-    }
-    
-    CLANGD_DBG("Requesting diagnostic refresh for: %s", file_path);
-    
-    /* Escape the file path for JSON */
-    char* escaped_path = vizero_lsp_client_escape_json_string(file_path);
-    if (!escaped_path) {
-        CLANGD_ERR("Failed to escape file path for diagnostic refresh");
-        return;
-    }
-    
-    /* Convert to proper URI format */
-    char* uri;
-    #ifdef _WIN32
-    size_t path_len = strlen(escaped_path);
-    char* normalized_path = (char*)malloc(path_len + 1);
-    strcpy(normalized_path, escaped_path);
-    for (size_t i = 0; i < path_len; i++) {
-        if (normalized_path[i] == '\\') {
-            normalized_path[i] = '/';
-        }
-    }
-    asprintf(&uri, "file:///%s", normalized_path);
-    free(normalized_path);
-    #else
-    asprintf(&uri, "file://%s", escaped_path);
-    #endif
-    
-    /* Send a lightweight textDocument/documentSymbol request to trigger analysis */
-    char* params;
-    int param_len = asprintf(&params,
-        "{"
-        "\"textDocument\":{"
-          "\"uri\":\"%s\""
-        "}"
-        "}",
-        uri
-    );
-    
-    free(uri);
-    vizero_lsp_client_free_string(escaped_path);
-    
-    if (param_len < 0 || !params) {
-        CLANGD_ERR("Failed to create diagnostic refresh params");
-        return;
-    }
-    
-    /* Send request to trigger fresh analysis */
-    int result = vizero_lsp_client_send_request(g_state.lsp_client, "textDocument/documentSymbol", params);
-    free(params);
-    
-    if (result < 0) {
-        CLANGD_ERR("Failed to send diagnostic refresh request");
-        return;
-    }
-    
-    CLANGD_DBG("Diagnostic refresh request sent successfully");
-}
+
 
 static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) {
     /* Buffer opened for clangd processing */
@@ -549,10 +494,17 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
             normalized_path[i] = '/';
         }
     }
-    asprintf(&uri, "file:///%s", normalized_path);
+    if (asprintf(&uri, "file:///%s", normalized_path) < 0) {
+        free(normalized_path);
+        vizero_lsp_client_free_string(escaped_path);
+        return -1;
+    }
     free(normalized_path);
     #else
-    asprintf(&uri, "file://%s", escaped_path);
+    if (asprintf(&uri, "file://%s", escaped_path) < 0) {
+        vizero_lsp_client_free_string(escaped_path);
+        return -1;
+    }
     #endif
     
     char* params;
@@ -627,6 +579,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
 
 /* LSP implementation */
 static int clangd_lsp_initialize(const char* project_root, const char* session_config) {
+    (void)session_config; /* Parameter not used yet */
     if (g_state.initialized) {
         return 0; /* Already initialized */
     }
@@ -703,6 +656,7 @@ static int clangd_lsp_initialize(const char* project_root, const char* session_c
 }
 
 static int clangd_on_text_changed(vizero_buffer_t* buffer, vizero_range_t range, const char* new_text) {
+    (void)buffer; (void)range; (void)new_text; /* Parameters not used - callback disabled */
     /* Text change callbacks disabled - keeping only hover popup functionality */
     return 0;
 }
@@ -792,7 +746,10 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         /* Relative path - make it absolute */
         char* cwd = getcwd(NULL, 0);
         if (cwd) {
-            asprintf(&absolute_path, "%s/%s", cwd, file_path);
+            if (asprintf(&absolute_path, "%s/%s", cwd, file_path) < 0) {
+                free(cwd);
+                return -1;
+            }
             free(cwd);
             file_path = absolute_path;
         }
@@ -817,10 +774,19 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
                 normalized_path[i] = '/';
             }
         }
-        asprintf(&didopen_uri, "file:///%s", normalized_path);
+        if (asprintf(&didopen_uri, "file:///%s", normalized_path) < 0) {
+            free(normalized_path);
+            vizero_lsp_client_free_string(didopen_escaped_path);
+            free(absolute_path);
+            return -1;
+        }
         free(normalized_path);
         #else
-        asprintf(&didopen_uri, "file://%s", didopen_escaped_path);
+        if (asprintf(&didopen_uri, "file://%s", didopen_escaped_path) < 0) {
+            vizero_lsp_client_free_string(didopen_escaped_path);
+            free(absolute_path);
+            return -1;
+        }
         #endif
         
         /* Get buffer content and escape it for JSON */
@@ -865,10 +831,15 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
             normalized_path[i] = '/';
         }
     }
-    asprintf(&uri, "file:///%s", normalized_path);
+    if (asprintf(&uri, "file:///%s", normalized_path) < 0) {
+        free(normalized_path);
+        return -1;
+    }
     free(normalized_path);
     #else
-    asprintf(&uri, "file://%s", file_path);
+    if (asprintf(&uri, "file://%s", file_path) < 0) {
+        return -1;
+    }
     #endif
     
 
@@ -977,6 +948,7 @@ static int clangd_lsp_hover(vizero_buffer_t* buffer, vizero_position_t position,
 
 static int clangd_lsp_goto_definition(vizero_buffer_t* buffer, vizero_position_t position,
                                      vizero_location_t** locations, size_t* location_count) {
+    (void)position; /* Parameter not used yet */
     if (!g_state.initialized || !buffer || !locations || !location_count) {
         return -1;
     }
@@ -998,6 +970,7 @@ static int clangd_lsp_get_diagnostics(vizero_buffer_t* buffer, vizero_diagnostic
     /* Get buffer file path and content */
     const char* file_path = g_state.api ? g_state.api->get_buffer_filename(buffer) : NULL;
     const char* content = g_state.api ? g_state.api->get_buffer_text(buffer) : NULL;
+    (void)file_path; (void)content; /* Variables not used - placeholder for future implementation */
     
     /* Just return existing diagnostics - do NOT send didChange during normal rendering */
     
@@ -1462,6 +1435,7 @@ static void on_lsp_notification(const char* method, const char* params, void* us
                                         const char* severity_str = (severity == 1) ? "ERROR" : 
                                                                   (severity == 2) ? "WARNING" : 
                                                                   (severity == 3) ? "INFO" : "HINT";
+                                        (void)severity_str; /* Variable for future use */
                                         /* Diagnostic parsed successfully */
                                         
                                         parsed_count++;
@@ -1583,11 +1557,14 @@ static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t
         /* For now, we'll store editor reference in plugin state */
         if (g_state.editor && g_state.api->show_popup) {
             int result = g_state.api->show_popup(g_state.editor, popup_text, 0); /* No timeout - stays until ESC */
+            (void)result; /* Result not used currently */
             printf("[CLANGD] Showing diagnostic popup with %zu diagnostics (%zu errors, %zu warnings, %zu info)\n",
                    count, popup->error_count, popup->warning_count, popup->info_count);
         } else {
+            /* Use union to avoid function pointer to object pointer conversion warning */
+            union { void (*func)(void); void *ptr; } func_ptr = { .func = (void(*)(void))(g_state.api ? g_state.api->show_popup : NULL) };
             printf("[CLANGD] Cannot show popup - editor=%p, show_popup=%p\n", 
-                   (void*)g_state.editor, (void*)(g_state.api ? g_state.api->show_popup : NULL));
+                   (void*)g_state.editor, func_ptr.ptr);
         }
         free(popup_text);
     } else {
@@ -1596,56 +1573,7 @@ static void show_diagnostic_popup(diagnostic_popup_t* popup, vizero_diagnostic_t
     }
 }
 
-static void hide_diagnostic_popup(diagnostic_popup_t* popup) {
-    if (!popup) return;
-    popup->is_visible = false;
-}
 
-static int handle_diagnostic_popup_input(diagnostic_popup_t* popup, int key, int modifiers) {
-    if (!popup || !popup->is_visible) return 0;
-    
-    (void)modifiers; // Unused for now
-    
-    switch (key) {
-        case SDLK_ESCAPE:
-            hide_diagnostic_popup(popup);
-            return 1; // Consumed
-            
-        case SDLK_UP:
-        case SDLK_k: // Vi-style up
-            if (popup->selected_index > 0) {
-                popup->selected_index--;
-            }
-            return 1; // Consumed
-            
-        case SDLK_DOWN:
-        case SDLK_j: // Vi-style down
-            if (popup->selected_index < popup->diagnostic_count - 1) {
-                popup->selected_index++;
-            }
-            return 1; // Consumed
-            
-        case SDLK_RETURN:
-            // TODO: Jump to diagnostic location
-            printf("[CLANGD] Jump to diagnostic at line %zu, col %zu\n",
-                   popup->diagnostics[popup->selected_index].range.start.line + 1,
-                   popup->diagnostics[popup->selected_index].range.start.column + 1);
-            hide_diagnostic_popup(popup);
-            return 1; // Consumed
-            
-        default:
-            return 0; // Not consumed
-    }
-}
-
-static void render_diagnostic_popup(diagnostic_popup_t* popup, void* renderer) {
-    if (!popup || !popup->is_visible || !renderer) return;
-    
-    // TODO: Implement OpenGL rendering
-    // For now, just mark that we would render
-    printf("[CLANGD] Would render popup with %zu diagnostics at (%.1f, %.1f)\n",
-           popup->diagnostic_count, popup->popup_x, popup->popup_y);
-}
 
 static char* format_diagnostics_for_popup(vizero_diagnostic_t* diagnostics, size_t count, size_t error_count, size_t warning_count, size_t info_count) {
     if (!diagnostics || count == 0) return NULL;

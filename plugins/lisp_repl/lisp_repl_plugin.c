@@ -42,6 +42,10 @@
 #include <math.h>
 #include "vizero/log.h"
 
+/* Disable unused function warnings for development code */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 #ifdef _WIN32
     #include <windows.h>
     #include <process.h>
@@ -84,7 +88,7 @@
 
 /* Forward declarations */
 static void lisp_log_message(const char* message);
-static void lisp_set_active_buffer(const char* buffer_name);
+/* static void lisp_set_active_buffer(const char* buffer_name); */  /* Unused function */
 static bool read_from_sbcl(char* buffer, size_t buffer_size, int timeout_ms);
 static bool send_to_sbcl(const char* command);
 static bool send_to_sbcl_silent(const char* command);
@@ -2907,6 +2911,7 @@ static int lisp_cmd_return(vizero_editor_t* editor, const char* args) {
 }
 
 /* Buffer management */
+#if 0  /* Unused function - kept for future use */
 static void lisp_set_active_buffer(const char* buffer_name) {
     strncpy(g_lisp_state->current_buffer, buffer_name, sizeof(g_lisp_state->current_buffer) - 1);
     g_lisp_state->current_buffer[sizeof(g_lisp_state->current_buffer) - 1] = '\0';
@@ -2916,6 +2921,7 @@ static void lisp_set_active_buffer(const char* buffer_name) {
     snprintf(msg, sizeof(msg), "Switched to buffer: %s", buffer_name);
     lisp_log_message(msg);
 }
+#endif  /* End unused lisp_set_active_buffer */
 
 /* Enhanced Phase 2 Rendering System */
 static int lisp_wants_full_window(vizero_editor_t* editor) {
@@ -3335,13 +3341,16 @@ static int lisp_extract_current_input(char* buffer, size_t buffer_size) {
                             buffer[current_len] = '\0';
                         }
                         
-                        /* Append this line */
-                        size_t next_len = strlen(next_line);
+                        /* Append this line safely */
                         size_t space_left = buffer_size - current_len - 1;
-                        if (next_len > space_left) next_len = space_left;
-                        
-                        strncat(buffer, next_line, next_len);
-                        current_len += next_len;
+                        if (space_left > 0) {
+                            size_t chars_to_copy = strlen(next_line);
+                            if (chars_to_copy > space_left) chars_to_copy = space_left;
+                            
+                            strncpy(buffer + current_len, next_line, chars_to_copy);
+                            current_len += chars_to_copy;
+                            buffer[current_len] = '\0';
+                        }
                     }
                 }
                 
@@ -3942,3 +3951,5 @@ void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
     
     printf("[LISP] Lisp REPL plugin cleaned up\n");
 }
+
+#pragma GCC diagnostic pop  /* Re-enable unused function warnings */

@@ -200,20 +200,7 @@ static void irc_reset_static_state(void) {
 static void irc_send_raw(const char* message);
 
 /* Utility functions */
-static void irc_initialize_networking(void) {
-    /* Currently unused function */
-#ifdef _WIN32
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-#endif
-}
 
-static void irc_cleanup_networking(void) {
-    /* Currently unused function */
-#ifdef _WIN32
-    WSACleanup();
-#endif
-}
 
 /* Generate color for nick */
 static uint32_t irc_generate_nick_color(const char* nick) {
@@ -1320,6 +1307,7 @@ static void irc_render_input_box_gl(vizero_renderer_t* renderer, int x, int y, i
 
 /* Legacy SDL Rendering Functions (unused now) */
 
+#if 0  /* Unused function - kept for future use */
 static void irc_render_channel_list(SDL_Renderer* renderer, int x, int y, int width, int height) {
     if (!g_irc_state || !renderer) return;
     
@@ -1386,7 +1374,9 @@ static void irc_render_channel_list(SDL_Renderer* renderer, int x, int y, int wi
         line_y += line_height;
     }
 }
+#endif  /* End unused irc_render_channel_list */
 
+#if 0  /* Unused function - kept for future use */
 static void irc_render_nick_list(SDL_Renderer* renderer, int x, int y, int width, int height) {
     if (!g_irc_state || !renderer) return;
     
@@ -1447,7 +1437,9 @@ static void irc_render_nick_list(SDL_Renderer* renderer, int x, int y, int width
         line_y += line_height;
     }
 }
+#endif  /* End unused irc_render_nick_list */
 
+#if 0  /* Unused function - kept for future use */
 static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int width, int height) {
     if (!g_irc_state || !renderer) return;
     
@@ -1526,7 +1518,9 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
         line_y += line_height;
     }
 }
+#endif  /* End unused irc_render_message_area */
 
+#if 0  /* Unused function - kept for future use */
 static void irc_render_input_box(SDL_Renderer* renderer, int x, int y, int width, int height) {
     if (!g_irc_state || !renderer) return;
     
@@ -1556,6 +1550,7 @@ static void irc_render_input_box(SDL_Renderer* renderer, int x, int y, int width
         irc_draw_simple_text(renderer, prompt, x + 5, y + 5, text_color);
     }
 }
+#endif  /* End unused irc_render_input_box */
 
 
 
@@ -1912,7 +1907,7 @@ typedef struct {
     char context_data[64]; /* Store context (username, buffer name, etc.) */
 } irc_context_menu_t;
 
-static irc_context_menu_t g_context_menu = {false, 0, 0, 0, {0}, {0}, {0}};
+static irc_context_menu_t g_context_menu = {false, 0, 0, 0, {{0}}, {0}, {0}};
 
 /* Context menu helper functions */
 static void irc_show_user_context_menu(int x, int y, const char* username) {
@@ -1936,6 +1931,7 @@ static void irc_show_buffer_context_menu(int x, int y, const char* buffer_name) 
     g_context_menu.y = y;
     g_context_menu.item_count = 0;
     strncpy(g_context_menu.context_data, buffer_name, sizeof(g_context_menu.context_data) - 1);
+    g_context_menu.context_data[sizeof(g_context_menu.context_data) - 1] = '\0';
     
     /* Add menu items */
     snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Close buffer %s", buffer_name);
@@ -2152,12 +2148,14 @@ static int irc_handle_mouse_click(vizero_editor_t* editor, int x, int y, int but
 }
 
 /* Plugin update callback for networking and UI */
+#if 0  /* Unused function - kept for future use */
 static void irc_plugin_update(void) {
     if (!g_irc_state) return;
     
     /* Process incoming IRC data */
     irc_process_incoming();
 }
+#endif  /* End unused irc_plugin_update */
 
 /* Main IRC UI Rendering Function */
 static int irc_render_full_window(vizero_editor_t* editor, vizero_renderer_t* renderer, int width, int height) {
