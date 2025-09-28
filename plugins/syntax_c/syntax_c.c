@@ -156,6 +156,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         /* Comments */
         if (i < line_len - 1 && line[i] == '/' && line[i + 1] == '/') {
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
@@ -167,6 +168,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         }
         
         if (i < line_len - 1 && line[i] == '/' && line[i + 1] == '*') {
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
@@ -179,6 +181,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         /* Preprocessor directives */
         if (line[i] == '#') {
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
@@ -198,6 +201,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             if (i < line_len) i++; /* Include closing quote */
             
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
@@ -217,6 +221,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             if (i < line_len) i++; /* Include closing quote */
             
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
@@ -238,6 +243,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
                 while (i < line_len && (isdigit(line[i]) || line[i] == '.')) i++;
             }
             
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = start;
@@ -262,6 +268,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
             }
             
             if (type != TOKEN_NORMAL) {
+                if (count >= max_tokens) break;
                 vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;
@@ -275,6 +282,7 @@ static int UNUSED_PARAM highlight_c_line(const char* line, size_t line_num,
         
         /* Operators */
         if (strchr("+-*/%=<>!&|^~?:;,.(){}[]", line[i])) {
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
@@ -300,6 +308,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
     while (i < line_len && count < max_tokens) {
         if (isspace(line[i])) { i++; continue; }
         if (line[i] == ';' || (line[i] == '/' && i + 1 < line_len && line[i + 1] == '/')) {
+            if (count >= max_tokens) break;
             vizero_syntax_token_t* token = &tokens[count++];
             token->range.start.line = line_num;
             token->range.start.column = i;
@@ -315,6 +324,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             size_t temp_i = i;
             while (temp_i < line_len && isspace(line[temp_i])) temp_i++;
             if (temp_i < line_len && line[temp_i] == ':') {
+                if (count >= max_tokens) break;
                 vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;
@@ -329,6 +339,7 @@ static int UNUSED_PARAM highlight_asm_line(const char* line, size_t line_num,
             if (is_keyword(line + start, len, asm_instructions)) type = TOKEN_INSTRUCTION;
             else if (is_keyword(line + start, len, asm_registers)) type = TOKEN_REGISTER;
             if (type != TOKEN_NORMAL) {
+                if (count >= max_tokens) break;
                 vizero_syntax_token_t* token = &tokens[count++];
                 token->range.start.line = line_num;
                 token->range.start.column = start;

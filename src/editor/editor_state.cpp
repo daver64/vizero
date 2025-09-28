@@ -4471,20 +4471,37 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
     vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
     if (!buffer || !cursor) return -1;
     
-    /* Get text from system clipboard first */
+    /* Get text from system clipboard first and make a safe local copy */
     char* clipboard_text = SDL_GetClipboardText();
+    char* local_clipboard_copy = NULL;
     const char* content_to_paste = NULL;
     
     if (clipboard_text && strlen(clipboard_text) > 0) {
-        content_to_paste = clipboard_text;
-    } else if (state->clipboard_content) {
-        content_to_paste = state->clipboard_content;
+        /* Make a safe local copy to avoid platform-specific SDL memory issues */
+        size_t text_len = strlen(clipboard_text);
+        local_clipboard_copy = (char*)malloc(text_len + 1);
+        if (local_clipboard_copy) {
+            memcpy(local_clipboard_copy, clipboard_text, text_len);
+            local_clipboard_copy[text_len] = '\0';
+            content_to_paste = local_clipboard_copy;
+        }
+        /* clipboard_text already freed */;
+        clipboard_text = NULL;
     } else {
-        if (clipboard_text) SDL_free(clipboard_text);
-        return -1;
+        if (local_clipboard_copy) free(local_clipboard_copy);
+        clipboard_text = NULL;
+        if (state->clipboard_content) {
+            content_to_paste = state->clipboard_content;
+        } else {
+            return -1;
+        }
     }
     
-
+    /* Additional safety check for content_to_paste */
+    if (!content_to_paste || strlen(content_to_paste) == 0) {
+        if (local_clipboard_copy) free(local_clipboard_copy);
+        return -1;
+    }
     
     vizero_position_t pos = vizero_cursor_get_position(cursor);
     
@@ -4497,7 +4514,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         /* Multi-line paste - split into lines and insert each one */
         char* content_copy = (char*)malloc(strlen(content_to_paste) + 1);
         if (!content_copy) {
-            if (clipboard_text) SDL_free(clipboard_text);
+            if (local_clipboard_copy) free(local_clipboard_copy);
             return -1;
         }
         
@@ -4529,7 +4546,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         lines = (char**)malloc(line_capacity * sizeof(char*));
         if (!lines) {
             free(content_copy);
-            if (clipboard_text) SDL_free(clipboard_text);
+            if (local_clipboard_copy) free(local_clipboard_copy);
             return -1;
         }
         
@@ -4555,7 +4572,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                     }
                     free(lines);
                     free(content_copy);
-                    if (clipboard_text) SDL_free(clipboard_text);
+                    if (local_clipboard_copy) free(local_clipboard_copy);
                     return -1;
                 }
                 lines = new_lines;
@@ -4570,7 +4587,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                 }
                 free(lines);
                 free(content_copy);
-                if (clipboard_text) SDL_free(clipboard_text);
+                if (local_clipboard_copy) free(local_clipboard_copy);
                 return -1;
             }
             
@@ -4586,20 +4603,62 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         }
         
         /* Now insert the lines into the buffer */
+        /* First ensure we have a valid position after any buffer modifications */
+        size_t buffer_line_count = vizero_buffer_get_line_count(buffer);
+        if (buffer_line_count == 0) {
+            /* Create empty buffer with one line if needed */
+            vizero_buffer_insert_line(buffer, 0, "");
+            buffer_line_count = 1;
+            pos.line = 0;
+            pos.column = 0;
+        }
+        
+        /* Ensure position is within bounds */
+        if (pos.line >= buffer_line_count) {
+            pos.line = buffer_line_count - 1;
+        }
+        
         const char* current_line = vizero_buffer_get_line_text(buffer, pos.line);
-        if (current_line && line_count > 0) {
+        if (!current_line) {
+            /* If we still can't get the current line, clean up and fail */
+            for (size_t i = 0; i < line_count; i++) {
+                if (lines[i]) free(lines[i]);
+            }
+            free(lines);
+            free(content_copy);
+            if (local_clipboard_copy) free(local_clipboard_copy);
+            return -1;
+        }
+        
+        if (line_count > 0) {
             size_t current_line_len = strlen(current_line);
             
+            /* Ensure cursor position is within line bounds */
+            size_t safe_column = (pos.column <= current_line_len) ? pos.column : current_line_len;
+            
             /* Split current line: part before cursor + part after cursor */
-            char* line_before = (char*)malloc(pos.column + 1);
-            char* line_after = (char*)malloc(current_line_len - pos.column + 1);
+            char* line_before = (char*)malloc(safe_column + 1);
+            char* line_after = (char*)malloc(current_line_len - safe_column + 1);
             
             if (line_before && line_after) {
-                strncpy(line_before, current_line, pos.column);
-                line_before[pos.column] = '\0';
-                strcpy(line_after, current_line + pos.column);
+                strncpy(line_before, current_line, safe_column);
+                line_before[safe_column] = '\0';
+                strcpy(line_after, current_line + safe_column);
                 
                 /* Create first line: line_before + first_paste_line */
+                /* Check if first line exists before using it */
+                if (!lines[0]) {
+                    free(line_before);
+                    free(line_after);
+                    for (size_t i = 0; i < line_count; i++) {
+                        if (lines[i]) free(lines[i]);
+                    }
+                    free(lines);
+                    free(content_copy);
+                    if (local_clipboard_copy) free(local_clipboard_copy);
+                    return -1;
+                }
+                
                 char* new_first_line = (char*)malloc(strlen(line_before) + strlen(lines[0]) + 1);
                 if (new_first_line) {
                     strcpy(new_first_line, line_before);
@@ -4618,19 +4677,25 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                         
                         /* Handle last line if there are multiple lines */
                         if (line_count > 1) {
-                            char* final_line = (char*)malloc(strlen(lines[line_count - 1]) + strlen(line_after) + 1);
-                            if (final_line) {
-                                strcpy(final_line, lines[line_count - 1]);
-                                strcat(final_line, line_after);
-                                vizero_buffer_insert_line(buffer, insert_line, final_line);
-                                
-                                /* Move cursor to end of pasted content */
-                                vizero_cursor_set_position(cursor, insert_line, strlen(lines[line_count - 1]));
-                                free(final_line);
+                            /* Check if last line exists before using it */
+                            if (lines[line_count - 1]) {
+                                char* final_line = (char*)malloc(strlen(lines[line_count - 1]) + strlen(line_after) + 1);
+                                if (final_line) {
+                                    strcpy(final_line, lines[line_count - 1]);
+                                    strcat(final_line, line_after);
+                                    vizero_buffer_insert_line(buffer, insert_line, final_line);
+                                    
+                                    /* Move cursor to end of pasted content */
+                                    vizero_cursor_set_position(cursor, insert_line, strlen(lines[line_count - 1]));
+                                    free(final_line);
+                                }
                             }
                         } else {
                             /* Single line case - cursor should be at end of pasted text */
-                            vizero_cursor_set_position(cursor, pos.line, strlen(line_before) + strlen(lines[0]));
+                            /* Check if first line exists before using it */
+                            if (lines[0]) {
+                                vizero_cursor_set_position(cursor, pos.line, strlen(line_before) + strlen(lines[0]));
+                            }
                         }
                         
                         vizero_editor_set_status_message_with_timeout(state, "Multi-line text pasted", 2000);
@@ -4644,7 +4709,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                         }
                         free(lines);
                         free(content_copy);
-                        if (clipboard_text) SDL_free(clipboard_text);
+                        if (local_clipboard_copy) free(local_clipboard_copy);
                         return 0;
                     }
                     free(new_first_line);
@@ -4662,16 +4727,35 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         free(content_copy);
     } else {
         /* Single-line paste - insert at current position */
+        /* Ensure position is still valid for single-line paste */
+        size_t buffer_line_count = vizero_buffer_get_line_count(buffer);
+        if (buffer_line_count == 0) {
+            vizero_buffer_insert_line(buffer, 0, "");
+            pos.line = 0;
+            pos.column = 0;
+        } else if (pos.line >= buffer_line_count) {
+            pos.line = buffer_line_count - 1;
+        }
+        
+        /* Validate column position within the line */
+        const char* current_line = vizero_buffer_get_line_text(buffer, pos.line);
+        if (current_line) {
+            size_t line_len = strlen(current_line);
+            if (pos.column > line_len) {
+                pos.column = line_len;
+            }
+        }
+        
         if (vizero_buffer_insert_text(buffer, pos.line, pos.column, content_to_paste) == 0) {
             /* Move cursor to end of pasted text */
             vizero_cursor_set_position(cursor, pos.line, pos.column + strlen(content_to_paste));
             vizero_editor_set_status_message(state, "Text pasted");
-            if (clipboard_text) SDL_free(clipboard_text);
+            if (local_clipboard_copy) free(local_clipboard_copy);
             return 0;
         }
     }
     
-    if (clipboard_text) SDL_free(clipboard_text);
+    if (local_clipboard_copy) free(local_clipboard_copy);
     return -1;
 }
 
