@@ -576,7 +576,8 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             size_t token_count = 0;
             vizero_plugin_manager_highlight_syntax(
                 state->plugin_manager, buffer, i, i+1, tokens, 64, &token_count);
-            for (size_t col = 0; col < strlen(visual); col++) {
+            size_t visual_len = strlen(visual); /* Cache strlen result */
+            for (size_t col = 0; col < visual_len; col++) {
                 size_t logical_col = start + col;
                 
                 /* Get default text colour from theme */

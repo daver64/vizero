@@ -253,19 +253,111 @@ void vizero_file_list_destroy(vizero_file_list_t* list) {
 
 int vizero_project_scan_files(vizero_project_t* project, vizero_file_list_t* files, 
                              const char* pattern, int recursive) {
-    /* TODO: Implement file scanning */
-    (void)project; (void)files; (void)pattern; (void)recursive;
+    if (!project || !files || !project->root_directory) return -1;
+    
+    /* Simple implementation: scan for common source files */
+    if (!pattern) pattern = "*";
+    
+    /* For now, just add files that are already in the project */
+    for (size_t i = 0; i < project->buffer_count; i++) {
+        const char* filename = vizero_buffer_get_filename(project->buffers[i]);
+        if (filename) {
+            /* Add to file list if we have space */
+            if (files->count < files->capacity || files->capacity == 0) {
+                /* Resize if needed */
+                if (files->count >= files->capacity) {
+                    size_t new_capacity = files->capacity == 0 ? 16 : files->capacity * 2;
+                    char** new_files = (char**)realloc(files->files, new_capacity * sizeof(char*));
+                    if (!new_files) return -1;
+                    files->files = new_files;
+                    files->capacity = new_capacity;
+                }
+                
+                files->files[files->count] = strdup(filename);
+                if (files->files[files->count]) {
+                    files->count++;
+                }
+            }
+        }
+    }
+    
     return 0;
 }
 
 int vizero_project_save_workspace(vizero_project_t* project, const char* filename) {
-    /* TODO: Implement workspace saving */
-    (void)project; (void)filename;
+    if (!project || !filename) return -1;
+    
+    FILE* file = fopen(filename, "w");
+    if (!file) return -1;
+    
+    /* Write simple workspace format */
+    fprintf(file, "[vizero_workspace]\n");
+    if (project->name) {
+        fprintf(file, "name=%s\n", project->name);
+    }
+    if (project->root_directory) {
+        fprintf(file, "root=%s\n", project->root_directory);
+    }
+    
+    /* Write open buffers */
+    fprintf(file, "[buffers]\n");
+    for (size_t i = 0; i < project->buffer_count; i++) {
+        const char* buffer_filename = vizero_buffer_get_filename(project->buffers[i]);
+        if (buffer_filename) {
+            fprintf(file, "file=%s\n", buffer_filename);
+        }
+    }
+    
+    fclose(file);
     return 0;
 }
 
 int vizero_project_load_workspace(vizero_project_t* project, const char* filename) {
-    /* TODO: Implement workspace loading */
-    (void)project; (void)filename;
+    if (!project || !filename) return -1;
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) return -1;
+    
+    char line[1024];
+    char* section = NULL;
+    
+    while (fgets(line, sizeof(line), file)) {
+        /* Remove newline */
+        line[strcspn(line, "\r\n")] = 0;
+        
+        /* Skip empty lines and comments */
+        if (line[0] == 0 || line[0] == '#') continue;
+        
+        /* Check for section headers */
+        if (line[0] == '[' && line[strlen(line)-1] == ']') {
+            if (section) free(section);
+            section = strdup(line + 1);
+            section[strlen(section)-1] = 0; /* Remove ] */
+            continue;
+        }
+        
+        /* Parse key=value pairs */
+        char* equals = strchr(line, '=');
+        if (!equals || !section) continue;
+        
+        *equals = 0;
+        char* key = line;
+        char* value = equals + 1;
+        
+        if (strcmp(section, "vizero_workspace") == 0) {
+            if (strcmp(key, "name") == 0) {
+                vizero_project_set_name(project, value);
+            } else if (strcmp(key, "root") == 0) {
+                vizero_project_set_root_directory(project, value);
+            }
+        } else if (strcmp(section, "buffers") == 0) {
+            if (strcmp(key, "file") == 0) {
+                vizero_project_open_file(project, value);
+            }
+        }
+    }
+    
+    if (section) free(section);
+    fclose(file);
     return 0;
 }

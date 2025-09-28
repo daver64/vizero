@@ -1017,12 +1017,6 @@ int vizero_plugin_manager_render_and_present(vizero_plugin_manager_t* manager, i
         return 0;
     }
     
-    static int debug_count = 0;
-    if (debug_count < 3) {
-        printf("[PLUGIN] render_and_present called: %dx%d\n", width, height);
-        debug_count++;
-    }
-    
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {

@@ -97,16 +97,17 @@ const char* vizero_session_get_sessions_directory(void) {
     
     if (!initialized) {
 #ifdef _WIN32
-        const char* appdata = getenv("APPDATA");
-        if (appdata) {
-            snprintf(sessions_dir, sizeof(sessions_dir), "%s\\Vizero\\sessions", appdata);
+        /* Use Documents folder for user sessions */
+        const char* userprofile = getenv("USERPROFILE");
+        if (userprofile) {
+            snprintf(sessions_dir, sizeof(sessions_dir), "%s\\Documents\\Vizero\\sessions", userprofile);
         } else {
             strncpy(sessions_dir, ".\\sessions", sizeof(sessions_dir) - 1);
         }
 #else
         const char* home = getenv("HOME");
         if (home) {
-            snprintf(sessions_dir, sizeof(sessions_dir), "%s/.vizero/sessions", home);
+            snprintf(sessions_dir, sizeof(sessions_dir), "%s/Documents/Vizero/sessions", home);
         } else {
             strncpy(sessions_dir, "./sessions", sizeof(sessions_dir) - 1);
         }

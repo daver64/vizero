@@ -3,9 +3,11 @@
 #include "editor_state_internal.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
+#include "vizero/error.h"
 #include "vizero/project.h"
 #include "vizero/settings.h"
 #include "vizero/search.h"
+#include "vizero/session.h"
 #include "vizero/file_utils.h"
 #include "vizero/editor_window.h"
 #include "vizero/mode_manager.h"
@@ -21,8 +23,10 @@
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
+#define PATH_SEPARATOR "\\"
 #else
 #include <unistd.h>
+#define PATH_SEPARATOR "/"
 #endif
 
 
@@ -443,7 +447,8 @@ vizero_cursor_t* vizero_editor_get_cursor(vizero_editor_state_t* state, size_t i
 }
 
 int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename) {
-    if (!state || !filename || state->buffer_count >= MAX_BUFFERS) return -1;
+    if (!state || !filename) return VIZERO_ERROR_NULL_PARAM;
+    if (state->buffer_count >= MAX_BUFFERS) return VIZERO_ERROR_OVERFLOW;
     
 
     /* Check if buffer is already open */
@@ -458,13 +463,13 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
 
     /* Create new buffer from file */
     vizero_buffer_t* buffer = vizero_buffer_create_from_file(filename);
-    if (!buffer) return -1;
+    if (!buffer) return VIZERO_ERROR_IO;
 
     vizero_buffer_set_filename(buffer, filename);
     vizero_cursor_t* cursor = vizero_cursor_create(buffer);
     if (!cursor) {
         vizero_buffer_destroy(buffer);
-        return -1;
+        return VIZERO_ERROR_MEMORY;
     }
 
     /* If the only buffer is empty and unnamed, replace it */
@@ -498,7 +503,7 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
             
             /* Diagnostics now triggered manually with Ctrl+D */
             
-            return 0;
+            return VIZERO_SUCCESS;
         }
     }
 
@@ -691,14 +696,15 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
         } else {
             vizero_buffer_destroy(buffer);
             vizero_cursor_destroy(cursor);
-            return -1;
+            return VIZERO_ERROR_OVERFLOW;
         }
     }
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer) {
-    if (!state || !buffer || state->buffer_count == 0) return -1;
+    if (!state || !buffer) return VIZERO_ERROR_NULL_PARAM;
+    if (state->buffer_count == 0) return VIZERO_ERROR_NOT_FOUND;
     
     /* Find buffer index */
     size_t buffer_index = SIZE_MAX;
@@ -709,7 +715,7 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
         }
     }
     
-    if (buffer_index == SIZE_MAX) return -1;
+    if (buffer_index == SIZE_MAX) return VIZERO_ERROR_NOT_FOUND;
     
     /* Check if we're closing a help buffer */
     if (state->help_mode_active && buffer_index == state->current_buffer_index) {
@@ -718,7 +724,7 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
     }
     
     /* Don't close the last buffer */
-    if (state->buffer_count == 1) return -1;
+    if (state->buffer_count == 1) return VIZERO_ERROR_INVALID_ARG;
 
     /* Update windows referencing this buffer index using MRU */
     if (state->window_manager) {
@@ -777,11 +783,12 @@ int vizero_editor_close_buffer(vizero_editor_state_t* state, vizero_buffer_t* bu
         }
     }
     
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_editor_switch_buffer(vizero_editor_state_t* state, size_t buffer_index) {
-    if (!state || buffer_index >= state->buffer_count) return -1;
+    if (!state) return VIZERO_ERROR_NULL_PARAM;
+    if (buffer_index >= state->buffer_count) return VIZERO_ERROR_INVALID_ARG;
     size_t old_index = state->current_buffer_index;
     state->current_buffer_index = buffer_index;
     
@@ -794,7 +801,7 @@ int vizero_editor_switch_buffer(vizero_editor_state_t* state, size_t buffer_inde
         vizero_position_t new_pos = vizero_cursor_get_position(state->cursors[buffer_index]);
         vizero_plugin_manager_on_cursor_moved(state->plugin_manager, state->cursors[buffer_index], old_pos, new_pos);
     }
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 /* MRU (Most Recently Used) buffer tracking helpers */
@@ -851,19 +858,21 @@ static size_t vizero_editor_get_previous_buffer(vizero_editor_state_t* state, si
 }
 
 int vizero_editor_next_buffer(vizero_editor_state_t* state) {
-    if (!state || state->buffer_count <= 1) return -1;
+    if (!state) return VIZERO_ERROR_NULL_PARAM;
+    if (state->buffer_count <= 1) return VIZERO_ERROR_NOT_SUPPORTED;
     state->current_buffer_index = (state->current_buffer_index + 1) % state->buffer_count;
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_editor_previous_buffer(vizero_editor_state_t* state) {
-    if (!state || state->buffer_count <= 1) return -1;
+    if (!state) return VIZERO_ERROR_NULL_PARAM;
+    if (state->buffer_count <= 1) return VIZERO_ERROR_NOT_SUPPORTED;
     if (state->current_buffer_index == 0) {
         state->current_buffer_index = state->buffer_count - 1;
     } else {
         state->current_buffer_index--;
     }
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_editor_create_new_buffer(vizero_editor_state_t* state, const char* name) {
@@ -2986,10 +2995,10 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     } else if (strcmp(command, "new") == 0) {
         /* Create new empty buffer */
         if (vizero_editor_create_new_buffer(state, NULL) == 0) {
-            vizero_editor_set_status_message(state, "DEBUG: New buffer created successfully!");
+            vizero_editor_set_status_message(state, "New buffer created");
             return 0;
         } else {
-            vizero_editor_set_status_message(state, "DEBUG: Failed to create new buffer!");
+            vizero_editor_set_status_message(state, "Failed to create new buffer");
             return -1;
         }
         
@@ -3943,9 +3952,23 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
         
         if (state->session_manager) {
-            // TODO: Implement session creation
-            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
-            return 0;
+            /* Create new session with current buffers in Documents */
+            char session_file[512];
+            const char* sessions_dir = vizero_session_get_sessions_directory();
+            snprintf(session_file, sizeof(session_file), "%s" PATH_SEPARATOR "%s.session", sessions_dir, session_name);
+            
+            /* Ensure sessions directory exists */
+            vizero_session_ensure_sessions_directory();
+            
+            if (vizero_editor_save_session(state, session_file) == 0) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Session '%s' created in Documents", session_name);
+                vizero_editor_set_status_message_with_timeout(state, msg, 3000);
+                return 0;
+            } else {
+                vizero_editor_set_status_message_with_timeout(state, "Failed to create session", 3000);
+                return -1;
+            }
         } else {
             vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
             return -1;
@@ -3962,9 +3985,20 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         }
         
         if (state->session_manager) {
-            // TODO: Implement session loading
-            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
-            return 0;
+            /* Load existing session from Documents */
+            char session_file[512];
+            const char* sessions_dir = vizero_session_get_sessions_directory();
+            snprintf(session_file, sizeof(session_file), "%s" PATH_SEPARATOR "%s.session", sessions_dir, session_name);
+            
+            if (vizero_editor_load_session(state, session_file) == 0) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Session '%s' loaded from Documents", session_name);
+                vizero_editor_set_status_message_with_timeout(state, msg, 3000);
+                return 0;
+            } else {
+                vizero_editor_set_status_message_with_timeout(state, "Failed to load session", 3000);
+                return -1;
+            }
         } else {
             vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
             return -1;
@@ -3973,20 +4007,45 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
     } else if (strcmp(command, "sessions") == 0) {
         /* List available sessions */
         if (state->session_manager) {
-            // TODO: Implement session listing
-            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
+            /* List available sessions from Documents directory */
+            const char* sessions_dir = vizero_session_get_sessions_directory();
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Sessions are stored in: %s", sessions_dir);
+            vizero_editor_set_status_message_with_timeout(state, msg, 5000);
             return 0;
         } else {
             vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
             return -1;
         }
         
-    } else if (strcmp(command, "session-save") == 0) {
-        /* Save current session */
+    } else if (strncmp(command, "session-save", 12) == 0) {
+        /* Save current session with optional name */
+        const char* session_name = command + 12;
+        while (*session_name == ' ') session_name++; /* Skip spaces */
+        
+        /* Use default name if none provided */
+        if (*session_name == '\0') {
+            session_name = "current";
+        }
+        
         if (state->session_manager) {
-            // TODO: Implement session saving
-            vizero_editor_set_status_message_with_timeout(state, "Session management not yet implemented", 3000);
-            return 0;
+            /* Build full path in Documents/Vizero/sessions */
+            char session_file[512];
+            const char* sessions_dir = vizero_session_get_sessions_directory();
+            snprintf(session_file, sizeof(session_file), "%s" PATH_SEPARATOR "%s.session", sessions_dir, session_name);
+            
+            /* Ensure sessions directory exists */
+            vizero_session_ensure_sessions_directory();
+            
+            if (vizero_editor_save_session(state, session_file) == 0) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Session '%s' saved to Documents", session_name);
+                vizero_editor_set_status_message_with_timeout(state, msg, 3000);
+                return 0;
+            } else {
+                vizero_editor_set_status_message_with_timeout(state, "Failed to save session", 3000);
+                return -1;
+            }
         } else {
             vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
             return -1;
@@ -5412,9 +5471,6 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
     vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
     
-    printf("DEBUG: Got buffer=%p, cursor=%p\n", (void*)buffer, (void*)cursor);
-    fflush(stdout);
-    
     if (!buffer || !cursor) {
         vizero_editor_hide_completion(state);
         return;
@@ -5430,8 +5486,6 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     size_t trigger_line = state->completion_trigger_position.line;
     
     if (cursor_col >= trigger_col && cursor_line == trigger_line) {
-        printf("DEBUG: Position check passed, proceeding with replacement\n");
-        fflush(stdout);
         /* Find the actual partial word that was typed after the trigger position */
         const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
         size_t word_end_col = cursor_col;
@@ -5562,22 +5616,16 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
                         /* Copy strings to ensure proper memory management */
                         state->diagnostics[i].message = diagnostics[i].message ? strdup(diagnostics[i].message) : NULL;
                         state->diagnostics[i].source = diagnostics[i].source ? strdup(diagnostics[i].source) : NULL;
-                        printf("[DEBUG] Diagnostic %zu: line=%zu, col=%zu-%zu, msg='%s'\n", 
-                               i, diagnostics[i].range.start.line, diagnostics[i].range.start.column, 
-                               diagnostics[i].range.end.column, diagnostics[i].message ? diagnostics[i].message : "null");
                     }
                     state->diagnostic_count = diagnostic_count;
                     state->diagnostic_buffer = buffer;
-                    printf("[DEBUG] Successfully stored %zu diagnostics in editor state\n", diagnostic_count);
                 }
             } else {
-                printf("[DEBUG] No diagnostics from plugin - errors cleared\n");
                 /* Important: Update state even when there are 0 diagnostics to clear old errors */
                 state->diagnostic_count = 0;
                 state->diagnostic_buffer = buffer;
             }
         } else {
-            printf("[DEBUG] Plugin returned error result=%d\n", result);
         }
     }
 }
@@ -5920,4 +5968,71 @@ int vizero_editor_handle_mouse_drag(vizero_editor_state_t* state, int x, int y) 
     vizero_editor_update_selection(state);
     
     return 0;
+}
+
+/* Basic session management functions */
+int vizero_editor_save_session(vizero_editor_state_t* state, const char* filename) {
+    if (!state || !filename) return VIZERO_ERROR_NULL_PARAM;
+    
+    FILE* file = fopen(filename, "w");
+    if (!file) return VIZERO_ERROR_IO;
+    
+    fprintf(file, "[vizero_session]\n");
+    fprintf(file, "buffer_count=%zu\n", state->buffer_count);
+    fprintf(file, "current_buffer=%zu\n", state->current_buffer_index);
+    
+    fprintf(file, "[buffers]\n");
+    for (size_t i = 0; i < state->buffer_count; i++) {
+        const char* buffer_filename = vizero_buffer_get_filename(state->buffers[i]);
+        if (buffer_filename) {
+            fprintf(file, "file=%s\n", buffer_filename);
+        }
+    }
+    
+    fclose(file);
+    return VIZERO_SUCCESS;
+}
+
+int vizero_editor_load_session(vizero_editor_state_t* state, const char* filename) {
+    if (!state || !filename) return VIZERO_ERROR_NULL_PARAM;
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) return VIZERO_ERROR_IO;
+    
+    char line[1024];
+    char* section = NULL;
+    
+    while (fgets(line, sizeof(line), file)) {
+        /* Remove newline */
+        line[strcspn(line, "\r\n")] = 0;
+        
+        /* Skip empty lines and comments */
+        if (line[0] == 0 || line[0] == '#') continue;
+        
+        /* Check for section headers */
+        if (line[0] == '[' && line[strlen(line)-1] == ']') {
+            if (section) free(section);
+            section = strdup(line + 1);
+            section[strlen(section)-1] = 0; /* Remove ] */
+            continue;
+        }
+        
+        /* Parse key=value pairs */
+        char* equals = strchr(line, '=');
+        if (!equals || !section) continue;
+        
+        *equals = 0;
+        char* key = line;
+        char* value = equals + 1;
+        
+        if (strcmp(section, "buffers") == 0) {
+            if (strcmp(key, "file") == 0) {
+                vizero_editor_open_buffer(state, value);
+            }
+        }
+    }
+    
+    if (section) free(section);
+    fclose(file);
+    return VIZERO_SUCCESS;
 }

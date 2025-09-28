@@ -158,17 +158,23 @@ char* vizero_string_join(char** array, size_t count, const char* separator) {
     char* result = (char*)vizero_safe_malloc(total_len + 1);
     if (!result) return NULL;
     
-    result[0] = '\0';
+    /* Use pointer arithmetic instead of strcat for better performance */
+    char* pos = result;
     
     for (size_t i = 0; i < count; i++) {
         if (array[i]) {
-            strcat(result, array[i]);
+            size_t item_len = strlen(array[i]);
+            memcpy(pos, array[i], item_len);
+            pos += item_len;
+            
             if (i < count - 1 && sep_len > 0) {
-                strcat(result, sep);
+                memcpy(pos, sep, sep_len);
+                pos += sep_len;
             }
         }
     }
     
+    *pos = '\0';
     return result;
 }
 
