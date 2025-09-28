@@ -407,11 +407,15 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
         }
         else if (status_bar->panels[i].alignment == VIZERO_ALIGN_RIGHT)
         {
-            if (strlen(right_text) + strlen(panel_texts[i]) + 2 < sizeof(right_text))
+            size_t right_len = strlen(right_text);
+            size_t panel_len = strlen(panel_texts[i]);
+            if (right_len + panel_len + 2 < sizeof(right_text))
             {
-                if (right_text[0] != '\0')
-                    strncat(right_text, " ", sizeof(right_text) - strlen(right_text) - 1);
-                strncat(right_text, panel_texts[i], sizeof(right_text) - strlen(right_text) - 1);
+                if (right_text[0] != '\0') {
+                    strncat(right_text, " ", sizeof(right_text) - right_len - 1);
+                    right_len++;
+                }
+                strncat(right_text, panel_texts[i], sizeof(right_text) - right_len - 1);
             }
             else
             {
@@ -420,11 +424,15 @@ void vizero_status_bar_update(vizero_status_bar_t *status_bar, vizero_editor_sta
         }
         else
         {
-            if (strlen(left_text) + strlen(panel_texts[i]) + 4 < sizeof(left_text))
+            size_t left_len = strlen(left_text);
+            size_t panel_len = strlen(panel_texts[i]);
+            if (left_len + panel_len + 4 < sizeof(left_text))
             {
-                if (left_text[0] != '\0')
-                    strncat(left_text, " | ", sizeof(left_text) - strlen(left_text) - 1);
-                strncat(left_text, panel_texts[i], sizeof(left_text) - strlen(left_text) - 1);
+                if (left_text[0] != '\0') {
+                    strncat(left_text, " | ", sizeof(left_text) - left_len - 1);
+                    left_len += 3;
+                }
+                strncat(left_text, panel_texts[i], sizeof(left_text) - left_len - 1);
             }
             else
             {

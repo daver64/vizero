@@ -991,70 +991,13 @@ SDL_Texture* vizero_plugin_manager_render_plugin_ui(vizero_plugin_manager_t* man
         manager->texture_height = height;
     }
     
-    /* Find plugin that wants to render */
-    for (size_t i = 0; i < manager->plugin_count; i++) {
-        /* OLD SDL RENDERING - DISABLED
-        vizero_plugin_t* plugin = manager->plugins[i];
-        if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {
-            if (plugin->callbacks.wants_full_window(manager->editor)) {
-                // Let plugin render to the texture
-                if (plugin->callbacks.render_to_texture(manager->editor, manager->sdl_renderer, 
-                                                       manager->plugin_texture, width, height)) {
-                    return manager->plugin_texture;
-                }
-            }
-        }
-        OLD SDL RENDERING - DISABLED */
-        (void)i; /* Suppress unused variable warning for commented code */
-    }
+    /* No plugins currently support texture rendering */
+    (void)manager; (void)width; (void)height; /* Suppress unused warnings */
     
     return NULL;
 }
 
-/*  OLD SDL RENDERING FUNCTION - DISABLED
-int vizero_plugin_manager_render_and_present(vizero_plugin_manager_t* manager, int width, int height) {
-    if (!manager || !manager->sdl_renderer) {
-        return 0;
-    }
-    
-    for (size_t i = 0; i < manager->plugin_count; i++) {
-        vizero_plugin_t* plugin = manager->plugins[i];
-        if (plugin && plugin->callbacks.render_to_texture && plugin->callbacks.wants_full_window) {
-            if (plugin->callbacks.wants_full_window(manager->editor)) {
-                if (!manager->plugin_texture || manager->texture_width != width || manager->texture_height != height) {
-                    if (manager->plugin_texture) {
-                        SDL_DestroyTexture(manager->plugin_texture);
-                    }
-                    
-                    manager->plugin_texture = SDL_CreateTexture(manager->sdl_renderer, SDL_PIXELFORMAT_RGBA8888,
-                                                               SDL_TEXTUREACCESS_TARGET, width, height);
-                    if (!manager->plugin_texture) {
-                        return 0;
-                    }
-                    
-                    manager->texture_width = width;
-                    manager->texture_height = height;
-                }
-                
-                if (plugin->callbacks.render_to_texture(manager->editor, manager->sdl_renderer, 
-                                                       manager->plugin_texture, width, height)) {
-                    SDL_SetRenderTarget(manager->sdl_renderer, NULL);
-                    SDL_SetRenderDrawColor(manager->sdl_renderer, 0, 0, 0, 255);
-                    SDL_RenderClear(manager->sdl_renderer);
-                    
-                    SDL_RenderCopy(manager->sdl_renderer, manager->plugin_texture, NULL, NULL);
-                    
-                    SDL_RenderPresent(manager->sdl_renderer);
-                    
-                    return 1;
-                }
-            }
-        }
-    }
-    
-    return 0;
-}
-OLD SDL RENDERING FUNCTION - DISABLED */
+
 
 /* Render plugin UI using OpenGL renderer */
 int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, vizero_renderer_t* renderer, int width, int height) {
@@ -1076,25 +1019,6 @@ int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, v
     return 0;
 }
 
-/* OLD SDL CLEANUP FUNCTION - DISABLED
-void vizero_plugin_manager_cleanup_renderer(vizero_plugin_manager_t* manager) {
-    if (!manager) {
-        return;
-    }
-    
-    if (manager->plugin_texture) {
-        SDL_DestroyTexture(manager->plugin_texture);
-        manager->plugin_texture = NULL;
-    }
-    
-    if (manager->sdl_renderer) {
-        SDL_DestroyRenderer(manager->sdl_renderer);
-        manager->sdl_renderer = NULL;
-    }
-    
-    manager->texture_width = 0;
-    manager->texture_height = 0;
-}
-OLD SDL CLEANUP FUNCTION - DISABLED */
+
 
 

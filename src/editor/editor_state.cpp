@@ -4,6 +4,7 @@
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
 #include "vizero/error.h"
+#include "vizero/memory_utils.h"
 #include "vizero/project.h"
 #include "vizero/settings.h"
 #include "vizero/search.h"
@@ -347,13 +348,13 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
         vizero_settings_destroy(state->settings);
     }
     
-    if (state->clipboard_content) free(state->clipboard_content);
+    if (state->clipboard_content) vizero_safe_free(state->clipboard_content);
     
     /* Clean up compilation output */
-    if (state->last_compile_output) free(state->last_compile_output);
+    if (state->last_compile_output) vizero_safe_free(state->last_compile_output);
     
     /* Clean up popup content */
-    if (state->popup_content) free(state->popup_content);
+    if (state->popup_content) vizero_safe_free(state->popup_content);
     
     /* Clean up search results data */
     if (state->search_result_files) {
@@ -1091,10 +1092,11 @@ void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state) 
                 filename ? filename : "[No Name]",
                 text_len,
                 (i == state->current_buffer_index) ? "  [CURRENT]" : "");
-        strncat(popup, line, sizeof(popup) - strlen(popup) - 1);
+        size_t popup_len = strlen(popup);
+        strncat(popup, line, sizeof(popup) - popup_len - 1);
     }
     
-    strcat(popup, "\nPress ENTER to switch to selected buffer, ESC to cancel");
+    strncat(popup, "\nPress ENTER to switch to selected buffer, ESC to cancel", sizeof(popup) - strlen(popup) - 1);
     
     /* Clean up existing popup content */
     if (state->popup_content) {
@@ -1128,10 +1130,12 @@ void vizero_editor_update_search_result_selector_content(vizero_editor_state_t* 
                 state->search_result_files[i] ? state->search_result_files[i] : "[No Name]",
                 state->search_result_lines[i] + 1,  /* Convert to 1-based for display */
                 state->search_result_columns[i] + 1);
-        strncat(popup, line, sizeof(popup) - strlen(popup) - 1);
+        size_t popup_len = strlen(popup);
+        strncat(popup, line, sizeof(popup) - popup_len - 1);
     }
     
-    strncat(popup, "\nPress ENTER to jump to selected result, ESC to cancel", sizeof(popup) - strlen(popup) - 1);
+    size_t final_popup_len = strlen(popup);
+    strncat(popup, "\nPress ENTER to jump to selected result, ESC to cancel", sizeof(popup) - final_popup_len - 1);
     
     /* Clean up existing popup content */
     if (state->popup_content) {
@@ -2592,7 +2596,8 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
         if (buffer && vizero_buffer_save(buffer) == 0) {
             /* Diagnostics now triggered manually with Ctrl+D */
-            exit(0); /* TODO: Better quit mechanism */
+            state->should_quit = 1; /* Graceful quit mechanism */
+            return 0;
         } else {
             vizero_editor_set_status_message(state, "Error writing file");
             return -1;
@@ -4570,10 +4575,10 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
     /* Handle multi-line paste if we find any line ending characters */
     if (newline_pos != NULL || carriage_return_pos != NULL) {
         /* Multi-line paste - split into lines and insert each one */
-        char* content_copy = (char*)malloc(strlen(content_to_paste) + 1);
+        char* content_copy = (char*)vizero_safe_malloc(strlen(content_to_paste) + 1);
         if (!content_copy) {
-            if (local_clipboard_copy) free(local_clipboard_copy);
-            return -1;
+            if (local_clipboard_copy) vizero_safe_free(local_clipboard_copy);
+            return VIZERO_ERROR_MEMORY;
         }
         
         /* Normalize line endings: convert \r\n and \r to \n */
@@ -4717,7 +4722,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                     return -1;
                 }
                 
-                char* new_first_line = (char*)malloc(strlen(line_before) + strlen(lines[0]) + 1);
+                char* new_first_line = (char*)vizero_safe_malloc(strlen(line_before) + strlen(lines[0]) + 1);
                 if (new_first_line) {
                     strcpy(new_first_line, line_before);
                     strcat(new_first_line, lines[0]);
@@ -4737,7 +4742,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                         if (line_count > 1) {
                             /* Check if last line exists before using it */
                             if (lines[line_count - 1]) {
-                                char* final_line = (char*)malloc(strlen(lines[line_count - 1]) + strlen(line_after) + 1);
+                                char* final_line = (char*)vizero_safe_malloc(strlen(lines[line_count - 1]) + strlen(line_after) + 1);
                                 if (final_line) {
                                     strcpy(final_line, lines[line_count - 1]);
                                     strcat(final_line, line_after);

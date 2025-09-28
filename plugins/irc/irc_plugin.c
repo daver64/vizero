@@ -1485,8 +1485,10 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
         if (msg->type == IRC_MSG_JOIN || msg->type == IRC_MSG_PART) {
             /* System messages in gray */
             msg_color = irc_to_sdl_color(128, 128, 128, 255);
-            strncat(formatted_msg, " ", sizeof(formatted_msg) - strlen(formatted_msg) - 1);
-            strncat(formatted_msg, msg->message, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+            size_t formatted_len = strlen(formatted_msg);
+            strncat(formatted_msg, " ", sizeof(formatted_msg) - formatted_len - 1);
+            formatted_len++;
+            strncat(formatted_msg, msg->message, sizeof(formatted_msg) - formatted_len - 1);
         } else {
             /* Regular chat messages */
             if (msg->nick && strlen(msg->nick) > 0) {
@@ -1500,16 +1502,21 @@ static void irc_render_message_area(SDL_Renderer* renderer, int x, int y, int wi
                 /* Add nick part */
                 char nick_part[128];
                 snprintf(nick_part, sizeof(nick_part), " <%s> ", msg->nick);
-                strncat(formatted_msg, nick_part, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+                size_t formatted_len = strlen(formatted_msg);
+                strncat(formatted_msg, nick_part, sizeof(formatted_msg) - formatted_len - 1);
+                formatted_len = strlen(formatted_msg);
                 
                 /* For now, use white for message text */
                 msg_color = irc_to_sdl_color(255, 255, 255, 255);
+                strncat(formatted_msg, msg->message, sizeof(formatted_msg) - formatted_len - 1);
             } else {
                 /* Message without nick */
                 msg_color = irc_to_sdl_color(255, 255, 255, 255);
-                strncat(formatted_msg, " ", sizeof(formatted_msg) - strlen(formatted_msg) - 1);
+                size_t formatted_len = strlen(formatted_msg);
+                strncat(formatted_msg, " ", sizeof(formatted_msg) - formatted_len - 1);
+                formatted_len++;
+                strncat(formatted_msg, msg->message, sizeof(formatted_msg) - formatted_len - 1);
             }
-            strncat(formatted_msg, msg->message, sizeof(formatted_msg) - strlen(formatted_msg) - 1);
         }
         
         /* Render text */
@@ -2516,13 +2523,7 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
     if (key >= 32 && key <= 126 && !g_irc_state->in_vi_command) { /* Printable ASCII and not in vi command mode */
         char input_char = (char)key;
         
-        /* DEBUG: Print key and modifiers for testing */
-        static int debug_key_count = 0;
-        if (debug_key_count < 5) {
-            printf("[IRC] Key: %d ('%c'), Modifiers: 0x%x, KMOD_SHIFT: 0x%x\n", 
-                   key, (char)key, modifiers, KMOD_SHIFT);
-            debug_key_count++;
-        }
+
         
         /* Handle Shift key for uppercase and symbols */
         if (modifiers & KMOD_SHIFT) { /* Shift key pressed */
