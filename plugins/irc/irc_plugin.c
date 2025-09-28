@@ -2204,7 +2204,6 @@ static int irc_wants_full_window(vizero_editor_t* editor) {
     
     /* CRITICAL: Never take over full window if a dialog is active (e.g., quit confirmation) */
     if (g_editor_api && g_editor_api->is_dialog_active && g_editor_api->is_dialog_active(editor)) {
-        printf("[IRC] Dialog is active, disabling fullscreen mode\n");
         return 0;
     }
     

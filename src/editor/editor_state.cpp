@@ -1340,30 +1340,105 @@ int vizero_editor_create_window_for_buffer(vizero_editor_state_t* state, vizero_
 }
 
 /* Helper function to execute command and capture output */
-static int execute_command_with_output(const char* command, char* output_buffer, size_t buffer_size) {
+static int execute_command_with_output(const char* command, char* output_buffer, size_t buffer_size, size_t* bytes_captured) {
     if (!command || !output_buffer || buffer_size == 0) return -1;
+    
+    if (bytes_captured) *bytes_captured = 0;
     
     output_buffer[0] = '\0';
     
 #ifdef _WIN32
-    /* On Windows, redirect both stdout and stderr to capture all output */
-    char full_command[2048];
-    snprintf(full_command, sizeof(full_command), "%s 2>&1", command);
+    /* Windows version using CreateProcess with pipe redirection */
+    HANDLE hReadPipe, hWritePipe;
+    SECURITY_ATTRIBUTES sa;
     
-    FILE* pipe = popen(full_command, "r");
-    if (!pipe) return -1;
+    /* Set security attributes for inheritable handles */
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
     
-    char line[512];
-    while (fgets(line, sizeof(line), pipe)) {
-        size_t current_len = strlen(output_buffer);
-        size_t line_len = strlen(line);
-        if (current_len + line_len < buffer_size - 1) {
-            strcat(output_buffer, line);
+    /* Create pipe for capturing output */
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        return -1;
+    }
+    
+    /* Ensure read handle is not inherited */
+    SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
+    
+    /* Setup process creation */
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.hStdError = hWritePipe;
+    si.hStdOutput = hWritePipe;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.dwFlags |= STARTF_USESTDHANDLES;
+    
+    /* Create command line with cmd.exe wrapper */
+    char cmdline[2048];
+    snprintf(cmdline, sizeof(cmdline), "cmd.exe /C \"%s\"", command);
+    
+    /* Create the process */
+    BOOL success = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    
+    /* Close write end of pipe */
+    CloseHandle(hWritePipe);
+    
+    if (!success) {
+        CloseHandle(hReadPipe);
+        return -1;
+    }
+    
+    /* Read output from pipe */
+    DWORD bytesRead;
+    char buffer[512];
+    size_t total_bytes = 0;
+    
+    while (ReadFile(hReadPipe, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
+        if (total_bytes + bytesRead < buffer_size - 1) {
+            memcpy(output_buffer + total_bytes, buffer, bytesRead);
+            total_bytes += bytesRead;
+        } else {
+            /* Copy what we can fit */
+            size_t remaining = buffer_size - 1 - total_bytes;
+            if (remaining > 0) {
+                memcpy(output_buffer + total_bytes, buffer, remaining);
+                total_bytes += remaining;
+            }
+            break;
         }
     }
     
-    int exit_code = pclose(pipe);
-    return exit_code;
+    /* Fix any embedded null bytes and carriage returns that would cause display issues */
+    for (size_t i = 0; i < total_bytes; i++) {
+        if (output_buffer[i] == '\0') {
+            output_buffer[i] = ' ';
+        } else if (output_buffer[i] == '\r') {
+            output_buffer[i] = ' ';  /* Replace carriage returns to avoid musical notes */
+        }
+    }
+    
+    /* Null terminate the final result */
+    output_buffer[total_bytes] = '\0';
+    
+    /* Wait for process to complete and get exit code */
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exit_code;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+    
+
+    
+    /* Set the bytes captured */
+    if (bytes_captured) *bytes_captured = total_bytes;
+    
+    /* Cleanup */
+    CloseHandle(hReadPipe);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    
+    return (int)exit_code;
 #else
     /* Unix version using popen */
     char full_command[2048];
@@ -1373,13 +1448,25 @@ static int execute_command_with_output(const char* command, char* output_buffer,
     if (!pipe) return -1;
     
     char line[512];
+    size_t total_bytes = 0;
+    
     while (fgets(line, sizeof(line), pipe)) {
-        size_t current_len = strlen(output_buffer);
         size_t line_len = strlen(line);
-        if (current_len + line_len < buffer_size - 1) {
-            strcat(output_buffer, line);
+        if (total_bytes + line_len < buffer_size - 1) {
+            memcpy(output_buffer + total_bytes, line, line_len);
+            total_bytes += line_len;
+        } else {
+            size_t remaining = buffer_size - 1 - total_bytes;
+            if (remaining > 0) {
+                memcpy(output_buffer + total_bytes, line, remaining);
+                total_bytes += remaining;
+            }
+            break;
         }
     }
+    
+    output_buffer[total_bytes] = '\0';
+    if (bytes_captured) *bytes_captured = total_bytes;
     
     int exit_code = pclose(pipe);
     return WEXITSTATUS(exit_code);
@@ -1389,6 +1476,8 @@ static int execute_command_with_output(const char* command, char* output_buffer,
 /* Compilation helper function */
 static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* args, const char* language) {
     if (!state || !args || !language) return -1;
+    
+
     
     /* Parse arguments (file.c -o output.exe) */
     char input_file[512] = {0};
@@ -1555,19 +1644,34 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
     vizero_editor_set_status_message(state, msg);
     
     /* Capture compiler output */
-    char output[4096] = {0};
-    int result = execute_command_with_output(command_line, output, sizeof(output));
+    char output[8192] = {0};  /* Increased buffer size to match other output buffers */
+    size_t bytes_captured = 0;
+    int result = execute_command_with_output(command_line, output, sizeof(output), &bytes_captured);
+    
+    /* Fix null bytes and carriage returns in compiler output immediately after capture */
+    for (size_t i = 0; i < bytes_captured; i++) {
+        if (output[i] == '\0') {
+            output[i] = ' ';
+        } else if (output[i] == '\r') {
+            output[i] = ' ';  /* Replace carriage returns to avoid musical notes */
+        }
+    }
+    
+
+    
     /* Create compilation result message */
-    char result_msg[5120];
+    char result_msg[8192];  /* Increased buffer size */
     if (result == 0) {
         snprintf(result_msg, sizeof(result_msg), 
-                "Compilation successful: %s\n\nOutput:\n%s", 
-                output_file, output[0] ? output : "(no output)");
+                "=== COMPILATION RESULT ===\nCommand: %s\nExit Code: %d\nStatus: SUCCESS\n\nOutput:\n%s", 
+                command_line, result, output[0] ? output : "(no output)");
     } else {
         snprintf(result_msg, sizeof(result_msg), 
-                "Compilation failed (exit code %d)\n\nOutput:\n%s", 
-                result, output[0] ? output : "(no output)");
+                "=== COMPILATION RESULT ===\nCommand: %s\nExit Code: %d\nStatus: FAILED\n\nOutput:\n%s", 
+                command_line, result, output[0] ? output : "(no output)");
     }
+    
+
     
     /* Show compilation result in popup window for full output */
     vizero_editor_show_popup(state, result_msg, 10000); /* Show for 10 seconds */
@@ -1577,8 +1681,11 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
     if (result == 0) {
         snprintf(short_msg, sizeof(short_msg), "SUCCESS: %s", output_file);
     } else {
-        /* Show first line of error */
-        char* first_line = strtok(output, "\n");
+        /* Show first line of error - use a copy since strtok modifies the string */
+        char output_copy[8192];
+        strncpy(output_copy, output, sizeof(output_copy) - 1);
+        output_copy[sizeof(output_copy) - 1] = '\0';
+        char* first_line = strtok(output_copy, "\n");
         if (first_line) {
             snprintf(short_msg, sizeof(short_msg), "ERROR: %.180s", first_line);
         } else {
@@ -1594,7 +1701,7 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
     }
     
     /* Create full result with command and output */
-    char full_result[6144];
+    char full_result[12288];
     snprintf(full_result, sizeof(full_result),
             "=== COMPILATION RESULT ===\n"
             "Command: %s\n"
@@ -1606,7 +1713,11 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
             (result == 0) ? "SUCCESS" : "FAILED",
             output[0] ? output : "(no output)");
     
+
+    
     state->last_compile_output = strdup(full_result);
+    
+
     
     /* Show popup with compilation result */
     vizero_editor_show_popup(state, full_result, 5000); /* 5 seconds */
@@ -2586,24 +2697,31 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         /* Check project level changes */
         if (state->current_project && vizero_project_has_unsaved_changes(state->current_project)) {
             has_unsaved = 1;
+            printf("DEBUG QUIT: Project has unsaved changes\n");
         }
         
         /* Check buffer level changes - skip scratch buffers */
         if (!has_unsaved) {
+            printf("DEBUG QUIT: Checking %zu buffers for changes\n", state->buffer_count);
             for (size_t i = 0; i < state->buffer_count; i++) {
                 int is_modified = vizero_buffer_is_modified(state->buffers[i]);
                 int is_scratch = vizero_buffer_is_scratch(state->buffers[i]);
                 
+                printf("DEBUG QUIT: Buffer %zu - modified=%d, scratch=%d\n", i, is_modified, is_scratch);
+                
                 if (is_modified && !is_scratch) {
                     has_unsaved = 1;
+                    printf("DEBUG QUIT: Found unsaved changes in buffer %zu\n", i);
                     break;
                 }
             }
         }
         
+        printf("DEBUG QUIT: has_unsaved = %d\n", has_unsaved);
+        
         if (has_unsaved) {
-            vizero_editor_set_status_message_with_timeout(state, "No write since last change (add ! to override)", 3000);
-            return -1;
+            /* Show quit confirmation popup */
+            return vizero_editor_show_quit_confirmation(state);
         }
         
         /* Signal application to quit */

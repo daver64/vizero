@@ -816,50 +816,63 @@ int vizero_application_run(vizero_application_t* app) {
                 int scroll_offset = vizero_editor_get_popup_scroll_offset(app->editor);
                 int visible_lines = (popup_height - 80) / 16; /* Approximate lines that fit (16px per line) */
 
-                /* Create a buffer for the visible portion of text */
+                /* Popup debug output removed for cleaner compilation debugging */
+
+                /* Split content into lines first */
                 const char* line_start = popup_content;
                 int current_line = 0;
                 int lines_added = 0;
                 float line_y = (float)popup_y;
+                
                 while (*line_start && lines_added < visible_lines) {
-                    /* Skip lines before scroll offset */
-                    if (current_line < scroll_offset) {
-                        if (*line_start == '\n') current_line++;
-                        line_start++;
-                        continue;
-                    }
-                    /* Find end of line */
+                    /* Find end of current line */
                     const char* line_end = strchr(line_start, '\n');
                     size_t line_len = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
-                    if (line_len > 511) line_len = 511;
-                    char line_buf[512];
-                    memcpy(line_buf, line_start, line_len);
-                    line_buf[line_len] = '\0';
+                    
+                    /* Only process lines that should be visible (after scroll offset) */
+                    if (current_line >= scroll_offset) {
+                        /* Increase line buffer size to handle longer compiler messages */
+                        if (line_len > 1023) line_len = 1023;
+                        char line_buf[1024];
+                        memcpy(line_buf, line_start, line_len);
+                        line_buf[line_len] = '\0';
 
-                    /* Determine colour by suffix */
-                    vizero_colour_t colour = {1.0f, 1.0f, 1.0f, 1.0f};
-                    if (strstr(line_buf, "[DIR]")) {
-                        colour.r = 128.0f/255.0f; colour.g = 192.0f/255.0f; colour.b = 255.0f/255.0f; colour.a = 1.0f; // pale blue
-                    } else if (strstr(line_buf, "[EXE]")) {
-                        colour.r = 255.0f/255.0f; colour.g = 128.0f/255.0f; colour.b = 128.0f/255.0f; colour.a = 1.0f; // pale red
-                    } else if (strstr(line_buf, "[FILE]")) {
-                        colour.r = 255.0f/255.0f; colour.g = 255.0f/255.0f; colour.b = 192.0f/255.0f; colour.a = 1.0f; // pale yellow
+                        /* Line debug output removed */
+
+                        /* Use white color for compiler output */
+                        vizero_colour_t colour = {1.0f, 1.0f, 1.0f, 1.0f};
+                        
+                        /* Color coding for specific content types */
+                        if (strstr(line_buf, "error") || strstr(line_buf, "Error") || strstr(line_buf, "ERROR")) {
+                            colour.r = 1.0f; colour.g = 0.4f; colour.b = 0.4f; colour.a = 1.0f; // Red for errors
+                        } else if (strstr(line_buf, "warning") || strstr(line_buf, "Warning") || strstr(line_buf, "WARNING")) {
+                            colour.r = 1.0f; colour.g = 0.8f; colour.b = 0.2f; colour.a = 1.0f; // Yellow for warnings
+                        } else if (strstr(line_buf, "[DIR]")) {
+                            colour.r = 128.0f/255.0f; colour.g = 192.0f/255.0f; colour.b = 255.0f/255.0f; colour.a = 1.0f; // pale blue
+                        } else if (strstr(line_buf, "[EXE]")) {
+                            colour.r = 255.0f/255.0f; colour.g = 128.0f/255.0f; colour.b = 128.0f/255.0f; colour.a = 1.0f; // pale red
+                        } else if (strstr(line_buf, "[FILE]")) {
+                            colour.r = 255.0f/255.0f; colour.g = 255.0f/255.0f; colour.b = 192.0f/255.0f; colour.a = 1.0f; // pale yellow
+                        }
+
+                        vizero_text_info_t popup_text_info;
+                        popup_text_info.x = (float)popup_x;
+                        popup_text_info.y = line_y;
+                        popup_text_info.colour = colour;
+                        popup_text_info.font = NULL;
+                        vizero_renderer_draw_text(app->renderer, line_buf, &popup_text_info);
+
+                        lines_added++;
+                        line_y += 16.0f;
                     }
-
-                    vizero_text_info_t popup_text_info;
-                    popup_text_info.x = (float)popup_x;
-                    popup_text_info.y = line_y;
-                    popup_text_info.colour = colour;
-                    popup_text_info.font = NULL;
-                    vizero_renderer_draw_text(app->renderer, line_buf, &popup_text_info);
-
-                    lines_added++;
+                    
+                    /* Move to next line */
+                    current_line++;
                     if (line_end) {
                         line_start = line_end + 1;
                     } else {
                         break;
                     }
-                    line_y += 16.0f;
                 }
 
                 /* Draw dismiss instruction */
