@@ -4,6 +4,7 @@
  */
 
 #include "vizero/plugin_interface.h"
+#include "vizero/version.h"
 #include "vizero/renderer.h"
 #include "vizero/colour_theme.h"
 #include <stdio.h>
@@ -2703,7 +2704,7 @@ static vizero_plugin_command_t irc_commands[] = {
 /* Plugin information */
 VIZERO_PLUGIN_DEFINE_INFO(
     "irc_client",                          /* name */
-    "1.0.0",                              /* version */
+    VIZERO_PLUGIN_VERSION,                /* version */
     "Vizero Team",                        /* author */
     "Full-featured IRC Client Plugin",    /* description */
     VIZERO_PLUGIN_TYPE_GENERIC            /* type */

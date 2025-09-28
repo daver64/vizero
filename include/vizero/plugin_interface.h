@@ -8,7 +8,7 @@
  * here to integrate with the Vizero plugin system.
  * 
  * @author Vizero Team
- * @version 1.0.0
+ * @version 0.0.5
  * @date 2025
  * @copyright Licensed under the same terms as Vizero
  * 
@@ -18,6 +18,8 @@
 
 #ifndef VIZERO_PLUGIN_INTERFACE_H
 #define VIZERO_PLUGIN_INTERFACE_H
+
+#include "vizero/version.h"
 
 #ifdef __cplusplus
 extern "C" {

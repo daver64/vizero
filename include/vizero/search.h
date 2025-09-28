@@ -53,6 +53,38 @@ void vizero_search_incremental_end(vizero_editor_state_t* state);
 /* Cleanup function - call when editor state is destroyed */
 void vizero_search_cleanup_editor_state(vizero_editor_state_t* state);
 
+/* Advanced regex search and replace with capture groups */
+int vizero_search_regex(vizero_editor_state_t* state, const char* regex_pattern);
+int vizero_substitute_regex(vizero_editor_state_t* state, const char* regex_pattern, 
+                            const char* replacement_template, int line_start, int line_end, int global);
+int vizero_substitute_regex_all(vizero_editor_state_t* state, const char* regex_pattern, 
+                                const char* replacement_template, int global);
+
+/* Interactive replacement with confirmation */
+typedef enum {
+    VIZERO_REPLACE_YES,
+    VIZERO_REPLACE_NO,
+    VIZERO_REPLACE_ALL,
+    VIZERO_REPLACE_QUIT
+} vizero_replace_action_t;
+
+typedef vizero_replace_action_t (*vizero_replace_callback_t)(const char* match, 
+                                                             const char* replacement, 
+                                                             size_t line, size_t column, 
+                                                             void* user_data);
+
+int vizero_substitute_interactive(vizero_editor_state_t* state, const char* pattern, 
+                                  const char* replacement, vizero_replace_callback_t callback, 
+                                  void* user_data);
+
+/* Case-sensitive/insensitive control */
+void vizero_search_set_case_sensitive(vizero_editor_state_t* state, int case_sensitive);
+int vizero_search_is_case_sensitive(vizero_editor_state_t* state);
+
+/* Whole word matching */
+void vizero_search_set_whole_word(vizero_editor_state_t* state, int whole_word);
+int vizero_search_is_whole_word(vizero_editor_state_t* state);
+
 #ifdef __cplusplus
 }
 #endif

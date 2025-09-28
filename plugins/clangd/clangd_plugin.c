@@ -12,6 +12,7 @@
 #endif
 
 #include "vizero/plugin_interface.h"
+#include "vizero/version.h"
 #include "vizero/lsp_client.h"
 #include "vizero/buffer.h"
 #include "vizero/json_parser.h"
@@ -596,7 +597,7 @@ static int clangd_on_buffer_open(vizero_buffer_t* buffer, const char* filename) 
 
 VIZERO_PLUGIN_DEFINE_INFO(
     "clangd Language Server",
-    "1.0.0",
+    VIZERO_PLUGIN_VERSION,
     "Vizero Team",
     "clangd Language Server Plugin for C/C++ IntelliSense",
     VIZERO_PLUGIN_TYPE_LANGUAGE_SERVER

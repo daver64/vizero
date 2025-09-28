@@ -1,7 +1,7 @@
 # Vizero Editor Manual
 
 
-**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, Markdown syntax highlighting, and advanced word wrap.
+**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, advanced editing features including multiple cursors and block selection, intelligent code folding and indentation, command palette, and comprehensive plugin architecture. **Version 0.0.5** represents the completion of Phase 4: Advanced Features & Polish.
 
 ---
 
@@ -15,18 +15,23 @@
 4. [Text Editing](#text-editing)
 5. [Search and Replace](#search-and-replace)
 6. [Selection and Clipboard](#selection-and-clipboard)
-7. [Undo System](#undo-system)
-8. [Buffer Management](#buffer-management)
-9. [File Operations](#file-operations)
-10. [Window Management](#window-management)
-11. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
-12. [IRC Client Integration](#irc-client-integration)
-13. [SQL REPL Integration](#sql-repl-integration)
-14. [Compiler Integration](#compiler-integration)
-15. [Settings and Configuration](#settings-and-configuration)
-16. [Advanced Features](#advanced-features)
-17. [Working Directory](#working-directory)
-18. [Keyboard Reference](#keyboard-reference)
+7. [Multiple Cursors](#multiple-cursors)
+8. [Block Selection](#block-selection)
+9. [Code Folding](#code-folding)
+10. [Smart Indentation](#smart-indentation)
+11. [Command Palette](#command-palette)
+12. [Undo System](#undo-system)
+13. [Buffer Management](#buffer-management)
+14. [File Operations](#file-operations)
+15. [Window Management](#window-management)
+16. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
+17. [IRC Client Integration](#irc-client-integration)
+18. [SQL REPL Integration](#sql-repl-integration)
+19. [Compiler Integration](#compiler-integration)
+20. [Settings and Configuration](#settings-and-configuration)
+21. [Advanced Features](#advanced-features)
+22. [Working Directory](#working-directory)
+23. [Keyboard Reference](#keyboard-reference)
 ## Working Directory
 
 ### Changing the Working Directory
@@ -285,6 +290,300 @@ These commands show informational popups about navigation features that are plan
 | `Ctrl+V` | Paste at cursor |
 
 **Note**: Clipboard operations work with Windows system clipboard.
+
+---
+
+## Multiple Cursors
+
+Vizero supports advanced multiple cursor functionality, allowing you to edit text at multiple locations simultaneously. This feature dramatically improves productivity for repetitive editing tasks.
+
+### Multiple Cursor Operations
+
+#### Adding Cursors
+- **Manual Placement**: Add cursors at specific positions using mouse or keyboard commands
+- **Pattern Matching**: Add cursors at all occurrences of selected text
+- **Multi-Selection**: Create cursors at multiple locations for synchronized editing
+
+#### Synchronized Operations
+All text operations work across multiple cursors simultaneously:
+- **Text Insertion**: Type once, insert at all cursor positions
+- **Text Deletion**: Delete characters at all cursor positions
+- **Navigation**: Move all cursors together
+
+### Multiple Cursor Workflow
+
+**Example Use Cases:**
+- **Variable Renaming**: Place cursors at all variable occurrences and rename in one operation
+- **List Formatting**: Add punctuation or formatting to multiple list items simultaneously
+- **Column Editing**: Add or modify text in specific columns across multiple lines
+
+### Multiple Cursor Commands
+
+| Command | Action |
+|---------|--------|
+| `Ctrl+Alt+Down` | Add cursor on next line at same column |
+| `Ctrl+Alt+Up` | Add cursor on previous line at same column |
+| `Ctrl+D` | Add cursor at next occurrence of selected word |
+| `Ctrl+Shift+L` | Add cursors at all occurrences of selected word |
+| `Alt+Click` | Add cursor at mouse position |
+| `Esc` | Clear all additional cursors (keep primary) |
+
+**Multi-Cursor Features:**
+- **Visual Feedback**: All cursor positions clearly marked
+- **Synchronized Typing**: Text appears at all cursor positions
+- **Independent Navigation**: Each cursor can be positioned independently
+- **Smart Deletion**: Delete operations work correctly at all positions
+
+---
+
+## Block Selection
+
+Block (rectangular) selection allows you to select and manipulate rectangular regions of text, perfect for working with columnar data, aligned code, or structured text formats.
+
+### Block Selection Operations
+
+#### Starting Block Selection
+- **Visual Block Mode**: Enter block selection mode for rectangular text selection
+- **Column Selection**: Select vertical columns of text across multiple lines
+- **Precise Control**: Define exact rectangular regions for manipulation
+
+#### Block Selection Commands
+
+| Command | Action |
+|---------|--------|
+| `Ctrl+Shift+Alt+Arrow` | Start/extend block selection |
+| `Shift+Alt+Down/Up` | Extend block selection vertically |
+| `Shift+Alt+Left/Right` | Extend block selection horizontally |
+| `Ctrl+Shift+Alt+A` | Select all as block |
+
+### Block Operations
+
+#### Copy/Cut/Paste
+- **Block Copy**: Copy rectangular regions preserving structure  
+- **Block Cut**: Remove rectangular regions cleanly
+- **Block Paste**: Insert rectangular content at cursor position
+
+#### Block Editing
+- **Insert**: Add text to all lines in block selection
+- **Delete**: Remove content from rectangular region
+- **Replace**: Replace text within block boundaries
+
+### Block Selection Use Cases
+
+**Data Manipulation:**
+```text
+Name      Age    City
+John      25     NYC
+Jane      30     LA
+Bob       35     Chicago
+
+# Select the Age column and increment all values
+# Select the City column and standardize formatting
+```
+
+**Code Alignment:**
+```c
+int    variable1    = 10;
+float  variable2    = 3.14;
+char   variable3    = 'a';
+
+# Select assignment operators and align them
+```
+
+---
+
+## Code Folding
+
+Code folding allows you to collapse and expand sections of code, making it easier to navigate large files and focus on specific areas of your codebase.
+
+### Folding Types
+
+Vizero supports multiple types of code folds:
+- **Function Folding**: Collapse entire function definitions
+- **Class Folding**: Hide class implementations  
+- **Block Folding**: Fold code blocks enclosed in braces
+- **Comment Folding**: Collapse large comment sections
+- **Region Folding**: Custom regions with `#region`/`#endregion` markers
+- **Import Folding**: Collapse import/include statements
+
+### Code Folding Commands
+
+| Command | Action |
+|---------|--------|
+| `za` | Toggle fold at cursor position |
+| `zo` | Open fold at cursor |
+| `zc` | Close fold at cursor |
+| `zR` | Open all folds in buffer |
+| `zM` | Close all folds in buffer |
+| `zf` | Create fold for selected text |
+| `zd` | Delete fold at cursor |
+
+### Folding Features
+
+#### Visual Indicators
+- **Fold Markers**: Visual indicators in the gutter show foldable regions
+- **Fold Labels**: Collapsed regions show descriptive text (function names, etc.)
+- **Nesting Levels**: Hierarchical folding with proper nesting visualization
+
+#### Language-Aware Folding
+- **Automatic Detection**: Recognize foldable structures based on file type
+- **Syntax Integration**: Work with syntax highlighting for accurate fold boundaries
+- **Customizable Rules**: Configure folding behavior per language
+
+### Folding Configuration
+
+#### Auto-Folding Settings
+```
+:set fold_functions on/off      # Auto-fold function definitions
+:set fold_classes on/off        # Auto-fold class definitions  
+:set fold_comments on/off       # Auto-fold large comment blocks
+:set fold_imports on/off        # Auto-fold import sections
+:set min_fold_lines 3           # Minimum lines required for folding
+```
+
+#### Manual Folding
+- **Custom Regions**: Create folds with `zf` command
+- **Selection-Based**: Fold any selected text region
+- **Persistent Folds**: Manual folds preserved across sessions
+
+---
+
+## Smart Indentation
+
+Smart indentation provides language-aware, context-sensitive automatic indentation that understands code structure and formatting conventions.
+
+### Indentation Styles
+
+#### Style Configuration
+- **Tabs**: Use tab characters for indentation
+- **Spaces**: Use spaces for consistent alignment
+- **Mixed**: Allow combination of tabs and spaces
+- **Configurable Width**: Set tab width and indent size independently
+
+### Smart Indentation Features
+
+#### Language-Aware Rules
+- **C/C++**: Proper brace alignment, case label indentation
+- **Python**: PEP 8 compliant indentation rules
+- **JavaScript**: Modern JS/ES6 indentation patterns
+- **Lisp**: S-expression aligned indentation
+- **Generic**: Intelligent fallback for any language
+
+#### Context-Sensitive Behavior
+- **Bracket Matching**: Automatic indentation based on opening/closing brackets
+- **Scope Awareness**: Indent based on code block structure
+- **Continuation Lines**: Proper alignment for multi-line statements
+- **Parameter Alignment**: Align function parameters and arguments
+
+### Smart Indentation Commands
+
+| Command | Action |
+|---------|--------|
+| `==` | Auto-indent current line |
+| `gg=G` | Auto-indent entire file |
+| `=` | Auto-indent selected text |
+| `:retab` | Convert between tabs and spaces |
+| `:set expandtab` | Use spaces instead of tabs |
+| `:set noexpandtab` | Use tabs for indentation |
+
+### Indentation Settings
+
+#### Basic Configuration
+```
+:set tab_width 4                # Set tab display width
+:set indent_size 4              # Set indentation amount
+:set auto_indent on/off         # Enable automatic indentation
+:set smart_indent on/off        # Enable language-aware indentation
+```
+
+#### Advanced Options
+```
+:set trim_trailing_whitespace on/off    # Remove trailing spaces
+:set align_function_parameters on/off   # Align function parameters
+:set align_assignment_operators on/off  # Align assignment operators
+:set indent_case_labels on/off          # Indent switch case labels
+```
+
+### Automatic Indentation
+
+#### Trigger Events
+- **New Line**: Automatic indentation when pressing Enter
+- **Character Input**: Smart indentation on special characters (braces, etc.)
+- **Paste Operations**: Auto-indent pasted content to match context
+
+#### Smart Features
+- **Blank Line Handling**: Intelligent behavior for empty lines
+- **Comment Preservation**: Maintain comment formatting during indentation
+- **String Literal Safety**: Avoid modifying indentation within strings
+
+---
+
+## Command Palette
+
+The Command Palette provides a powerful, searchable interface to access all editor commands, making it easy to discover and execute functionality without memorizing complex key combinations.
+
+### Opening the Command Palette
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Shift+P` | Open Command Palette |
+| `F1` | Open Command Palette (alternative) |
+
+### Command Palette Features
+
+#### Fuzzy Search
+- **Intelligent Matching**: Find commands by typing partial names
+- **Abbreviation Support**: Use abbreviations like "bf" for "Buffer Find"
+- **Real-time Filtering**: Results update as you type
+
+#### Command Categories
+- **File Operations**: Open, save, close, recent files
+- **Buffer Management**: Switch buffers, create new buffers
+- **Window Control**: Split, close, resize windows
+- **Search & Replace**: Find, replace, search in files
+- **Developer Tools**: Compile, run, debug, format code
+- **Settings**: Change preferences, toggle features
+- **Help & Info**: Documentation, version info, shortcuts
+
+### Command Palette Navigation
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` | Navigate command list |
+| `Enter` | Execute selected command |
+| `Esc` | Close Command Palette |
+| `Tab` | Auto-complete command name |
+
+### Example Command Palette Usage
+
+**Common Workflows:**
+```
+Ctrl+Shift+P → "save all" → Enter        # Save all modified buffers
+Ctrl+Shift+P → "split" → Enter           # Split current window
+Ctrl+Shift+P → "theme" → Enter           # Change color theme
+Ctrl+Shift+P → "fold all" → Enter        # Fold all code sections
+Ctrl+Shift+P → "format" → Enter          # Format current buffer
+```
+
+### Command Palette Configuration
+
+#### Customization Options
+- **Command Registration**: Add custom commands to palette
+- **Keybinding Display**: Show keyboard shortcuts for commands
+- **Category Organization**: Group related commands together
+- **Recent Commands**: Quick access to frequently used commands
+
+#### Adding Custom Commands
+```c
+// Example: Register custom command in plugin
+vizero_command_palette_register_command(palette,
+    "Format JSON", 
+    "Format current buffer as JSON",
+    "Developer Tools",
+    "Ctrl+Alt+J",
+    format_json_command,
+    NULL);
+```
 
 ---
 
@@ -1208,6 +1507,28 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 | `cpp_compiler_path` | "" | Path to C++ compiler executable |
 | `assembler_path` | "" | Path to assembler executable |
 
+### Phase 4 Advanced Settings
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `multi_cursor_mode` | false | Enable multiple cursor support |
+| `block_selection_mode` | false | Enable block selection support |
+| `search_case_sensitive` | false | Case-sensitive search by default |
+| `search_whole_word` | false | Whole-word matching by default |
+| `search_regex_enabled` | true | Enable regex search patterns |
+| `fold_functions` | true | Auto-fold function definitions |
+| `fold_classes` | true | Auto-fold class definitions |
+| `fold_comments` | false | Auto-fold large comment blocks |
+| `fold_imports` | true | Auto-fold import sections |
+| `min_fold_lines` | 3 | Minimum lines required for folding |
+| `smart_indent` | true | Enable smart indentation |
+| `indent_style` | "spaces" | Indentation style (spaces/tabs/mixed) |
+| `indent_size` | 4 | Indentation size for spaces |
+| `trim_trailing_whitespace` | true | Remove trailing whitespace |
+| `align_function_parameters` | true | Align function parameters |
+| `align_assignment_operators` | false | Align assignment operators |
+| `indent_case_labels` | true | Indent switch case labels |
+| `command_palette_fuzzy_search` | true | Enable fuzzy search in command palette |
+
 
 ### Persistence
 - Settings automatically saved to `%APPDATA%\Vizero\settings.ini`
@@ -1281,6 +1602,46 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 | `Ctrl+A` | Select all |
 | `F11` | Toggle fullscreen |
 | `Esc` | Dismiss popup |
+
+#### Multiple Cursors (Normal Mode)
+| Key | Action |
+|-----|--------|
+| `Ctrl+Alt+Down` | Add cursor on next line |
+| `Ctrl+Alt+Up` | Add cursor on previous line |
+| `Ctrl+D` | Add cursor at next word occurrence |
+| `Ctrl+Shift+L` | Add cursors at all word occurrences |
+| `Alt+Click` | Add cursor at mouse position |
+
+#### Block Selection (Normal Mode)
+| Key | Action |
+|-----|--------|
+| `Ctrl+Shift+Alt+Arrow` | Start/extend block selection |
+| `Shift+Alt+Down/Up` | Extend block vertically |
+| `Shift+Alt+Left/Right` | Extend block horizontally |
+
+#### Code Folding (Normal Mode)
+| Key | Action |
+|-----|--------|
+| `za` | Toggle fold at cursor |
+| `zo` | Open fold |
+| `zc` | Close fold |
+| `zR` | Open all folds |
+| `zM` | Close all folds |
+| `zf` | Create fold for selection |
+| `zd` | Delete fold |
+
+#### Smart Indentation (Normal Mode)
+| Key | Action |
+|-----|--------|
+| `==` | Auto-indent current line |
+| `gg=G` | Auto-indent entire file |
+| `=` | Auto-indent selection |
+
+#### Command Palette
+| Key | Action |
+|-----|--------|
+| `Ctrl+Shift+P` | Open Command Palette |
+| `F1` | Open Command Palette (alternative) |
 
 ### Insert Mode
 | Key | Action |
@@ -1382,6 +1743,54 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 | `:redo` | Redo last undone change |
 | `:n`, `:next` | Edit next file |
 | `:prev`, `:previous` | Edit previous file |
+
+### Multiple Cursors
+| Command | Description |
+|---------|-------------|
+| `:multicursor add <line> <col>` | Add cursor at position |
+| `:multicursor clear` | Clear all additional cursors |
+| `:multicursor toggle` | Toggle multi-cursor mode |
+
+### Block Selection
+| Command | Description |
+|---------|-------------|
+| `:block start` | Start block selection |
+| `:block end` | End block selection |
+| `:block copy` | Copy block selection |
+| `:block cut` | Cut block selection |
+| `:block paste` | Paste as block |
+| `:block delete` | Delete block selection |
+
+### Code Folding
+| Command | Description |
+|---------|-------------|
+| `:fold` | Toggle fold at cursor |
+| `:fold open` | Open fold at cursor |
+| `:fold close` | Close fold at cursor |
+| `:fold all` | Close all folds |
+| `:fold none` | Open all folds |
+| `:fold create` | Create fold for selection |
+| `:fold delete` | Delete fold at cursor |
+
+### Smart Indentation
+| Command | Description |
+|---------|-------------|
+| `:indent` | Auto-indent current line |
+| `:indent all` | Auto-indent entire buffer |
+| `:indent selection` | Auto-indent selected text |
+| `:retab` | Convert tabs to spaces or vice versa |
+| `:set expandtab` | Use spaces instead of tabs |
+| `:set noexpandtab` | Use tabs for indentation |
+
+### Advanced Search & Replace
+| Command | Description |
+|---------|-------------|
+| `:search regex <pattern>` | Search using regular expressions |
+| `:replace regex <pattern> <replacement>` | Replace using regex with capture groups |
+| `:search case-sensitive` | Enable case-sensitive search |
+| `:search ignore-case` | Enable case-insensitive search |
+| `:search whole-word` | Enable whole-word matching |
+| `:replace interactive` | Interactive replacement with confirmation |
 
 ### Line Range Operations
 | Command | Description |
@@ -1495,7 +1904,7 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 
 ## Summary
 
-Vizero is a remarkably comprehensive vi clone with an extensive command set that covers all essential vi/vim functionality and more. With over 45 implemented commands, it provides:
+Vizero is a remarkably comprehensive vi clone with an extensive command set that covers all essential vi/vim functionality and advanced modern features. With over 60 implemented commands and Phase 4 enhancements, it provides:
 
 - **Complete file and buffer management** - Open, save, switch between multiple files
 - **Advanced text editing** - Full search/replace with regex, undo system, clipboard integration  
@@ -1505,7 +1914,25 @@ Vizero is a remarkably comprehensive vi clone with an extensive command set that
 - **Session management** - Save and restore workspace sessions for project continuity
 - **Vi compatibility** - Standard navigation, modes, and command structure
 
-The editor successfully combines classic vi behavior with modern conveniences, making it both familiar to vi users and accessible to newcomers.
+### Phase 4: Advanced Features & Polish (Version 0.0.5)
+
+**Advanced Editing Capabilities:**
+- **Multiple Cursors** - Edit at multiple positions simultaneously with synchronized operations
+- **Block Selection** - Rectangular text selection and column-wise manipulation
+- **Code Folding** - Language-aware folding with support for functions, classes, and custom regions
+- **Smart Indentation** - Multi-language intelligent indentation with configurable styles
+
+**Enhanced User Experience:**
+- **Command Palette** - Searchable command interface with fuzzy matching and categorization
+- **Advanced Search** - Regex support, capture groups, interactive replacement, and flexible matching options
+- **Centralized Version Management** - Unified version system (0.0.5) across all components
+
+**System Maturity:**
+- **Robust Plugin Architecture** - Enhanced plugin system with version consistency
+- **Comprehensive API** - Well-documented interfaces for extensibility
+- **Professional Polish** - Clean builds, error handling, and user experience refinements
+
+The editor successfully combines classic vi behavior with cutting-edge modern features, making it both familiar to vi users and competitive with contemporary editors. Vizero represents a mature, feature-complete text editor suitable for professional development workflows while maintaining the efficiency and elegance of the vi editing paradigm.
 
 ---
 

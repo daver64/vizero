@@ -1,8 +1,10 @@
 /* Enhanced multi-buffer implementation */
 #include "vizero/editor_state.h"
+#include "vizero/version.h"
 #include "editor_state_internal.h"
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
+#include "vizero/line.h"
 #include "vizero/error.h"
 #include "vizero/memory_utils.h"
 #include "vizero/project.h"
@@ -349,6 +351,9 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     }
     
     if (state->clipboard_content) vizero_safe_free(state->clipboard_content);
+    
+    /* Clean up multi-cursors */
+    vizero_editor_clear_multi_cursors(state);
     
     /* Clean up compilation output */
     if (state->last_compile_output) vizero_safe_free(state->last_compile_output);
@@ -2399,7 +2404,7 @@ static int vizero_show_version_info(vizero_editor_state_t* state) {
     if (!state) return -1;
     
     const char* version_info = 
-        "Vizero - Vi Clone v1.0.0\n\n"
+        "Vizero - Vi Clone v" VIZERO_VERSION_STRING "\n\n"
         "Build Information:\n"
         "- Built with SDL2 and OpenGL\n"
         "- Cross-platform plugin support\n"
@@ -6069,4 +6074,418 @@ int vizero_editor_load_session(vizero_editor_state_t* state, const char* filenam
     if (section) free(section);
     fclose(file);
     return VIZERO_SUCCESS;
+}
+
+/* Multiple Cursors Implementation */
+
+int vizero_editor_add_cursor_at_position(vizero_editor_state_t* state, size_t line, size_t column) {
+    if (!state) return -1;
+    
+    /* Check if we need to expand capacity */
+    if (state->multi_cursor_count >= state->multi_cursor_capacity) {
+        size_t new_capacity = state->multi_cursor_capacity ? state->multi_cursor_capacity * 2 : 4;
+        vizero_cursor_t** new_cursors = (vizero_cursor_t**)realloc(
+            state->multi_cursors, new_capacity * sizeof(vizero_cursor_t*));
+        
+        if (!new_cursors) return -1;
+        
+        state->multi_cursors = new_cursors;
+        state->multi_cursor_capacity = new_capacity;
+    }
+    
+    /* Create new cursor */
+    vizero_cursor_t* new_cursor = vizero_cursor_create(vizero_editor_get_current_buffer(state));
+    if (!new_cursor) return -1;
+    
+    vizero_cursor_set_position(new_cursor, line, column);
+    state->multi_cursors[state->multi_cursor_count++] = new_cursor;
+    state->multi_cursor_mode = 1;
+    
+    return 0;
+}
+
+int vizero_editor_add_cursor_at_mouse(vizero_editor_state_t* state, int x, int y) {
+    if (!state) return -1;
+    
+    /* Convert mouse coordinates to buffer position */
+    /* This is a simplified implementation - would need proper coordinate conversion */
+    size_t line = (size_t)(y / 16); /* Assuming 16px line height */
+    size_t column = (size_t)(x / 8); /* Assuming 8px character width */
+    
+    return vizero_editor_add_cursor_at_position(state, line, column);
+}
+
+void vizero_editor_clear_multi_cursors(vizero_editor_state_t* state) {
+    if (!state) return;
+    
+    /* Destroy all additional cursors */
+    for (size_t i = 0; i < state->multi_cursor_count; i++) {
+        if (state->multi_cursors[i]) {
+            vizero_cursor_destroy(state->multi_cursors[i]);
+        }
+    }
+    
+    free(state->multi_cursors);
+    state->multi_cursors = NULL;
+    state->multi_cursor_count = 0;
+    state->multi_cursor_capacity = 0;
+    state->multi_cursor_mode = 0;
+    state->primary_cursor_index = 0;
+}
+
+int vizero_editor_is_multi_cursor_mode(vizero_editor_state_t* state) {
+    return state ? state->multi_cursor_mode : 0;
+}
+
+size_t vizero_editor_get_cursor_count(vizero_editor_state_t* state) {
+    if (!state) return 0;
+    return state->multi_cursor_mode ? state->multi_cursor_count + 1 : 1; /* +1 for primary cursor */
+}
+
+vizero_cursor_t* vizero_editor_get_cursor_at_index(vizero_editor_state_t* state, size_t index) {
+    if (!state) return NULL;
+    
+    if (index == 0) {
+        /* Primary cursor */
+        return vizero_editor_get_current_cursor(state);
+    }
+    
+    if (state->multi_cursor_mode && index <= state->multi_cursor_count) {
+        return state->multi_cursors[index - 1];
+    }
+    
+    return NULL;
+}
+
+int vizero_editor_type_text_multi_cursor(vizero_editor_state_t* state, const char* text) {
+    if (!state || !text) return -1;
+    
+    if (!state->multi_cursor_mode) {
+        /* Single cursor mode - use normal typing */
+        /* Single cursor mode - use buffer operations directly */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        if (!buffer || !cursor) return -1;
+        
+        vizero_position_t pos = vizero_cursor_get_position(cursor);
+        int result = vizero_buffer_insert_text(buffer, pos.line, pos.column, text);
+        if (result == 0) {
+            for (size_t j = 0; j < strlen(text); j++) {
+                vizero_cursor_move_right(cursor);
+            }
+        }
+        return result;
+    }
+    
+    /* Multi-cursor mode - type at all cursor positions */
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    /* Type at primary cursor */
+    vizero_cursor_t* primary = vizero_editor_get_current_cursor(state);
+    if (primary) {
+        vizero_position_t pos = vizero_cursor_get_position(primary);
+        vizero_buffer_insert_text(buffer, pos.line, pos.column, text);
+        for (size_t j = 0; j < strlen(text); j++) {
+            vizero_cursor_move_right(primary);
+        }
+    }
+    
+    /* Type at all additional cursors */
+    for (size_t i = 0; i < state->multi_cursor_count; i++) {
+        if (state->multi_cursors[i]) {
+            vizero_position_t pos = vizero_cursor_get_position(state->multi_cursors[i]);
+            vizero_buffer_insert_text(buffer, pos.line, pos.column, text);
+            for (size_t j = 0; j < strlen(text); j++) {
+                vizero_cursor_move_right(state->multi_cursors[i]);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+int vizero_editor_delete_char_multi_cursor(vizero_editor_state_t* state, int forward) {
+    if (!state) return -1;
+    
+    if (!state->multi_cursor_mode) {
+        /* Single cursor mode - use normal deletion */
+        /* Single cursor mode - use buffer operations directly */
+        vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+        if (!buffer || !cursor) return -1;
+        
+        vizero_position_t pos = vizero_cursor_get_position(cursor);
+        if (forward) {
+            return vizero_buffer_delete_char(buffer, pos.line, pos.column);
+        } else {
+            if (pos.column > 0) {
+                int result = vizero_buffer_delete_char(buffer, pos.line, pos.column - 1);
+                if (result == 0) {
+                    vizero_cursor_move_left(cursor);
+                }
+                return result;
+            }
+            return 0;
+        }
+    }
+    
+    /* Multi-cursor mode - delete at all cursor positions */
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    /* Delete at primary cursor */
+    vizero_cursor_t* primary = vizero_editor_get_current_cursor(state);
+    if (primary) {
+        vizero_position_t pos = vizero_cursor_get_position(primary);
+        if (forward) {
+            vizero_buffer_delete_range(buffer, pos.line, pos.column, pos.line, pos.column + 1);
+        } else {
+            if (pos.column > 0) {
+                vizero_buffer_delete_range(buffer, pos.line, pos.column - 1, pos.line, pos.column);
+                vizero_cursor_move_left(primary);
+            }
+        }
+    }
+    
+    /* Delete at all additional cursors */
+    for (size_t i = 0; i < state->multi_cursor_count; i++) {
+        if (state->multi_cursors[i]) {
+            vizero_position_t pos = vizero_cursor_get_position(state->multi_cursors[i]);
+            if (forward) {
+                vizero_buffer_delete_range(buffer, pos.line, pos.column, pos.line, pos.column + 1);
+            } else {
+                if (pos.column > 0) {
+                    vizero_buffer_delete_range(buffer, pos.line, pos.column - 1, pos.line, pos.column);
+                    vizero_cursor_move_left(state->multi_cursors[i]);
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+/* Block/rectangular selection implementation */
+
+int vizero_editor_start_block_selection(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    if (!cursor) return -1;
+    
+    state->block_selection_mode = 1;
+    state->block_selection_active = 1;
+    state->block_start = vizero_cursor_get_position(cursor);
+    state->block_end = state->block_start;
+    
+    return 0;
+}
+
+int vizero_editor_end_block_selection(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    state->block_selection_mode = 0;
+    state->block_selection_active = 0;
+    
+    return 0;
+}
+
+int vizero_editor_extend_block_selection(vizero_editor_state_t* state, size_t line, size_t column) {
+    if (!state || !state->block_selection_active) return -1;
+    
+    state->block_end.line = line;
+    state->block_end.column = column;
+    
+    return 0;
+}
+
+int vizero_editor_copy_block_selection(vizero_editor_state_t* state) {
+    if (!state || !state->block_selection_active) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    /* Calculate block boundaries */
+    size_t start_line = (state->block_start.line < state->block_end.line) ? 
+                        state->block_start.line : state->block_end.line;
+    size_t end_line = (state->block_start.line > state->block_end.line) ? 
+                      state->block_start.line : state->block_end.line;
+    size_t start_col = (state->block_start.column < state->block_end.column) ? 
+                       state->block_start.column : state->block_end.column;
+    size_t end_col = (state->block_start.column > state->block_end.column) ? 
+                     state->block_start.column : state->block_end.column;
+    
+    /* Build block content */
+    char* block_content = NULL;
+    size_t total_size = 0;
+    
+    for (size_t line = start_line; line <= end_line; line++) {
+        vizero_line_t* line_obj = vizero_buffer_get_line(buffer, line);
+        if (!line_obj) continue;
+        
+        const char* line_text = vizero_line_get_text(line_obj);
+        size_t line_len = vizero_line_get_length(line_obj);
+        
+        /* Extract block portion of this line */
+        size_t extract_start = (start_col < line_len) ? start_col : line_len;
+        size_t extract_end = (end_col < line_len) ? end_col : line_len;
+        size_t extract_len = (extract_end > extract_start) ? extract_end - extract_start : 0;
+        
+        /* Reallocate block content buffer */
+        size_t new_size = total_size + extract_len + 1; /* +1 for newline */
+        char* new_content = (char*)realloc(block_content, new_size + 1);
+        if (!new_content) {
+            free(block_content);
+            return -1;
+        }
+        block_content = new_content;
+        
+        /* Copy block portion */
+        if (extract_len > 0) {
+            memcpy(block_content + total_size, line_text + extract_start, extract_len);
+        }
+        total_size += extract_len;
+        
+        /* Add newline except for last line */
+        if (line < end_line) {
+            block_content[total_size] = '\n';
+            total_size++;
+        }
+    }
+    
+    if (block_content) {
+        block_content[total_size] = '\0';
+        
+        /* Store in clipboard */
+        free(state->clipboard_content);
+        state->clipboard_content = block_content;
+        state->clipboard_size = total_size;
+    }
+    
+    return 0;
+}
+
+int vizero_editor_cut_block_selection(vizero_editor_state_t* state) {
+    if (!state || !state->block_selection_active) return -1;
+    
+    /* First copy the block */
+    int result = vizero_editor_copy_block_selection(state);
+    if (result != 0) return result;
+    
+    /* Then delete it */
+    return vizero_editor_delete_block_selection(state);
+}
+
+int vizero_editor_paste_block_selection(vizero_editor_state_t* state) {
+    if (!state || !state->clipboard_content) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    if (!buffer || !cursor) return -1;
+    
+    vizero_position_t pos = vizero_cursor_get_position(cursor);
+    
+    /* Split clipboard content into lines */
+    char* content_copy = strdup(state->clipboard_content);
+    if (!content_copy) return -1;
+    
+    char* line_start = content_copy;
+    size_t current_line = pos.line;
+    
+    while (line_start && *line_start) {
+        char* line_end = strchr(line_start, '\n');
+        if (line_end) {
+            *line_end = '\0';
+        }
+        
+        /* Insert line content at block position */
+        vizero_buffer_insert_text(buffer, current_line, pos.column, line_start);
+        
+        if (line_end) {
+            line_start = line_end + 1;
+            current_line++;
+        } else {
+            break;
+        }
+    }
+    
+    free(content_copy);
+    return 0;
+}
+
+int vizero_editor_delete_block_selection(vizero_editor_state_t* state) {
+    if (!state || !state->block_selection_active) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+    if (!buffer) return -1;
+    
+    /* Calculate block boundaries */
+    size_t start_line = (state->block_start.line < state->block_end.line) ? 
+                        state->block_start.line : state->block_end.line;
+    size_t end_line = (state->block_start.line > state->block_end.line) ? 
+                      state->block_start.line : state->block_end.line;
+    size_t start_col = (state->block_start.column < state->block_end.column) ? 
+                       state->block_start.column : state->block_end.column;
+    size_t end_col = (state->block_start.column > state->block_end.column) ? 
+                     state->block_start.column : state->block_end.column;
+    
+    /* Delete block content from each line */
+    for (size_t line = start_line; line <= end_line; line++) {
+        vizero_line_t* line_obj = vizero_buffer_get_line(buffer, line);
+        if (!line_obj) continue;
+        
+        size_t line_len = vizero_line_get_length(line_obj);
+        size_t delete_start = (start_col < line_len) ? start_col : line_len;
+        size_t delete_end = (end_col < line_len) ? end_col : line_len;
+        
+        if (delete_end > delete_start) {
+            vizero_buffer_delete_range(buffer, line, delete_start, line, delete_end);
+        }
+    }
+    
+    return 0;
+}
+
+int vizero_editor_is_block_selection_active(vizero_editor_state_t* state) {
+    return state ? state->block_selection_active : 0;
+}
+
+/* Command palette integration implementation */
+
+void vizero_editor_set_command_palette(vizero_editor_state_t* state, void* palette) {
+    if (!state) return;
+    state->command_palette = palette;
+}
+
+void* vizero_editor_get_command_palette(vizero_editor_state_t* state) {
+    return state ? state->command_palette : NULL;
+}
+
+int vizero_editor_toggle_command_palette(vizero_editor_state_t* state) {
+    if (!state || !state->command_palette) return -1;
+    
+    /* Note: Implementation depends on command_palette.h being included
+     * In actual implementation, this would call:
+     * vizero_command_palette_t* palette = (vizero_command_palette_t*)state->command_palette;
+     * if (vizero_command_palette_is_visible(palette)) {
+     *     vizero_command_palette_hide(palette);
+     * } else {
+     *     vizero_command_palette_show(palette);
+     * }
+     */
+    
+    return 0;
+}
+
+int vizero_editor_is_command_palette_visible(vizero_editor_state_t* state) {
+    if (!state || !state->command_palette) return 0;
+    
+    /* Note: Implementation depends on command_palette.h being included
+     * In actual implementation, this would call:
+     * vizero_command_palette_t* palette = (vizero_command_palette_t*)state->command_palette;
+     * return vizero_command_palette_is_visible(palette);
+     */
+    
+    return 0;
 }

@@ -16,7 +16,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Settings System**: All settings (including word wrap, line numbers, etc.) are persistent and saved to `%APPDATA%\Vizero\settings.ini`.
 - **Build Warnings Eliminated**: All known build warnings have been resolved. The build is clean on MSVC, GCC, and Clang.
 
-## September 2025 Update: Major Features and Fixes
+## September 2025 Update: Phase 4 Advanced Features & Polish
 
 - **Complete Buffer Management System**: Fixed buffer duplication issues, proper `:bn`/`:bp` navigation, and added direct buffer switching with `:b1`, `:b2`, etc.
 - **Interactive Buffer Selector**: `:buffers` now opens a visual buffer browser with arrow key navigation and Enter to switch buffers.
@@ -32,6 +32,17 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Intelligent Code Completion**: Real-time code completion with Ctrl+Space, supporting functions, variables, and type information from clangd language server.
 - **Interactive LISP REPL**: Full SBCL integration with direct buffer typing, automatic expression evaluation, vi-style command integration, and seamless buffer switching with state preservation.
 - **SQL REPL Integration**: Multi-database SQL REPL with PostgreSQL and MySQL support, featuring real-time query execution, formatted result display, transaction management, and graceful degradation when database libraries are unavailable.
+
+### Phase 4: Advanced Features & Polish (Version 0.0.5)
+
+- **Multiple Cursors**: Full multi-cursor support with synchronized text operations across all cursor positions
+- **Block/Rectangular Selection**: Column-wise text selection and manipulation for efficient data editing
+- **Advanced Find/Replace**: Enhanced search with regex support, capture groups, interactive replacement, case sensitivity, and whole-word matching
+- **Code Folding System**: Language-aware code folding with support for functions, classes, blocks, comments, and custom regions
+- **Smart Indentation**: Multi-language intelligent indentation with configurable styles, bracket matching, and automatic formatting
+- **Command Palette**: Comprehensive command system with fuzzy search, categorization, and extensible command registration
+- **Centralized Version Management**: Unified version system (0.0.5) across all components with single source of truth for consistency
+- **Enhanced Plugin Architecture**: Improved plugin system with version consistency and robust API interfaces
 
 ## Executables
 

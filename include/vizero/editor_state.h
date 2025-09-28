@@ -836,6 +836,32 @@ int vizero_editor_handle_buffer_selector_key(vizero_editor_state_t* state, int k
 void vizero_editor_update_search_result_selector_content(vizero_editor_state_t* state);
 int vizero_editor_handle_search_result_selector_key(vizero_editor_state_t* state, int key);
 
+/* Multiple cursors support */
+int vizero_editor_add_cursor_at_position(vizero_editor_state_t* state, size_t line, size_t column);
+int vizero_editor_add_cursor_at_mouse(vizero_editor_state_t* state, int x, int y);
+void vizero_editor_clear_multi_cursors(vizero_editor_state_t* state);
+int vizero_editor_is_multi_cursor_mode(vizero_editor_state_t* state);
+size_t vizero_editor_get_cursor_count(vizero_editor_state_t* state);
+vizero_cursor_t* vizero_editor_get_cursor_at_index(vizero_editor_state_t* state, size_t index);
+int vizero_editor_type_text_multi_cursor(vizero_editor_state_t* state, const char* text);
+int vizero_editor_delete_char_multi_cursor(vizero_editor_state_t* state, int forward);
+
+/* Block/rectangular selection functionality */
+int vizero_editor_start_block_selection(vizero_editor_state_t* state);
+int vizero_editor_end_block_selection(vizero_editor_state_t* state);
+int vizero_editor_extend_block_selection(vizero_editor_state_t* state, size_t line, size_t column);
+int vizero_editor_copy_block_selection(vizero_editor_state_t* state);
+int vizero_editor_cut_block_selection(vizero_editor_state_t* state);
+int vizero_editor_paste_block_selection(vizero_editor_state_t* state);
+int vizero_editor_delete_block_selection(vizero_editor_state_t* state);
+int vizero_editor_is_block_selection_active(vizero_editor_state_t* state);
+
+/* Command palette integration */
+void vizero_editor_set_command_palette(vizero_editor_state_t* state, void* palette);
+void* vizero_editor_get_command_palette(vizero_editor_state_t* state);
+int vizero_editor_toggle_command_palette(vizero_editor_state_t* state);
+int vizero_editor_is_command_palette_visible(vizero_editor_state_t* state);
+
 /* Help system */
 int vizero_editor_enter_help_mode(vizero_editor_state_t* state);
 int vizero_editor_exit_help_mode(vizero_editor_state_t* state);

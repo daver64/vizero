@@ -52,12 +52,34 @@ struct vizero_editor_state_t {
     int* search_result_lines;          /* Array of line numbers for each result */
     int* search_result_columns;        /* Array of column numbers for each result */
     size_t search_result_count;        /* Number of search results */
+    
+    /* Advanced search settings */
+    int search_case_sensitive;         /* Case-sensitive search flag */
+    int search_whole_word;              /* Whole word matching flag */
+    int search_regex_enabled;           /* Regular expression search flag */
     /* Settings */
     vizero_settings_t* settings;
     /* Text selection */
     int has_selection;
     vizero_position_t selection_start;
     vizero_position_t selection_end;
+    
+    /* Multiple cursors support */
+    vizero_cursor_t** multi_cursors;        /* Array of additional cursors */
+    size_t multi_cursor_count;              /* Number of additional cursors */
+    size_t multi_cursor_capacity;           /* Allocated capacity */
+    int multi_cursor_mode;                  /* Flag indicating multi-cursor mode */
+    size_t primary_cursor_index;            /* Index of primary cursor */
+    
+    /* Block/rectangular selection support */
+    int block_selection_mode;               /* Flag indicating block selection mode */
+    vizero_position_t block_start;          /* Start position of block selection */
+    vizero_position_t block_end;            /* End position of block selection */
+    int block_selection_active;             /* Flag indicating active block selection */
+    
+    /* Command palette */
+    void* command_palette;                  /* vizero_command_palette_t* - void* to avoid circular dependency */
+    
     /* Clipboard */
     char* clipboard_content;
     size_t clipboard_size;
