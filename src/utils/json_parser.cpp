@@ -120,6 +120,24 @@ vizero_json_t* vizero_json_get_object(vizero_json_t* json_obj, const char* field
     return nullptr;
 }
 
+vizero_json_t* vizero_json_get_array(vizero_json_t* json_obj, const char* field_name) {
+    if (!json_obj || !field_name || !json_obj->data) {
+        return nullptr;
+    }
+    
+    try {
+        const json& j = *json_obj->data;
+        if (j.contains(field_name) && j[field_name].is_array()) {
+            json* arr = new json(j[field_name]);
+            return new vizero_json_t(arr);
+        }
+    } catch (const std::exception&) {
+        // Fall through to return nullptr
+    }
+    
+    return nullptr;
+}
+
 int vizero_json_array_size(vizero_json_t* json_obj) {
     if (!json_obj || !json_obj->data) {
         return -1;

@@ -69,6 +69,14 @@ int vizero_json_has_field(vizero_json_t* json, const char* field_name);
 vizero_json_t* vizero_json_get_object(vizero_json_t* json, const char* field_name);
 
 /**
+ * Get a nested array from the JSON
+ * @param json The JSON handle
+ * @param field_name The field name containing the array
+ * @return JSON handle for the nested array, or NULL if not found/error
+ */
+vizero_json_t* vizero_json_get_array(vizero_json_t* json, const char* field_name);
+
+/**
  * Get array size
  * @param json The JSON handle (must be an array)
  * @return Array size, or -1 if not an array or error

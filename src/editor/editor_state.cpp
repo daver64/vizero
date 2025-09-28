@@ -5413,6 +5413,9 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
     vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
     
+    printf("DEBUG: Got buffer=%p, cursor=%p\n", (void*)buffer, (void*)cursor);
+    fflush(stdout);
+    
     if (!buffer || !cursor) {
         vizero_editor_hide_completion(state);
         return;
@@ -5427,9 +5430,9 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
     size_t trigger_col = state->completion_trigger_position.column;
     size_t trigger_line = state->completion_trigger_position.line;
     
-
-    
     if (cursor_col >= trigger_col && cursor_line == trigger_line) {
+        printf("DEBUG: Position check passed, proceeding with replacement\n");
+        fflush(stdout);
         /* Find the actual partial word that was typed after the trigger position */
         const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
         size_t word_end_col = cursor_col;
@@ -5456,13 +5459,9 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
             /* Delete the partial word characters */
             if (partial_len > 0) {
                 for (size_t i = 0; i < partial_len; i++) {
-                    if (cursor_col >= strlen(line_text)) {
-                        break;
-                    }
-                    
-                    vizero_buffer_delete_char(buffer, cursor_line, cursor_col);
+                    /* Always delete at word_start_col since characters shift left after each deletion */
+                    vizero_buffer_delete_char(buffer, cursor_line, word_start_col);
                 }
-
             }
         } else {
             goto fallback_insertion;
@@ -5478,7 +5477,6 @@ void vizero_editor_accept_completion(vizero_editor_state_t* state) {
         
 
     } else {
-        printf("[DEBUG] Using fallback insertion\n");
         goto fallback_insertion;
     }
     

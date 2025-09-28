@@ -592,14 +592,13 @@ int vizero_plugin_manager_lsp_completion(
     if (!manager || !buffer || !result) {
         return -1;
     }
-    
-    *result = NULL;
-    
-    /* Find plugins that support LSP completion */
+
+    *result = NULL;    /* Find plugins that support LSP completion */
     for (size_t i = 0; i < manager->plugin_count; i++) {
         vizero_plugin_t* plugin = manager->plugins[i];
         if (plugin && plugin->callbacks.lsp_completion) {
             int ret = plugin->callbacks.lsp_completion(buffer, position, result);
+            
             if (ret == 0 && *result) {
                 return 0;
             }

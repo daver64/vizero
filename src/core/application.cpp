@@ -413,21 +413,62 @@ static void render_completion_dropdown(vizero_application_t* app, int window_wid
     /* Get completion state */
     vizero_editor_state_t* editor = app->editor;
     
-    /* Position dropdown near cursor */
+    /* Position dropdown near cursor using proper window coordinates */
     vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
     if (!cursor) return;
     
     size_t cursor_line = vizero_cursor_get_line(cursor);
     size_t cursor_col = vizero_cursor_get_column(cursor);
     
-    /* Calculate dropdown position */
-    int dropdown_x = (int)(cursor_col * 8 + 50); /* 8px per char + left margin */
-    int dropdown_y = (int)(cursor_line * 16 + 80); /* 16px per line + top margin */
+    /* Get focused editor window to calculate proper positioning */
+    vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(editor);
+    if (!window_manager) return;
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(window_manager);
+    if (!window) return;
     
-    /* Ensure dropdown fits on screen */
+    /* Get content area coordinates */
+    int content_x, content_y, content_width, content_height;
+    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, &content_width, &content_height) != 0) {
+        return;
+    }
+    
+    /* Calculate dropdown position using same formula as editor text */
+    int scroll_y = window->scroll_y;
+    int dropdown_x = content_x + (int)(cursor_col * 8); /* 8px per char */
+    int dropdown_y = content_y + (int)((cursor_line - scroll_y + 1) * 16); /* Position below cursor line */
+    
+    /* Get completion items first to calculate width */
+    vizero_completion_item_t* completion_items = vizero_editor_get_completion_items(editor);
+    size_t completion_count = vizero_editor_get_completion_count(editor);
+    
+    if (!completion_items || completion_count == 0) return;
+    
+    /* Calculate dynamic width based on content */
+    const int char_width = 8; /* Approximate character width in pixels */
+    const int padding = 10;
+    const int max_width = window_width - 100; /* Leave margin from screen edges */
+    int dropdown_width = 200; /* Default minimum */
+    
+    /* Find the longest completion item */
+    for (size_t i = 0; i < completion_count; i++) {
+        const char* label = completion_items[i].label ? completion_items[i].label : "";
+        const char* detail = completion_items[i].detail ? completion_items[i].detail : "";
+        
+        /* Calculate display text width (label + detail) */
+        int label_len = (int)strlen(label);
+        int detail_len = (int)strlen(detail);
+        int total_len = label_len + detail_len + 3; /* +3 for spacing/formatting */
+        
+        int item_width = total_len * char_width + padding * 2;
+        if (item_width > dropdown_width) dropdown_width = item_width;
+    }
+    
+    /* Cap width to screen size */
+    if (dropdown_width > max_width) dropdown_width = max_width;
+    
+    /* Calculate height */
     const int max_visible_items = 10;
     const int item_height = 18;
-    const int dropdown_width = 300;
     int dropdown_height = max_visible_items * item_height + 10; /* +10 for padding */
     
     if (dropdown_x + dropdown_width > window_width) {
@@ -448,12 +489,8 @@ static void render_completion_dropdown(vizero_application_t* app, int window_wid
     vizero_renderer_draw_rect(app->renderer, (float)dropdown_x, (float)dropdown_y,
                              (float)dropdown_width, (float)dropdown_height, border_colour);
     
-    /* Get completion items via API */
-    vizero_completion_item_t* completion_items = vizero_editor_get_completion_items(editor);
-    size_t completion_count = vizero_editor_get_completion_count(editor);
+    /* Get selected index */
     size_t selected_index = vizero_editor_get_completion_selected_index(editor);
-    
-    if (!completion_items || completion_count == 0) return;
     
     /* Draw completion items */
     int start_item = 0;

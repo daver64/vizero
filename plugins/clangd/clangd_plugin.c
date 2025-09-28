@@ -2,6 +2,15 @@
 #define _GNU_SOURCE  /* For asprintf on Linux */
 #endif
 
+/* Debug output control - set to 0 to disable debug messages */
+#define CLANGD_DEBUG_ENABLED 0
+
+#if CLANGD_DEBUG_ENABLED
+#define CLANGD_DEBUG(fmt, ...) printf("[CLANGD DEBUG] " fmt "\n", ##__VA_ARGS__); fflush(stdout)
+#else
+#define CLANGD_DEBUG(fmt, ...) ((void)0)
+#endif
+
 #include "vizero/plugin_interface.h"
 #include "vizero/lsp_client.h"
 #include "vizero/buffer.h"
@@ -138,10 +147,14 @@ static void on_lsp_error(const char* error_message, void* user_data);
 /* Plugin callbacks */
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
+    CLANGD_DEBUG("Plugin init called");
+    
     if (!plugin || !editor || !api) {
-        CLANGD_ERR("Plugin initialization FAILED - null parameters");
+        CLANGD_DEBUG("Plugin initialization FAILED - null parameters");
         return -1;
     }
+    
+    CLANGD_DEBUG("Plugin init - storing API and editor references");
     
     /* Store API pointer and editor reference */
     g_state.api = api;
@@ -345,19 +358,31 @@ VIZERO_PLUGIN_API int clangd_process_lsp_messages(void) {
 
 /* Check if completion results are available */
 VIZERO_PLUGIN_API int clangd_get_completion_results(vizero_completion_list_t** result) {
+    printf("[CLANGD DEBUG] clangd_get_completion_results called\n");
+    fflush(stdout);
+    
     if (!result) {
+        printf("[CLANGD DEBUG] clangd_get_completion_results - result is NULL\n");
+        fflush(stdout);
         return -1;
     }
     
     *result = NULL;
     
+    printf("[CLANGD DEBUG] clangd_get_completion_results - checking g_state.last_completion_result: %p\n", 
+           (void*)g_state.last_completion_result);
+    fflush(stdout);
+    
     if (g_state.last_completion_result) {
         *result = g_state.last_completion_result;
         g_state.last_completion_result = NULL; /* Transfer ownership */
-        CLANGD_DBG("Completion results retrieved");
+        printf("[CLANGD DEBUG] Completion results retrieved successfully\n");
+        fflush(stdout);
         return 0;
     }
     
+    printf("[CLANGD DEBUG] No completion results available\n");
+    fflush(stdout);
     return -1; /* No results available */
 }
 
@@ -579,14 +604,24 @@ VIZERO_PLUGIN_DEFINE_INFO(
 
 /* LSP implementation */
 static int clangd_lsp_initialize(const char* project_root, const char* session_config) {
+    printf("[CLANGD DEBUG] LSP initialize called with project_root: %s\n", project_root ? project_root : "NULL");
+    fflush(stdout);
+    
     (void)session_config; /* Parameter not used yet */
     if (g_state.initialized) {
+        printf("[CLANGD DEBUG] Already initialized, returning success\n");
+        fflush(stdout);
         return 0; /* Already initialized */
     }
     
     if (!g_state.lsp_client) {
+        printf("[CLANGD DEBUG] No LSP client available\n");
+        fflush(stdout);
         return -1; /* clangd not available */
     }
+    
+    printf("[CLANGD DEBUG] LSP client available, proceeding with initialization\n");
+    fflush(stdout);
     
     /* Store root path */
     if (project_root) {
@@ -662,17 +697,26 @@ static int clangd_on_text_changed(vizero_buffer_t* buffer, vizero_range_t range,
 }
 
 static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t position, vizero_completion_list_t** result) {
-    CLANGD_DBG("*** LSP COMPLETION TRIGGERED ***");
+    printf("[CLANGD DEBUG] *** LSP COMPLETION TRIGGERED ***\n");
+    fflush(stdout);
+    
+    printf("[CLANGD DEBUG] Checking conditions: initialized=%d, buffer=%p, result=%p, lsp_client=%p\n",
+           g_state.initialized, (void*)buffer, (void*)result, (void*)g_state.lsp_client);
+    fflush(stdout);
     
     if (!g_state.initialized || !buffer || !result || !g_state.lsp_client) {
-     CLANGD_ERR("Completion failed: initialized=%d, buffer=%p, result=%p, lsp_client=%p",
-         g_state.initialized, (void*)buffer, (void*)result, (void*)g_state.lsp_client);
+        printf("[CLANGD DEBUG] Completion failed - condition check failed\n");
+        fflush(stdout);
         return -1;
     }
     
+    printf("[CLANGD DEBUG] Checking if completion request pending: %d\n", g_state.completion_request_pending);
+    fflush(stdout);
+    
     /* Prevent concurrent completion requests that could corrupt state */
     if (g_state.completion_request_pending) {
-        CLANGD_DBG("Completion request already pending, rejecting new request");
+        printf("[CLANGD DEBUG] Completion request already pending, rejecting new request\n");
+        fflush(stdout);
         return -1;
     }
     
@@ -724,8 +768,12 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     
     /* Get file path from buffer */
     const char* file_path = vizero_buffer_get_filename(buffer);
+    printf("[CLANGD DEBUG] Got file path from buffer: %s\n", file_path ? file_path : "NULL");
+    fflush(stdout);
+    
     if (!file_path) {
-        CLANGD_ERR("No file path available for buffer");
+        printf("[CLANGD DEBUG] No file path available for buffer - returning -1\n");
+        fflush(stdout);
         return -1;
     }
     
@@ -756,11 +804,16 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     }
     #endif
     
+    printf("[CLANGD DEBUG] Using file path for completion: %s\n", file_path);
+    fflush(stdout);
+    
     CLANGD_DBG("Requesting completion for file: %s at line %zu, column %zu", 
            file_path, position.line, position.column);
     
     /* Send didOpen notification if we haven't already (workaround for timing issue) */
-    CLANGD_DBG("Sending didOpen notification before completion...");
+    printf("[CLANGD DEBUG] Sending didOpen notification before completion for: %s\n", file_path);
+    fflush(stdout);
+    
     char* didopen_escaped_path = vizero_lsp_client_escape_json_string(file_path);
     if (didopen_escaped_path) {
         /* Convert to proper URI format */
@@ -811,36 +864,57 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
         free(didopen_uri);
         
             if (param_len > 0 && didopen_params) {
-            vizero_lsp_client_send_notification(g_state.lsp_client, "textDocument/didOpen", didopen_params);
+            printf("[CLANGD DEBUG] Sending didOpen notification with params: %s\n", didopen_params);
+            fflush(stdout);
+            
+            int didopen_result = vizero_lsp_client_send_notification(g_state.lsp_client, "textDocument/didOpen", didopen_params);
+            
+            printf("[CLANGD DEBUG] didOpen notification result: %d\n", didopen_result);
+            fflush(stdout);
+            
+            /* Give clangd a moment to process the didOpen notification */
+            #ifdef _WIN32
+            Sleep(100); /* 100ms delay */
+            #else
+            usleep(100000); /* 100ms delay */
+            #endif
+            
             free(didopen_params);
-            CLANGD_DBG("didOpen notification sent");
         }
         vizero_lsp_client_free_string(didopen_escaped_path);
     }
     
     /* Build completion request parameters */
-    /* Convert file path to proper URI format (don't JSON-escape the path for URI) */
+    /* Use same URI format as didOpen to ensure consistency */
+    char* completion_escaped_path = vizero_lsp_client_escape_json_string(file_path);
+    if (!completion_escaped_path) {
+        return -1;
+    }
+    
     char* uri;
     #ifdef _WIN32
-    /* Windows: Convert backslashes to forward slashes and add drive letter handling */
-    size_t path_len = strlen(file_path);
+    /* Windows: Use same logic as didOpen - convert backslashes to forward slashes */
+    size_t path_len = strlen(completion_escaped_path);
     char* normalized_path = (char*)malloc(path_len + 1);
-    strcpy(normalized_path, file_path);
+    strcpy(normalized_path, completion_escaped_path);
     for (size_t i = 0; i < path_len; i++) {
         if (normalized_path[i] == '\\') {
-            normalized_path[i] = '/';
+            normalized_path[i] = '/';   
         }
     }
     if (asprintf(&uri, "file:///%s", normalized_path) < 0) {
         free(normalized_path);
+        vizero_lsp_client_free_string(completion_escaped_path);
         return -1;
     }
     free(normalized_path);
     #else
-    if (asprintf(&uri, "file://%s", file_path) < 0) {
+    if (asprintf(&uri, "file://%s", completion_escaped_path) < 0) {
+        vizero_lsp_client_free_string(completion_escaped_path);
         return -1;
     }
     #endif
+    vizero_lsp_client_free_string(completion_escaped_path);
     
 
     
@@ -871,10 +945,18 @@ static int clangd_lsp_completion(vizero_buffer_t* buffer, vizero_position_t posi
     g_state.completion_count = 0;
     
     /* Send completion request */
+    printf("[CLANGD DEBUG] Sending LSP completion request with params: %s\n", params);
+    fflush(stdout);
+    
     int request_id = vizero_lsp_client_send_request(g_state.lsp_client, "textDocument/completion", params);
     free(params);
     
+    printf("[CLANGD DEBUG] LSP completion request returned ID: %d\n", request_id);
+    fflush(stdout);
+    
     if (request_id < 0) {
+        printf("[CLANGD DEBUG] LSP completion request failed - returning -1\n");
+        fflush(stdout);
         return -1;
     }
     
@@ -1099,15 +1181,25 @@ static char* find_clangd_executable(void) {
 
 /* LSP callback implementations */
 static void on_lsp_response(int request_id, const char* result, const char* error, void* user_data) {
+    printf("[CLANGD DEBUG] LSP Response received: request_id=%d\n", request_id);
+    fflush(stdout);
+    
     /* Add comprehensive null checking to prevent crashes */
     if (!user_data) {
-        CLANGD_ERR("NULL user_data in LSP response");
+        printf("[CLANGD DEBUG] NULL user_data in LSP response\n");
+        fflush(stdout);
         return;
     }
     
     clangd_state_t* state = (clangd_state_t*)user_data;
     
-    CLANGD_DBG("LSP Response received: request_id=%d", request_id);
+    if (result) {
+        printf("[CLANGD DEBUG] LSP Response result (first 200 chars): %.200s\n", result);
+        fflush(stdout);
+    } else {
+        printf("[CLANGD DEBUG] LSP Response has no result\n");
+        fflush(stdout);
+    }
     
     if (error) {
         CLANGD_ERR("LSP Error: %s", error);
@@ -1156,18 +1248,47 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
         } else {
             state->completion_count = 0;
             
-            /* Get the items array */
-            vizero_json_t* items_array = vizero_json_get_object(json, "items");
+            /* Debug: Print first part of JSON response to understand structure */
+            CLANGD_DBG("Completion JSON response (first 500 chars): %.500s", result);
+            
+            /* Get the result object first, then the items array */
+            vizero_json_t* result_obj = vizero_json_get_object(json, "result");
+            vizero_json_t* items_array = NULL;
+            
+            CLANGD_DBG("result_obj: %p", (void*)result_obj);
+            
+            if (result_obj) {
+                CLANGD_DBG("Getting items array from result object...");
+                /* Try to get the 'items' field as an array */
+                items_array = vizero_json_get_array(result_obj, "items");
+                CLANGD_DBG("items_array from result.items: %p", (void*)items_array);
+            } else {
+                CLANGD_DBG("result_obj is NULL - JSON parsing failed for 'result' field");
+            }
+            
             if (!items_array) {
-                printf("[CLANGD] No completion items found - no items array\n");
+                CLANGD_DBG("No completion items found - checking if result is directly an array");
+                /* Some responses might have result as direct array */
+                if (result_obj && vizero_json_array_size(result_obj) >= 0) {
+                    items_array = result_obj;
+                    CLANGD_DBG("Using result_obj as items_array directly");
+                } else {
+                    CLANGD_DBG("result_obj is not an array either, array_size check failed");
+                }
+            }
+            
+            if (!items_array) {
+                CLANGD_DBG("No completion items found - no items array in response");
                 state->completion_count = 0;
             } else {
                 int array_size = vizero_json_array_size(items_array);
-                CLANGD_DBG("Found %d completion items in response", array_size);
+                CLANGD_DBG("Found items_array=%p, checking array size...", (void*)items_array);
+                CLANGD_DBG("vizero_json_array_size returned: %d", array_size);
                 
                 if (array_size > 0) {
                     /* Process completion items */
                     int max_items = (array_size < 20) ? array_size : 20; /* Limit to 20 items */
+                    CLANGD_DBG("Processing %d completion items (max_items=%d)", array_size, max_items);
                     
                     for (int i = 0; i < max_items; i++) {
                         vizero_json_t* item = vizero_json_array_get(items_array, i);
@@ -1183,6 +1304,7 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
                         int kind = vizero_json_get_int(item, "kind", 1); /* Default to text */
                         
                         if (label) {
+                            CLANGD_DBG("Processing completion item %d: label='%s'", i, label);
                             state->completion_items[state->completion_count].label = label;
                             state->completion_items[state->completion_count].detail = detail ? detail : strdup("");
                             state->completion_items[state->completion_count].documentation = documentation;
@@ -1201,7 +1323,9 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
                             
                             state->completion_items[state->completion_count].deprecated = false;
                             state->completion_count++;
+                            CLANGD_DBG("Added completion item, total count now: %zu", state->completion_count);
                         } else {
+                            CLANGD_DBG("Skipping completion item %d: no label found", i);
                             /* Free unused strings */
                             if (detail) free(detail);
                             if (documentation) free(documentation);
@@ -1220,18 +1344,7 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
             vizero_json_free(json);
             
             if (state->completion_count == 0) {
-                printf("[CLANGD] No completion items found\n");
-                /* Add a placeholder item to show that completion was triggered */
-                state->completion_items[0].label = strdup("printf");
-                state->completion_items[0].detail = strdup("function");
-                state->completion_items[0].documentation = strdup("Standard output function");
-                state->completion_items[0].insert_text = strdup("printf");
-                state->completion_items[0].filter_text = NULL;
-                state->completion_items[0].sort_text = NULL;
-                state->completion_items[0].kind = VIZERO_COMPLETION_FUNCTION;
-                state->completion_items[0].deprecated = false;
-                state->completion_count = 1;
-                CLANGD_DBG("Added fallback printf completion item");
+                CLANGD_DBG("No completion items found - returning empty result");
             } else {
                 CLANGD_DBG("Successfully parsed %d completion items", state->completion_count);
             }
@@ -1254,8 +1367,10 @@ static void on_lsp_response(int request_id, const char* result, const char* erro
             list->is_incomplete = false;
             
             /* Store for later retrieval */
-            state->last_completion_result = list;
+            g_state.last_completion_result = list;
             CLANGD_DBG("Created safe completion result with %zu items", state->completion_count);
+            CLANGD_DBG("Stored list at g_state.last_completion_result=%p with item_count=%zu", 
+                       (void*)list, list->item_count);
         }
     } else {
         CLANGD_DBG("Response not for completion request");

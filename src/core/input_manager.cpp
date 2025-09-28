@@ -62,31 +62,36 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     static int frames_since_startup = 0;
     frames_since_startup++;
     
-    /* Skip LSP processing for the first 60 frames to let things stabilize */
-    if (frames_since_startup > 60) {
+    /* Only check for completion results if we have a pending request and enough time has passed */
+    if (frames_since_startup > 10 && input->pending_completion_frames > 0) {
+        input->pending_completion_frames--;
+        
         vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
         if (plugin_manager) {
-            /* Only check for completion results, don't force LSP processing every frame */
+            /* Only check for completion results when we're expecting them */
             vizero_completion_list_t* completion_result = NULL;
             int completion_check_result = vizero_plugin_manager_check_completion_results(plugin_manager, &completion_result);
             
+            
             if (completion_check_result == 0 && completion_result) {
+                /* Stop polling - we got results */
+                input->pending_completion_frames = 0;
+                
                 /* Show completion UI if we have results */
                 if (completion_result->item_count > 0) {
                     vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
                     if (editor) {
-                        /* Get current cursor position as trigger position */
-                        vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
-                        vizero_position_t trigger_pos = {0, 0};
-                        if (cursor) {
-                            trigger_pos.line = vizero_cursor_get_line(cursor);
-                            trigger_pos.column = vizero_cursor_get_column(cursor);
-                        }
+                        
+                        /* Use stored trigger position from when completion was requested */
+                        vizero_position_t trigger_pos = input->pending_completion_position;
                         
                         /* Show completion dropdown */
                         vizero_editor_show_completion(editor, completion_result->items, 
                                                     completion_result->item_count, trigger_pos);
                     }
+                } else {
+                    printf("DEBUG: No completion items to show (item_count = %zu)\n", completion_result->item_count);
+                    fflush(stdout);
                 }
                 
                 /* Clean up completion result (editor copied the data it needs) */
@@ -247,12 +252,17 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                     
                                     vizero_plugin_manager_t* lsp_plugin_manager = vizero_application_get_plugin_manager(input->app);
                                     if (lsp_plugin_manager) {
+                                        
                                         vizero_completion_list_t* completion_list = NULL;
                                         
                                         int result = vizero_plugin_manager_lsp_completion(lsp_plugin_manager, 
                                                     buffer, position, &completion_list);
                                         
-                                        if (result == 0 && completion_list && completion_list->item_count > 0) {
+                                        if (result == -1) {
+                                            /* Async completion request sent - start polling for results */
+                                            input->pending_completion_frames = 60; /* Poll for up to 60 frames (1 second at 60fps) */
+                                            input->pending_completion_position = trigger_position;
+                                        } else if (result == 0 && completion_list && completion_list->item_count > 0) {
                                             
                                             /* Show completion UI immediately */
                                             vizero_editor_show_completion(editor, completion_list->items, 
