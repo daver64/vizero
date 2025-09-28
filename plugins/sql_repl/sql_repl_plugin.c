@@ -101,6 +101,7 @@ typedef struct {
     char buffer_name[64];
     bool plugin_active;
     bool buffer_created;
+    bool scratch_buffer_created;
     
     /* Input handling */
     char input_buffer[4096];
@@ -121,6 +122,8 @@ static int sql_execute_query(const char* query, char** result, size_t* result_si
 static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
 static void sql_display_result(const char* result);
 static void sql_display_error(const char* error);
+static void sql_add_prompt(void);
+static int sql_create_scratch_buffer(void);
 
 /* Command handlers */
 static int sql_cmd_connect(vizero_editor_t* editor, const char* args);
@@ -514,12 +517,24 @@ static int sql_connect_database(const char* connection_string) {
     
     if (result == 0) {
         g_sql_state.connected = true;
+        g_sql_state.plugin_active = true;  /* Enable REPL mode */
         g_sql_state.in_transaction = false;
+        
+        /* Create scratch buffer if not already created */
+        if (!g_sql_state.scratch_buffer_created) {
+            if (sql_create_scratch_buffer() != 0) {
+                sql_log_message("Warning: Failed to create *sql* scratch buffer, using current buffer");
+            }
+        }
         
         char status_msg[1024];
         snprintf(status_msg, sizeof(status_msg), "Connected to %s:%d/%s as %s",
                 g_sql_state.host, g_sql_state.port, g_sql_state.database, g_sql_state.username);
         sql_display_result(status_msg);
+        sql_log_message("SQL REPL mode enabled - you can now type SQL commands directly in the buffer");
+        
+        /* Add initial prompt after connection message */
+        sql_add_prompt();
     }
     
     return result;
@@ -550,10 +565,11 @@ static void sql_disconnect_database(void) {
     }
     
     g_sql_state.connected = false;
+    g_sql_state.plugin_active = false;  /* Disable REPL mode */
     g_sql_state.in_transaction = false;
     g_sql_state.db_type = DB_TYPE_NONE;
     
-    sql_log_message("Database disconnected");
+    sql_log_message("Database disconnected - SQL REPL mode disabled");
     sql_display_result("Disconnected from database");
 }
 
@@ -606,25 +622,52 @@ static int sql_execute_query(const char* query, char** result, size_t* result_si
 static void sql_display_result(const char* result) {
     if (!result || !g_sql_state.api || !g_sql_state.editor) return;
     
-    /* Get current buffer and cursor */
-    vizero_buffer_t* current_buffer = g_sql_state.api->get_current_buffer(g_sql_state.editor);
-    if (!current_buffer) return;
+    /* Use dedicated SQL buffer if available, otherwise use current buffer */
+    vizero_buffer_t* target_buffer = g_sql_state.sql_buffer ? 
+                                    g_sql_state.sql_buffer : 
+                                    g_sql_state.api->get_current_buffer(g_sql_state.editor);
+    if (!target_buffer) return;
     
     vizero_cursor_t* cursor = g_sql_state.api->get_current_cursor(g_sql_state.editor);
     if (!cursor) return;
     
-    /* Get current cursor position */
-    vizero_position_t pos = g_sql_state.api->get_cursor_position(cursor);
+    /* Get the end of the buffer to append results there */
+    size_t line_count = g_sql_state.api->get_buffer_line_count(target_buffer);
+    vizero_position_t end_pos;
     
-    /* Insert the result with a newline prefix for clarity */
+    if (line_count > 0) {
+        /* Move to end of last line */
+        end_pos.line = (int)(line_count - 1);
+        const char* last_line = g_sql_state.api->get_buffer_line(target_buffer, end_pos.line);
+        end_pos.column = last_line ? (int)strlen(last_line) : 0;
+    } else {
+        /* Empty buffer */
+        end_pos.line = 0;
+        end_pos.column = 0;
+    }
+    
+    /* Insert the result with newlines for separation */
     char formatted_result[8192];
     snprintf(formatted_result, sizeof(formatted_result), "\n%s\n", result);
     
     /* Use multiline insert if available, otherwise fall back to regular insert */
     if (g_sql_state.api->insert_text_multiline) {
-        g_sql_state.api->insert_text_multiline(current_buffer, pos, formatted_result);
+        g_sql_state.api->insert_text_multiline(target_buffer, end_pos, formatted_result);
     } else if (g_sql_state.api->insert_text) {
-        g_sql_state.api->insert_text(current_buffer, pos, formatted_result);
+        g_sql_state.api->insert_text(target_buffer, end_pos, formatted_result);
+    }
+    
+    /* Move cursor to the new end of buffer after insertion (only if it's the current buffer) */
+    vizero_buffer_t* current_buffer = g_sql_state.api->get_current_buffer(g_sql_state.editor);
+    if (current_buffer == target_buffer) {
+        size_t new_line_count = g_sql_state.api->get_buffer_line_count(target_buffer);
+        if (new_line_count > 0) {
+            vizero_position_t new_end_pos;
+            new_end_pos.line = (int)(new_line_count - 1);
+            const char* new_last_line = g_sql_state.api->get_buffer_line(target_buffer, new_end_pos.line);
+            new_end_pos.column = new_last_line ? (int)strlen(new_last_line) : 0;
+            g_sql_state.api->set_cursor_position(cursor, new_end_pos);
+        }
     }
     
     /* Also show brief status message */
@@ -638,6 +681,88 @@ static void sql_display_error(const char* error) {
     snprintf(error_msg, sizeof(error_msg), "ERROR: %s", error);
     sql_display_result(error_msg);
     sql_log_message(error_msg);
+}
+
+static void sql_add_prompt(void) {
+    if (!g_sql_state.connected || !g_sql_state.api || !g_sql_state.editor) return;
+    
+    /* Use dedicated SQL buffer if available, otherwise use current buffer */
+    vizero_buffer_t* target_buffer = g_sql_state.sql_buffer ? 
+                                    g_sql_state.sql_buffer : 
+                                    g_sql_state.api->get_current_buffer(g_sql_state.editor);
+    if (!target_buffer) return;
+    
+    vizero_cursor_t* cursor = g_sql_state.api->get_current_cursor(g_sql_state.editor);
+    if (!cursor) return;
+    
+    /* Get the end of the buffer to append prompt there */
+    size_t line_count = g_sql_state.api->get_buffer_line_count(target_buffer);
+    vizero_position_t end_pos;
+    
+    if (line_count > 0) {
+        /* Move to end of last line */
+        end_pos.line = (int)(line_count - 1);
+        const char* last_line = g_sql_state.api->get_buffer_line(target_buffer, end_pos.line);
+        end_pos.column = last_line ? (int)strlen(last_line) : 0;
+    } else {
+        /* Empty buffer */
+        end_pos.line = 0;
+        end_pos.column = 0;
+    }
+    
+    /* Add appropriate prompt based on database type */
+    const char* prompt = (g_sql_state.db_type == DB_TYPE_MYSQL) ? "mysql> " : 
+                        (g_sql_state.db_type == DB_TYPE_POSTGRESQL) ? "pgsql> " : "sql> ";
+    
+    /* Insert prompt */
+    if (g_sql_state.api->insert_text) {
+        g_sql_state.api->insert_text(target_buffer, end_pos, prompt);
+    }
+    
+    /* Move cursor to the end after prompt insertion (only if it's the current buffer) */
+    vizero_buffer_t* current_buffer = g_sql_state.api->get_current_buffer(g_sql_state.editor);
+    if (current_buffer == target_buffer) {
+        vizero_cursor_t* current_cursor = g_sql_state.api->get_current_cursor(g_sql_state.editor);
+        if (current_cursor) {
+            size_t new_line_count = g_sql_state.api->get_buffer_line_count(target_buffer);
+            if (new_line_count > 0) {
+                vizero_position_t new_end_pos;
+                new_end_pos.line = (int)(new_line_count - 1);
+                const char* new_last_line = g_sql_state.api->get_buffer_line(target_buffer, new_end_pos.line);
+                new_end_pos.column = new_last_line ? (int)strlen(new_last_line) : 0;
+                g_sql_state.api->set_cursor_position(current_cursor, new_end_pos);
+            }
+        }
+    }
+}
+
+static int sql_create_scratch_buffer(void) {
+    if (!g_sql_state.api || !g_sql_state.editor) return -1;
+    
+    /* Create a new buffer with the name "*sql*" */
+    if (g_sql_state.api->open_file(g_sql_state.editor, "*sql*") != 0) {
+        sql_log_message("Failed to create *sql* scratch buffer");
+        return -1;
+    }
+    
+    /* Get the newly created buffer */
+    g_sql_state.sql_buffer = g_sql_state.api->get_current_buffer(g_sql_state.editor);
+    if (!g_sql_state.sql_buffer) {
+        sql_log_message("Failed to get *sql* buffer reference");
+        return -1;
+    }
+    
+    /* Mark it as a scratch buffer so it won't prompt to save */
+    if (g_sql_state.api->set_buffer_scratch) {
+        g_sql_state.api->set_buffer_scratch(g_sql_state.sql_buffer, 1);
+        sql_log_message("Created *sql* scratch buffer");
+    }
+    
+    /* Store buffer name */
+    snprintf(g_sql_state.buffer_name, sizeof(g_sql_state.buffer_name), "*sql*");
+    g_sql_state.scratch_buffer_created = true;
+    
+    return 0;
 }
 
 /* Individual command handlers */
@@ -696,6 +821,8 @@ static int sql_cmd_query(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query(args, &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after command-based query */
+        sql_add_prompt();
     }
     return 1;
 }static int sql_cmd_exec(vizero_editor_t* editor, const char* args) {
@@ -722,6 +849,8 @@ static int sql_cmd_query(vizero_editor_t* editor, const char* args) {
         if (sql_execute_query(line_text, &result, &result_size) == 0 && result) {
             sql_display_result(result);
             free(result);
+            /* Add prompt after exec command */
+            sql_add_prompt();
         }
     }
     return 1;
@@ -755,6 +884,8 @@ static int sql_cmd_show_tables(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query(query, &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after show tables */
+        sql_add_prompt();
     }
     return 1;
 }
@@ -791,12 +922,12 @@ static int sql_cmd_describe(vizero_editor_t* editor, const char* args) {
     char query[512];
     switch (g_sql_state.db_type) {
         case DB_TYPE_MYSQL:
-            /* Use backticks to handle special characters and try with database qualifier */
-            if (strlen(g_sql_state.database) > 0) {
-                snprintf(query, sizeof(query), "DESCRIBE `%s`.`%s`", g_sql_state.database, trimmed_table);
-            } else {
-                snprintf(query, sizeof(query), "DESCRIBE `%s`", trimmed_table);
-            }
+            /* Try simple DESCRIBE first - let MySQL handle the current database context */
+            snprintf(query, sizeof(query), "DESCRIBE `%s`", trimmed_table);
+            /* Debug: log the query being executed */
+            char debug_msg[256];
+            snprintf(debug_msg, sizeof(debug_msg), "Executing describe query: %s", query);
+            sql_log_message(debug_msg);
             break;
         case DB_TYPE_POSTGRESQL:
             snprintf(query, sizeof(query), 
@@ -813,6 +944,8 @@ static int sql_cmd_describe(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query(query, &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after describe */
+        sql_add_prompt();
     }
     return 1;
 }
@@ -831,6 +964,8 @@ static int sql_cmd_begin(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query("BEGIN", &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after begin */
+        sql_add_prompt();
     }
     return 1;
 }
@@ -849,6 +984,8 @@ static int sql_cmd_commit(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query("COMMIT", &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after commit */
+        sql_add_prompt();
     }
     return 1;
 }
@@ -867,6 +1004,8 @@ static int sql_cmd_rollback(vizero_editor_t* editor, const char* args) {
     if (sql_execute_query("ROLLBACK", &result, &result_size) == 0 && result) {
         sql_display_result(result);
         free(result);
+        /* Add prompt after rollback */
+        sql_add_prompt();
     }
     return 1;
 }
@@ -942,7 +1081,8 @@ static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t 
     /* Only handle Enter key */
     if (key != 13 && key != 10) return 0; /* Not Enter key */
     
-    if (!g_sql_state.plugin_active || !g_sql_state.api) return 0;
+    /* Only handle if we're connected to a database */
+    if (!g_sql_state.connected || !g_sql_state.api) return 0;
     
     /* Get current cursor and buffer */
     vizero_cursor_t* cursor = g_sql_state.api->get_current_cursor(editor);
@@ -970,13 +1110,40 @@ static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t 
         /* Execute the SQL statement */
         trimmed_line[line_len - 1] = '\0'; /* Remove semicolon */
         
+        /* Strip any SQL prompt from the beginning of the line */
+        const char* query_start = trimmed_line;
+        
+        /* Check for and skip common SQL prompts (with or without space after >) */
+        if (strncmp(query_start, "mysql>", 6) == 0) {
+            query_start += 6;
+            /* Skip optional space after > */
+            if (*query_start == ' ') query_start++;
+        } else if (strncmp(query_start, "pgsql>", 6) == 0) {
+            query_start += 6;
+            /* Skip optional space after > */
+            if (*query_start == ' ') query_start++;
+        } else if (strncmp(query_start, "sql>", 4) == 0) {
+            query_start += 4;
+            /* Skip optional space after > */
+            if (*query_start == ' ') query_start++;
+        }
+        
+        /* Skip any remaining leading whitespace */
+        while (*query_start && isspace(*query_start)) query_start++;
+        if (*query_start == '\0') {
+            return 0; /* Empty query, let normal handling proceed */
+        }
+        
         char* result = NULL;
         size_t result_size = 0;
         
-        if (sql_execute_query(trimmed_line, &result, &result_size) == 0 && result) {
+        if (sql_execute_query(query_start, &result, &result_size) == 0 && result) {
             sql_display_result(result);
             free(result);
         }
+        
+        /* Add prompt for next command */
+        sql_add_prompt();
         
         return 1; /* We handled the Enter key */
     }
