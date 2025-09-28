@@ -1,5 +1,7 @@
 /* Complete buffer implementation with undo/redo support */
 #include "vizero/buffer.h"
+#include "vizero/memory_utils.h"
+#include "vizero/error.h"
 #include <stdlib.h>
 #include <string.h>
 #include "vizero/filewatch_poll.h"
@@ -215,30 +217,44 @@ vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
 void vizero_buffer_destroy(vizero_buffer_t* buffer) {
     if (!buffer) return;
     
-    if (buffer->filename) free(buffer->filename);
+    /* Safe cleanup of filename */
+    vizero_safe_free(buffer->filename);
+    
+    /* Safe cleanup of lines array */
     if (buffer->lines) {
         for (size_t i = 0; i < buffer->line_count; i++) {
-            free(buffer->lines[i]);
+            vizero_safe_free(buffer->lines[i]);
         }
-        free(buffer->lines);
+        vizero_safe_free(buffer->lines);
     }
     
     /* Clean up undo/redo stacks */
     undo_stack_clear(&buffer->undo_stack);
     undo_stack_clear(&buffer->redo_stack);
     
-    free(buffer);
+    /* Final safe cleanup of buffer structure */
+    vizero_safe_free(buffer);
 }
 
 const char* vizero_buffer_get_filename(vizero_buffer_t* buffer) {
     return buffer ? buffer->filename : NULL;
 }
 
-int vizero_buffer_set_filename(vizero_buffer_t* buffer, const char* filename) {
-    if (!buffer) return -1;
-    if (buffer->filename) free(buffer->filename);
-    buffer->filename = filename ? strdup(filename) : NULL;
-    return 0;
+vizero_result_t vizero_buffer_set_filename(vizero_buffer_t* buffer, const char* filename) {
+    if (!buffer) return VIZERO_ERROR_INVALID_ARG;
+    
+    vizero_safe_free(buffer->filename);
+    
+    if (filename) {
+        buffer->filename = vizero_safe_strdup(filename);
+        if (!buffer->filename) {
+            return VIZERO_ERROR_MEMORY;
+        }
+    } else {
+        buffer->filename = NULL;
+    }
+    
+    return VIZERO_SUCCESS;
 }
 
 int vizero_buffer_is_modified(vizero_buffer_t* buffer) {
@@ -324,11 +340,12 @@ size_t vizero_buffer_get_line_length(vizero_buffer_t* buffer, size_t line_num) {
 }
 
 /* Basic buffer text operations */
-int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, char c) {
-    if (!buffer || line >= buffer->line_count) return -1;
+vizero_result_t vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, char c) {
+    if (!buffer) return VIZERO_ERROR_INVALID_ARG;
+    if (line >= buffer->line_count) return VIZERO_ERROR_INVALID_ARG;
     
     /* Check if buffer is read-only */
-    if (buffer->readonly) return -1;
+    if (buffer->readonly) return VIZERO_ERROR_NOT_SUPPORTED;
     
     char* current_line = buffer->lines[line];
     size_t line_len = strlen(current_line);
@@ -341,7 +358,7 @@ int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, 
     
     /* Allocate new line with room for one more character */
     char* new_line = (char*)malloc(line_len + 2);
-    if (!new_line) return -1;
+    if (!new_line) return VIZERO_ERROR_MEMORY;
     
     /* Copy before insertion point */
     strncpy(new_line, current_line, col);
@@ -355,39 +372,41 @@ int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, 
     buffer->lines[line] = new_line;
     buffer->modified = 1;
     
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
-int vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, const char* text) {
-    if (!buffer || !text) return -1;
+vizero_result_t vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, const char* text) {
+    if (!buffer || !text) return VIZERO_ERROR_INVALID_ARG;
     
     /* Insert each character */
     for (const char* c = text; *c; c++) {
-        if (vizero_buffer_insert_char(buffer, line, col, *c) != 0) {
-            return -1;
+        vizero_result_t result = vizero_buffer_insert_char(buffer, line, col, *c);
+        if (result != VIZERO_SUCCESS) {
+            return result;
         }
         col++;
     }
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
-int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) {
-    if (!buffer || line >= buffer->line_count) return -1;
+vizero_result_t vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) {
+    if (!buffer) return VIZERO_ERROR_INVALID_ARG;
+    if (line >= buffer->line_count) return VIZERO_ERROR_INVALID_ARG;
     
     /* Check if buffer is read-only */
-    if (buffer->readonly) return -1;
+    if (buffer->readonly) return VIZERO_ERROR_NOT_SUPPORTED;
     
     char* current_line = buffer->lines[line];
     size_t line_len = strlen(current_line);
     
-    if (col >= line_len) return -1;
+    if (col >= line_len) return VIZERO_ERROR_NOT_FOUND;
     
     /* Record undo operation (old line content) */
     buffer_push_undo(buffer, UNDO_OP_MODIFY_LINE, line, current_line, NULL, 0);
     
     /* Allocate new line with one less character */
     char* new_line = (char*)malloc(line_len);
-    if (!new_line) return -1;
+    if (!new_line) return VIZERO_ERROR_MEMORY;
     
     /* Copy before deletion point */
     strncpy(new_line, current_line, col);
@@ -400,7 +419,7 @@ int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col) 
     buffer->lines[line] = new_line;
     buffer->modified = 1;
     
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_t start_col, size_t end_line, size_t end_col) {
@@ -473,18 +492,19 @@ int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_
     return 0;
 }
 
-int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text) {
-    if (!buffer || line_num > buffer->line_count) return -1;
+vizero_result_t vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text) {
+    if (!buffer) return VIZERO_ERROR_INVALID_ARG;
+    if (line_num > buffer->line_count) return VIZERO_ERROR_INVALID_ARG;
     
     /* Check if buffer is read-only */
-    if (buffer->readonly) return -1;
+    if (buffer->readonly) return VIZERO_ERROR_NOT_SUPPORTED;
     
     /* Record undo operation (delete line at insertion point) */
     buffer_push_undo(buffer, UNDO_OP_DELETE_LINE, line_num, NULL, text, 0);
     
     /* Expand lines array */
-    char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
-    if (!new_lines) return -1;
+    char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+    if (!new_lines) return VIZERO_ERROR_MEMORY;
     buffer->lines = new_lines;
     
     /* Shift lines down */
@@ -493,25 +513,26 @@ int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const ch
     }
     
     /* Insert new line */
-    buffer->lines[line_num] = text ? strdup(text) : strdup("");
-    if (!buffer->lines[line_num]) return -1;
+    buffer->lines[line_num] = text ? vizero_safe_strdup(text) : vizero_safe_strdup("");
+    if (!buffer->lines[line_num]) return VIZERO_ERROR_MEMORY;
     
     buffer->line_count++;
     buffer->modified = 1;
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
-int vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num) {
-    if (!buffer || line_num >= buffer->line_count || buffer->line_count <= 1) return -1;
+vizero_result_t vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num) {
+    if (!buffer) return VIZERO_ERROR_INVALID_ARG;
+    if (line_num >= buffer->line_count || buffer->line_count <= 1) return VIZERO_ERROR_INVALID_ARG;
     
     /* Check if buffer is read-only */
-    if (buffer->readonly) return -1;
+    if (buffer->readonly) return VIZERO_ERROR_NOT_SUPPORTED;
     
     /* Record undo operation (insert the deleted line back) */
     buffer_push_undo(buffer, UNDO_OP_INSERT_LINE, line_num, buffer->lines[line_num], NULL, 0);
     
     /* Free the line */
-    free(buffer->lines[line_num]);
+    vizero_safe_free(buffer->lines[line_num]);
     
     /* Shift lines up */
     for (size_t i = line_num; i < buffer->line_count - 1; i++) {
@@ -520,7 +541,7 @@ int vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num) {
     
     buffer->line_count--;
     buffer->modified = 1;
-    return 0;
+    return VIZERO_SUCCESS;
 }
 
 int vizero_buffer_split_line(vizero_buffer_t* buffer, size_t line_num, size_t col) {
@@ -549,7 +570,7 @@ int vizero_buffer_split_line(vizero_buffer_t* buffer, size_t line_num, size_t co
     }
     
     /* Expand lines array */
-    char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+    char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
     if (!new_lines) {
         free(first_part);
         free(second_part);
@@ -736,17 +757,18 @@ int vizero_buffer_save_to_file(vizero_buffer_t* buffer, const char* filename) {
     return 0;
 }
 
-int vizero_buffer_save(vizero_buffer_t* buffer) {
+vizero_result_t vizero_buffer_save(vizero_buffer_t* buffer) {
     if (!buffer) {
-        return -1;
+        return VIZERO_ERROR_INVALID_ARG;
     }
     
     /* If buffer has no filename, we can't save it */
     if (!buffer->filename) {
-        return -1; /* Should prompt for filename in the future */
+        return VIZERO_ERROR_NOT_FOUND; /* Should prompt for filename in the future */
     }
     
-    return vizero_buffer_save_to_file(buffer, buffer->filename);
+    int result = vizero_buffer_save_to_file(buffer, buffer->filename);
+    return (result == 0) ? VIZERO_SUCCESS : VIZERO_ERROR_IO;
 }
 
 int vizero_buffer_search(vizero_buffer_t* buffer, const char* pattern, int use_regex, vizero_search_result_t* results, size_t max_results, size_t* result_count) {
@@ -818,7 +840,7 @@ int vizero_buffer_undo(vizero_buffer_t* buffer) {
             if (op->old_text && op->line_num <= buffer->line_count) {
                 redo_op = undo_op_create(UNDO_OP_INSERT_LINE, op->line_num, NULL, op->old_text, 0);
                 
-                char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+                char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
                 if (new_lines) {
                     buffer->lines = new_lines;
                     for (size_t i = buffer->line_count; i > op->line_num; i--) {
@@ -871,7 +893,7 @@ int vizero_buffer_undo(vizero_buffer_t* buffer) {
             if (op->old_text && op->new_text && op->line_num < buffer->line_count) {
                 redo_op = undo_op_create(UNDO_OP_SPLIT_LINE, op->line_num, op->old_text, NULL, op->split_pos);
                 
-                char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+                char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
                 if (new_lines) {
                     buffer->lines = new_lines;
                     for (size_t i = buffer->line_count; i > op->line_num + 1; i--) {
@@ -931,7 +953,7 @@ int vizero_buffer_redo(vizero_buffer_t* buffer) {
             if (op->old_text && op->line_num <= buffer->line_count) {
                 undo_op = undo_op_create(UNDO_OP_INSERT_LINE, op->line_num, NULL, op->old_text, 0);
                 
-                char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+                char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
                 if (new_lines) {
                     buffer->lines = new_lines;
                     for (size_t i = buffer->line_count; i > op->line_num; i--) {
@@ -984,7 +1006,7 @@ int vizero_buffer_redo(vizero_buffer_t* buffer) {
             if (op->old_text && op->new_text && op->line_num < buffer->line_count) {
                 undo_op = undo_op_create(UNDO_OP_SPLIT_LINE, op->line_num, op->old_text, NULL, op->split_pos);
                 
-                char** new_lines = (char**)realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
+                char** new_lines = (char**)vizero_safe_realloc(buffer->lines, (buffer->line_count + 1) * sizeof(char*));
                 if (new_lines) {
                     buffer->lines = new_lines;
                     for (size_t i = buffer->line_count; i > op->line_num + 1; i--) {

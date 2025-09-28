@@ -258,6 +258,8 @@ add_library(vizero_core STATIC
     src/utils/file_utils.cpp
     src/utils/string_utils.cpp
     src/utils/json_parser.cpp
+    src/utils/memory_utils.cpp
+    src/utils/error.cpp
     src/lsp/lsp_client.cpp
 )
 

@@ -1,5 +1,6 @@
 #include "vizero/lsp_client.h"
 #include "vizero/json_parser.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -120,14 +121,26 @@ void vizero_lsp_client_destroy(vizero_lsp_client_t* client) {
         return;
     }
     
+    /* Stop the client first if running */
     if (client->is_running) {
         vizero_lsp_client_stop(client);
+        client->is_running = false;
     }
     
-    free(client->server_path);
-    free(client->working_directory);
-    free(client->read_buffer);
-    free(client);
+    /* Safe cleanup of allocated resources */
+    vizero_safe_free(client->server_path);
+    client->server_path = NULL;
+    
+    vizero_safe_free(client->working_directory);
+    client->working_directory = NULL;
+    
+    vizero_safe_free(client->read_buffer);
+    client->read_buffer = NULL;
+    client->read_buffer_size = 0;
+    client->read_buffer_used = 0;
+    
+    /* Final cleanup */
+    vizero_safe_free(client);
 }
 
 int vizero_lsp_client_start(vizero_lsp_client_t* client) {
@@ -423,7 +436,7 @@ static int lsp_client_read_messages(vizero_lsp_client_t* client) {
         if (new_size > 10 * 1024 * 1024) { /* Limit to 10MB */
             return -1;
         }
-        char* new_buffer = (char*)realloc(client->read_buffer, new_size);
+        char* new_buffer = (char*)vizero_safe_realloc(client->read_buffer, new_size);
         if (!new_buffer) {
             return -1;
         }

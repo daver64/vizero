@@ -19,6 +19,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "vizero/error.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -181,10 +182,10 @@ const char* vizero_buffer_get_filename(vizero_buffer_t* buffer);
  * 
  * @param buffer Buffer to modify (must not be NULL)
  * @param filename New filename to associate (may be NULL to clear)
- * @return 0 on success, negative error code on failure
- * @retval 0 Success
- * @retval -1 Invalid buffer pointer
- * @retval -2 Memory allocation failure
+ * @return VIZERO_SUCCESS on success, error code on failure
+ * @retval VIZERO_SUCCESS Success
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid buffer pointer
+ * @retval VIZERO_ERROR_MEMORY Memory allocation failure
  * 
  * @pre buffer must not be NULL
  * @note Pass NULL for filename to clear the associated filename
@@ -192,7 +193,7 @@ const char* vizero_buffer_get_filename(vizero_buffer_t* buffer);
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_set_filename(vizero_buffer_t* buffer, const char* filename);
+vizero_result_t vizero_buffer_set_filename(vizero_buffer_t* buffer, const char* filename);
 
 /**
  * @brief Check if a buffer has been modified
@@ -393,12 +394,12 @@ const char* vizero_buffer_get_text(vizero_buffer_t* buffer);
  * @param line Zero-based line number
  * @param col Zero-based column number
  * @param c Character to insert
- * @return 0 on success, negative error code on failure
- * @retval 0 Success
- * @retval -1 Invalid buffer pointer
- * @retval -2 Buffer is read-only
- * @retval -3 Invalid position
- * @retval -4 Memory allocation failure
+ * @return VIZERO_SUCCESS on success, error code on failure
+ * @retval VIZERO_SUCCESS Success
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid buffer pointer
+ * @retval VIZERO_ERROR_NOT_SUPPORTED Buffer is read-only
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid position
+ * @retval VIZERO_ERROR_MEMORY Memory allocation failure
  * 
  * @pre buffer must not be NULL
  * @post Buffer modification flag is set
@@ -407,7 +408,7 @@ const char* vizero_buffer_get_text(vizero_buffer_t* buffer);
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, char c);
+vizero_result_t vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, char c);
 
 /**
  * @brief Insert text at a specific position
@@ -420,13 +421,12 @@ int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, 
  * @param line Zero-based line number
  * @param col Zero-based column number
  * @param text Text to insert (must not be NULL)
- * @return 0 on success, negative error code on failure
- * @retval 0 Success
- * @retval -1 Invalid buffer pointer
- * @retval -2 Invalid text pointer
- * @retval -3 Buffer is read-only
- * @retval -4 Invalid position
- * @retval -5 Memory allocation failure
+ * @return VIZERO_SUCCESS on success, error code on failure
+ * @retval VIZERO_SUCCESS Success
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid buffer or text pointer
+ * @retval VIZERO_ERROR_NOT_SUPPORTED Buffer is read-only
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid position
+ * @retval VIZERO_ERROR_MEMORY Memory allocation failure
  * 
  * @pre buffer must not be NULL
  * @pre text must not be NULL
@@ -436,7 +436,7 @@ int vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, size_t col, 
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, const char* text);
+vizero_result_t vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, const char* text);
 
 /**
  * @brief Delete a single character at a specific position
@@ -447,12 +447,12 @@ int vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, 
  * @param buffer Target buffer (must not be NULL)
  * @param line Zero-based line number
  * @param col Zero-based column number
- * @return 0 on success, negative error code on failure
- * @retval 0 Success
- * @retval -1 Invalid buffer pointer
- * @retval -2 Buffer is read-only
- * @retval -3 Invalid position
- * @retval -4 No character to delete
+ * @return VIZERO_SUCCESS on success, error code on failure
+ * @retval VIZERO_SUCCESS Success
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid buffer pointer
+ * @retval VIZERO_ERROR_NOT_SUPPORTED Buffer is read-only
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid position
+ * @retval VIZERO_ERROR_NOT_FOUND No character to delete
  * 
  * @pre buffer must not be NULL
  * @post Buffer modification flag is set if character was deleted
@@ -461,7 +461,7 @@ int vizero_buffer_insert_text(vizero_buffer_t* buffer, size_t line, size_t col, 
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col);
+vizero_result_t vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, size_t col);
 
 /**
  * @brief Delete a range of text
@@ -509,13 +509,13 @@ int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_
  * @param buffer Target buffer (must not be NULL)
  * @param line_num Zero-based line number where to insert
  * @param text Text content for the new line (may be NULL for empty line)
- * @return 0 on success, negative error code on failure
+ * @return VIZERO_SUCCESS on success, error code on failure
  * 
  * @pre buffer must not be NULL
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text);
+vizero_result_t vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const char* text);
 
 /**
  * @brief Delete an entire line
@@ -525,13 +525,13 @@ int vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_num, const ch
  * 
  * @param buffer Target buffer (must not be NULL)
  * @param line_num Zero-based line number to delete
- * @return 0 on success, negative error code on failure
+ * @return VIZERO_SUCCESS on success, error code on failure
  * 
  * @pre buffer must not be NULL
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num);
+vizero_result_t vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_num);
 
 /**
  * @brief Split a line at a specific column
@@ -615,17 +615,18 @@ int vizero_buffer_save_to_file(vizero_buffer_t* buffer, const char* filename);
  * Clears the modification flag on success.
  * 
  * @param buffer Buffer to save (must not be NULL)
- * @return 0 on success, negative error code on failure
- * @retval -1 Invalid buffer pointer
- * @retval -2 No filename associated with buffer
- * @retval -3 File write error
+ * @return VIZERO_SUCCESS on success, error code on failure
+ * @retval VIZERO_SUCCESS Success
+ * @retval VIZERO_ERROR_INVALID_ARG Invalid buffer pointer
+ * @retval VIZERO_ERROR_NOT_FOUND No filename associated with buffer
+ * @retval VIZERO_ERROR_IO File write error
  * 
  * @pre buffer must not be NULL
  * @pre buffer must have an associated filename
  * @since 1.0.0
  * @thread_safety This function is not thread-safe
  */
-int vizero_buffer_save(vizero_buffer_t* buffer);
+vizero_result_t vizero_buffer_save(vizero_buffer_t* buffer);
 
 /** @} */ // end of file_io group
 

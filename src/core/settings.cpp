@@ -1,4 +1,5 @@
 #include "vizero/settings.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -341,9 +342,14 @@ char* vizero_settings_get_all_as_string(vizero_settings_t* settings) {
     const char* header = "Current Settings:\n\n";
     size_t header_len = strlen(header);
     if (pos + header_len >= buffer_size) {
-        buffer_size *= 2;
-        result = (char*)realloc(result, buffer_size);
-        if (!result) return NULL;
+        size_t new_size = buffer_size * 2;
+        char* new_result = (char*)vizero_safe_realloc(result, new_size);
+        if (!new_result) {
+            free(result);
+            return NULL;
+        }
+        result = new_result;
+        buffer_size = new_size;
     }
     strcpy(result + pos, header);
     pos += header_len;
@@ -374,13 +380,14 @@ char* vizero_settings_get_all_as_string(vizero_settings_t* settings) {
         
         /* Ensure buffer is large enough */
         while (pos + line_len >= buffer_size) {
-            buffer_size *= 2;
-            char* new_result = (char*)realloc(result, buffer_size);
+            size_t new_size = buffer_size * 2;
+            char* new_result = (char*)vizero_safe_realloc(result, new_size);
             if (!new_result) {
                 free(result);
                 return NULL;
             }
             result = new_result;
+            buffer_size = new_size;
         }
         
         strcpy(result + pos, line);
@@ -394,13 +401,14 @@ char* vizero_settings_get_all_as_string(vizero_settings_t* settings) {
     size_t summary_len = strlen(summary);
     
     while (pos + summary_len >= buffer_size) {
-        buffer_size *= 2;
-        char* new_result = (char*)realloc(result, buffer_size);
+        size_t new_size = buffer_size * 2;
+        char* new_result = (char*)vizero_safe_realloc(result, new_size);
         if (!new_result) {
             free(result);
             return NULL;
         }
         result = new_result;
+        buffer_size = new_size;
     }
     
     strcpy(result + pos, summary);

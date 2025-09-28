@@ -10,6 +10,7 @@
 #include "vizero/editor_window.h" // for window focus helpers
 #include "vizero/mode_manager.h"
 #include "vizero/plugin_manager.h"
+#include "vizero/memory_utils.h"
 // Forward declare helpers if not in header
 int vizero_window_manager_focus_direction(vizero_window_manager_t* manager, char dir);
 int vizero_window_manager_focus_number(vizero_window_manager_t* manager, int number);
@@ -41,7 +42,10 @@ vizero_input_manager_t* vizero_input_manager_create(vizero_application_t* app) {
 }
 
 void vizero_input_manager_destroy(vizero_input_manager_t* input) {
-    free(input);
+    if (!input) return;
+    
+    /* Safe cleanup */
+    vizero_safe_free(input);
 }
 
 void vizero_input_manager_process_events(vizero_input_manager_t* input) {
@@ -95,18 +99,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 }
                 
                 /* Clean up completion result (editor copied the data it needs) */
-                if (completion_result->items) {
-                    for (size_t i = 0; i < completion_result->item_count; i++) {
-                        free(completion_result->items[i].label);
-                        free(completion_result->items[i].detail);
-                        free(completion_result->items[i].documentation);  
-                        free(completion_result->items[i].insert_text);
-                        free(completion_result->items[i].filter_text);
-                        free(completion_result->items[i].sort_text);
-                    }
-                    free(completion_result->items);
-                }
-                free(completion_result);
+                vizero_completion_list_free(completion_result);
             }
         }
     }
@@ -269,30 +262,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                                         completion_list->item_count, trigger_position);
                                             
                                             /* Clean up completion list (editor copied the data) */
-                                            if (completion_list->items) {
-                                                for (size_t i = 0; i < completion_list->item_count; i++) {
-                                                    if (completion_list->items[i].label) {
-                                                        free(completion_list->items[i].label);
-                                                    }
-                                                    if (completion_list->items[i].detail) {
-                                                        free(completion_list->items[i].detail);
-                                                    }
-                                                    if (completion_list->items[i].documentation) {
-                                                        free(completion_list->items[i].documentation);
-                                                    }
-                                                    if (completion_list->items[i].insert_text) {
-                                                        free(completion_list->items[i].insert_text);
-                                                    }
-                                                    if (completion_list->items[i].filter_text) {
-                                                        free(completion_list->items[i].filter_text);
-                                                    }
-                                                    if (completion_list->items[i].sort_text) {
-                                                        free(completion_list->items[i].sort_text);
-                                                    }
-                                                }
-                                                free(completion_list->items);
-                                            }
-                                            free(completion_list);
+                                            vizero_completion_list_free(completion_list);
                                         } else {
                                             if (completion_list) {
                                                 free(completion_list);

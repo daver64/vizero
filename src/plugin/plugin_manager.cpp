@@ -3,6 +3,7 @@
 #include "vizero/plugin_registry.h"
 #include "vizero/buffer.h"
 #include "vizero/window.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -74,27 +75,37 @@ void vizero_plugin_manager_destroy(vizero_plugin_manager_t* manager) {
     
     /* Plugin rendering resources no longer need cleanup */
     
-    /* Unload all plugins */
+    /* Unload all plugins with proper cleanup order */
     for (size_t i = 0; i < manager->plugin_count; i++) {
         if (manager->plugins[i]) {
+            /* Call plugin cleanup first */
             if (manager->plugins[i]->callbacks.cleanup) {
                 manager->plugins[i]->callbacks.cleanup();
             }
             
+            /* Unload DLL handle */
             if (manager->plugins[i]->dll_handle) {
                 PLUGIN_UNLOAD(manager->plugins[i]->dll_handle);
+                manager->plugins[i]->dll_handle = NULL;
             }
             
-            free(manager->plugins[i]);
+            /* Free plugin structure */
+            vizero_safe_free(manager->plugins[i]);
+            manager->plugins[i] = NULL;
         }
     }
+    
+    /* Clear plugin count */
+    manager->plugin_count = 0;
     
     /* Destroy registry */
     if (manager->registry) {
         vizero_plugin_registry_destroy(manager->registry);
+        manager->registry = NULL;
     }
     
-    free(manager);
+    /* Final cleanup */
+    vizero_safe_free(manager);
 }
 
 int vizero_plugin_manager_load_plugin(vizero_plugin_manager_t* manager, const char* plugin_path) {

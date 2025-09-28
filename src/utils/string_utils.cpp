@@ -1,5 +1,6 @@
 /* Complete string utilities implementation */
 #include "vizero/string_utils.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>

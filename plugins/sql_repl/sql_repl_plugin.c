@@ -37,6 +37,7 @@
 #include "vizero/plugin_interface.h"
 #include "vizero/renderer.h"
 #include "vizero/colour_theme.h"
+#include "vizero/memory_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -311,12 +312,15 @@ static int mysql_execute_query(const char* query, char** result, size_t* result_
     for (int i = 0; i < num_fields; i++) {
         pos += snprintf(output + pos, buffer_size - pos, "%-20s", fields[i].name);
         if (pos >= buffer_size - 100) {
-            buffer_size *= 2;
-            output = realloc(output, buffer_size);
-            if (!output) {
+            size_t new_size = buffer_size * 2;
+            char* new_output = vizero_safe_realloc(output, new_size);
+            if (!new_output) {
+                free(output);
                 mysql_free_result(res);
                 return -1;
             }
+            output = new_output;
+            buffer_size = new_size;
         }
     }
     pos += snprintf(output + pos, buffer_size - pos, "\n");
@@ -334,12 +338,15 @@ static int mysql_execute_query(const char* query, char** result, size_t* result_
             const char* value = row[i] ? row[i] : "NULL";
             pos += snprintf(output + pos, buffer_size - pos, "%-20s", value);
             if (pos >= buffer_size - 100) {
-                buffer_size *= 2;
-                output = realloc(output, buffer_size);
-                if (!output) {
+                size_t new_size = buffer_size * 2;
+                char* new_output = vizero_safe_realloc(output, new_size);
+                if (!new_output) {
+                    free(output);
                     mysql_free_result(res);
                     return -1;
                 }
+                output = new_output;
+                buffer_size = new_size;
             }
         }
         pos += snprintf(output + pos, buffer_size - pos, "\n");
@@ -420,12 +427,15 @@ static int pgsql_execute_query(const char* query, char** result, size_t* result_
     for (int i = 0; i < num_fields; i++) {
         pos += snprintf(output + pos, buffer_size - pos, "%-20s", PQfname(res, i));
         if (pos >= buffer_size - 100) {
-            buffer_size *= 2;
-            output = realloc(output, buffer_size);
-            if (!output) {
+            size_t new_size = buffer_size * 2;
+            char* new_output = vizero_safe_realloc(output, new_size);
+            if (!new_output) {
+                free(output);
                 PQclear(res);
                 return -1;
             }
+            output = new_output;
+            buffer_size = new_size;
         }
     }
     pos += snprintf(output + pos, buffer_size - pos, "\n");
@@ -442,12 +452,15 @@ static int pgsql_execute_query(const char* query, char** result, size_t* result_
             const char* value = PQgetisnull(res, row, col) ? "NULL" : PQgetvalue(res, row, col);
             pos += snprintf(output + pos, buffer_size - pos, "%-20s", value);
             if (pos >= buffer_size - 100) {
-                buffer_size *= 2;
-                output = realloc(output, buffer_size);
-                if (!output) {
+                size_t new_size = buffer_size * 2;
+                char* new_output = vizero_safe_realloc(output, new_size);
+                if (!new_output) {
+                    free(output);
                     PQclear(res);
                     return -1;
                 }
+                output = new_output;
+                buffer_size = new_size;
             }
         }
         pos += snprintf(output + pos, buffer_size - pos, "\n");
