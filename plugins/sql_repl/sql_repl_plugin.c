@@ -143,7 +143,7 @@ static void sql_log_message(const char* message) {
     struct tm* local_time = localtime(&now);
     strftime(timestamp, sizeof(timestamp), "%H:%M:%S", local_time);
     
-    char log_entry[512];
+    char log_entry[1024];
     snprintf(log_entry, sizeof(log_entry), "[%s] SQL: %s", timestamp, message);
     
     /* For now, just print to stdout/debug output */
@@ -503,7 +503,7 @@ static int sql_connect_database(const char* connection_string) {
         g_sql_state.connected = true;
         g_sql_state.in_transaction = false;
         
-        char status_msg[256];
+        char status_msg[512];
         snprintf(status_msg, sizeof(status_msg), "Connected to %s:%d/%s as %s",
                 g_sql_state.host, g_sql_state.port, g_sql_state.database, g_sql_state.username);
         sql_display_result(status_msg);
