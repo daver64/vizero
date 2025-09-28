@@ -5,13 +5,21 @@ set(SQL_LIBS "")
 set(SQL_INCLUDES "")
 
 # Try to find MySQL/MariaDB client library
+# Set MYSQL_ROOT environment variable to MySQL/MariaDB installation directory for custom locations
 find_path(MYSQL_INCLUDE_DIR mysql.h
     PATHS
+    $ENV{MYSQL_ROOT}/include
+    $ENV{MYSQL_ROOT}/mysql/include
+    $ENV{MYSQL_ROOT}/mariadb/include
     /usr/include/mysql
     /usr/local/include/mysql
     /opt/homebrew/include/mysql
     /usr/include/mariadb
     /usr/local/include/mariadb
+    "C:/xampp/mysql/include"
+    "C:/xampp/mariadb/include"
+    "C:/XAMPP/mysql/include"
+    "C:/XAMPP/mariadb/include"
     "C:/Program Files/MySQL/MySQL Server*/include"
     "C:/Program Files (x86)/MySQL/MySQL Server*/include"
     "C:/mysql/include"
@@ -21,6 +29,9 @@ find_path(MYSQL_INCLUDE_DIR mysql.h
 find_library(MYSQL_LIBRARY
     NAMES mysqlclient mysql mariadb
     PATHS
+    $ENV{MYSQL_ROOT}/lib
+    $ENV{MYSQL_ROOT}/mysql/lib
+    $ENV{MYSQL_ROOT}/mariadb/lib
     /usr/lib
     /usr/local/lib
     /opt/homebrew/lib

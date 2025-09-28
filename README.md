@@ -134,6 +134,10 @@ For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
 mkdir build && cd build
 cmake ..
 cmake --build . --config Release
+
+# For MySQL/MariaDB support (optional):
+# Windows: set MYSQL_ROOT=C:\path\to\mysql
+# Unix: export MYSQL_ROOT=/path/to/mysql
 ```
 
 ### Basic Usage
@@ -387,6 +391,11 @@ static int highlight_syntax(/* ... */) {
 - CMake 3.10+
 - C/C++ compiler (MSVC, GCC, or Clang)
 - Boost libraries (system, filesystem)
+
+### Optional Database Support
+For SQL REPL plugin functionality:
+- **MySQL/MariaDB**: Set `MYSQL_ROOT` environment variable to MySQL installation directory
+- **PostgreSQL**: Automatic detection on most systems
 
 ### Runtime
 - Modern GPU with OpenGL 3.3+ support
