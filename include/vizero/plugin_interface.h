@@ -672,6 +672,9 @@ typedef struct {
     /** @brief Show a popup dialog with text content */
     int (*show_popup)(vizero_editor_t* editor, const char* content, uint32_t duration_ms);
     
+    /** @brief Check if any dialog is currently active (e.g., quit confirmation) */
+    int (*is_dialog_active)(vizero_editor_t* editor);
+    
     /** @} */ // end of popup_api group
 } vizero_editor_api_t;
 

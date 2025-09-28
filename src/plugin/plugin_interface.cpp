@@ -3,6 +3,7 @@
 #include "vizero/buffer.h"
 #include "vizero/cursor.h"
 #include "vizero/editor_state.h"
+#include "../editor/editor_state_internal.h"
 #include <string.h>
 
 /* API implementation functions for plugins */
@@ -172,6 +173,24 @@ static int api_show_popup(vizero_editor_t* editor, const char* content, uint32_t
     return 0;
 }
 
+static int api_is_dialog_active(vizero_editor_t* editor) {
+    if (!editor) return 0;
+    
+    vizero_editor_state_t* state = (vizero_editor_state_t*)editor;
+    
+    /* Check for quit confirmation dialog */
+    if (state->quit_confirmation_active) {
+        return 1;
+    }
+    
+    /* Check for any general popup/dialog */
+    if (vizero_editor_is_popup_visible(state)) {
+        return 1;
+    }
+    
+    return 0;
+}
+
 /* Initialize a plugin API structure with all function pointers */
 void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t* editor) {
     if (!api) return;
@@ -213,6 +232,7 @@ void vizero_plugin_interface_init_api(vizero_editor_api_t* api, vizero_editor_t*
     
     /* Popup operations */
     api->show_popup = api_show_popup;
+    api->is_dialog_active = api_is_dialog_active;
 }
 
 /* Helper function to validate plugin API version compatibility */

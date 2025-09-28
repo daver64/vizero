@@ -48,6 +48,9 @@
     #define close_socket close
 #endif
 
+/* Global API reference for accessing editor functionality */
+static const vizero_editor_api_t* g_editor_api = NULL;
+
 /* Forward declarations */
 static void irc_set_active_buffer(const char* buffer_name);
 
@@ -2199,6 +2202,12 @@ static int irc_wants_full_window(vizero_editor_t* editor) {
         return 0;
     }
     
+    /* CRITICAL: Never take over full window if a dialog is active (e.g., quit confirmation) */
+    if (g_editor_api && g_editor_api->is_dialog_active && g_editor_api->is_dialog_active(editor)) {
+        printf("[IRC] Dialog is active, disabling fullscreen mode\n");
+        return 0;
+    }
+    
     /* Only take over full window when we're connected to IRC AND in an IRC buffer AND user wants full window */
     int connected = g_irc_state->connection.connected;
     int in_irc_buffer = irc_is_in_irc_buffer(editor);
@@ -2693,6 +2702,9 @@ VIZERO_PLUGIN_DEFINE_INFO(
 
 /* Plugin entry points */
 int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
+    /* Store API reference for use throughout the plugin */
+    g_editor_api = api;
+    
     /* Initialize WinSock on Windows */
 #ifdef _WIN32
     WSADATA wsaData;
