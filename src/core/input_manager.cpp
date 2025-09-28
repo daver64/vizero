@@ -907,7 +907,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
                         if (buffer && cursor) {
                             /* Insert each character from the text input */
-                            bool text_changed = false;
+                          //  bool text_changed = false;
                             for (const char* c = text; *c; c++) {
                                 size_t line = vizero_cursor_get_line(cursor);
                                 size_t col = vizero_cursor_get_column(cursor);
@@ -918,7 +918,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 if (vizero_buffer_insert_char(buffer, line, col, *c) == 0) {
                                     /* Move cursor forward after successful insertion */
                                     vizero_cursor_move_right(cursor);
-                                    text_changed = true;
+                                  //  text_changed = true;
                                 }
                             }
                             /* Diagnostic updates removed to prevent crashes - will update on file save */

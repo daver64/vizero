@@ -622,7 +622,7 @@ static void sql_display_result(const char* result) {
 static void sql_display_error(const char* error) {
     if (!error) return;
     
-    char error_msg[512];
+    char error_msg[1024];
     snprintf(error_msg, sizeof(error_msg), "ERROR: %s", error);
     sql_display_result(error_msg);
     sql_log_message(error_msg);

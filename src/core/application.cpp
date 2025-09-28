@@ -897,7 +897,8 @@ int vizero_application_run(vizero_application_t* app) {
             /* Let plugin render using OpenGL */
             if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, plugin_window_width, plugin_window_height)) {
                 /* Fallback: show placeholder if plugin rendering fails */
-                vizero_text_info_t text_info = {0};
+                vizero_text_info_t text_info ;//= {0};
+                
                 text_info.x = 10.0f;
                 text_info.y = 10.0f;
                 vizero_colour_t text_color = {1.0f, 1.0f, 1.0f, 1.0f};
