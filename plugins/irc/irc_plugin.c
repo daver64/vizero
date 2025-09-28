@@ -238,24 +238,24 @@ static vizero_colour_t irc_get_nick_colour(const char* nick) {
         hash = hash * 31 + *p;
     }
     
-    /* IRC nick colors - based on common IRC client palettes */
+    /* 16-color pastel palette for IRC nicknames - optimized for readability */
     vizero_colour_t colors[] = {
-        {0.8f, 0.2f, 0.2f, 1.0f},  /* Red */
-        {0.2f, 0.8f, 0.2f, 1.0f},  /* Green */  
-        {0.2f, 0.2f, 0.8f, 1.0f},  /* Blue */
-        {0.8f, 0.8f, 0.2f, 1.0f},  /* Yellow */
-        {0.8f, 0.2f, 0.8f, 1.0f},  /* Magenta */
-        {0.2f, 0.8f, 0.8f, 1.0f},  /* Cyan */
-        {0.9f, 0.6f, 0.2f, 1.0f},  /* Orange */
-        {0.6f, 0.2f, 0.9f, 1.0f},  /* Purple */
-        {0.9f, 0.4f, 0.6f, 1.0f},  /* Pink */
-        {0.4f, 0.9f, 0.6f, 1.0f},  /* Light Green */
-        {0.6f, 0.6f, 0.9f, 1.0f},  /* Light Blue */
-        {0.9f, 0.9f, 0.6f, 1.0f},  /* Light Yellow */
-        {0.9f, 0.6f, 0.9f, 1.0f},  /* Light Magenta */
-        {0.6f, 0.9f, 0.9f, 1.0f},  /* Light Cyan */
-        {0.7f, 0.7f, 0.7f, 1.0f},  /* Light Grey */
-        {0.5f, 0.5f, 0.5f, 1.0f}   /* Grey */
+        {1.0f, 0.7f, 0.7f, 1.0f},  /* Pastel Red */
+        {0.7f, 1.0f, 0.7f, 1.0f},  /* Pastel Green */
+        {0.7f, 0.7f, 1.0f, 1.0f},  /* Pastel Blue */
+        {1.0f, 1.0f, 0.7f, 1.0f},  /* Pastel Yellow */
+        {1.0f, 0.7f, 1.0f, 1.0f},  /* Pastel Magenta */
+        {0.7f, 1.0f, 1.0f, 1.0f},  /* Pastel Cyan */
+        {1.0f, 0.85f, 0.7f, 1.0f}, /* Pastel Orange */
+        {0.85f, 0.7f, 1.0f, 1.0f}, /* Pastel Purple */
+        {1.0f, 0.8f, 0.9f, 1.0f},  /* Pastel Pink */
+        {0.8f, 1.0f, 0.8f, 1.0f},  /* Pastel Mint */
+        {0.8f, 0.9f, 1.0f, 1.0f},  /* Pastel Sky Blue */
+        {1.0f, 0.95f, 0.8f, 1.0f}, /* Pastel Cream */
+        {0.95f, 0.8f, 1.0f, 1.0f}, /* Pastel Lavender */
+        {0.8f, 1.0f, 0.95f, 1.0f}, /* Pastel Aqua */
+        {1.0f, 0.9f, 0.85f, 1.0f}, /* Pastel Peach */
+        {0.9f, 0.85f, 1.0f, 1.0f}  /* Pastel Lilac */
     };
     
     return colors[hash % (sizeof(colors) / sizeof(colors[0]))];
@@ -1216,7 +1216,6 @@ static void irc_render_message_area_gl(vizero_renderer_t* renderer, int x, int y
     /* Render messages */
     int line_y = y + height - 20; /* Start from bottom */
     int line_height = 18;
-    int max_line_width = width - 10; /* Leave margin */
     
     for (int i = (int)current_buffer->message_count - 1; i >= 0 && line_y > y; i--) {
         irc_message_t* msg = &current_buffer->messages[i];
@@ -1225,14 +1224,31 @@ static void irc_render_message_area_gl(vizero_renderer_t* renderer, int x, int y
         text_info.x = (float)(x + 5);
         text_info.y = (float)line_y;
         text_info.font = NULL;
-        
-        /* Format message line */
-        char line[1024];
         if (strlen(msg->nick) > 0) {
-            snprintf(line, sizeof(line), "[%s] <%s> %s", msg->timestamp, msg->nick, msg->message);
-            text_info.colour = (vizero_colour_t){0.9f, 0.9f, 0.9f, 1.0f};
+            /* Render timestamp in gray */
+            char timestamp_part[64];
+            snprintf(timestamp_part, sizeof(timestamp_part), "[%s] ", msg->timestamp);
+            text_info.colour = (vizero_colour_t){0.7f, 0.7f, 0.7f, 1.0f}; /* Gray for timestamp */
+            vizero_renderer_draw_text(renderer, timestamp_part, &text_info);
+            
+            /* Calculate timestamp width and position for the colored message */
+            float timestamp_width = (float)strlen(timestamp_part) * 8.0f; /* Rough character width */
+            text_info.x += timestamp_width;
+            
+            /* Render entire message (nick + text) in pastel color based on nick hash */
+            char colored_message[1024];
+            snprintf(colored_message, sizeof(colored_message), "%s: %s", msg->nick, msg->message);
+            text_info.colour = irc_get_nick_colour(msg->nick);
+            vizero_renderer_draw_text(renderer, colored_message, &text_info);
+            
+            /* Reset x position for next line */
+            text_info.x = (float)(x + 5);
+            line_y -= line_height;
         } else {
+            /* System messages (no nick) - render in appropriate colors */
+            char line[1024];
             snprintf(line, sizeof(line), "[%s] %s", msg->timestamp, msg->message);
+            
             /* Different colors for different message types */
             switch (msg->type) {
                 case IRC_MSG_SERVER:
@@ -1249,45 +1265,10 @@ static void irc_render_message_area_gl(vizero_renderer_t* renderer, int x, int y
                     text_info.colour = (vizero_colour_t){0.8f, 0.8f, 0.8f, 1.0f};
                     break;
             }
-        }
-        
-        /* Simple word wrapping - break long lines */
-        int line_len = (int)strlen(line);
-        int chars_per_line = max_line_width / 8; /* Rough estimate: 8 pixels per character */
-        if (chars_per_line < 20) chars_per_line = 20; /* Minimum line length */
-        
-        if (line_len <= chars_per_line) {
-            /* Line fits, render normally */
+            
+            /* Render system message */
             vizero_renderer_draw_text(renderer, line, &text_info);
             line_y -= line_height;
-        } else {
-            /* Line too long, break it up */
-            char temp_line[1024];
-            int pos = 0;
-            while (pos < line_len && line_y > y) {
-                int chunk_len = chars_per_line;
-                if (pos + chunk_len > line_len) {
-                    chunk_len = line_len - pos;
-                }
-                
-                /* Try to break at word boundary */
-                if (pos + chunk_len < line_len) {
-                    while (chunk_len > 0 && line[pos + chunk_len] != ' ') {
-                        chunk_len--;
-                    }
-                    if (chunk_len == 0) chunk_len = chars_per_line; /* Force break if no spaces */
-                }
-                
-                strncpy(temp_line, line + pos, chunk_len);
-                temp_line[chunk_len] = '\0';
-                
-                text_info.y = (float)line_y;
-                vizero_renderer_draw_text(renderer, temp_line, &text_info);
-                
-                pos += chunk_len;
-                if (pos < line_len && line[pos] == ' ') pos++; /* Skip space */
-                line_y -= line_height;
-            }
         }
     }
 }
