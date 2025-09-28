@@ -548,11 +548,15 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                     copy_len--;
                 }
             }
-            strncpy(visual, line + copy_start, copy_len);
-            visual[copy_len] = '\0';
+            /* Ensure we don't overflow the visual buffer */
+            size_t safe_copy_len = (copy_len < sizeof(visual) - 1) ? copy_len : sizeof(visual) - 1;
+            strncpy(visual, line + copy_start, safe_copy_len);
+            visual[safe_copy_len] = '\0';
         } else if (line && actual_chunk > 0) {
-            strncpy(visual, line + start, actual_chunk);
-            visual[actual_chunk] = '\0';
+            /* Ensure we don't overflow the visual buffer */
+            size_t safe_chunk = (actual_chunk < sizeof(visual) - 1) ? actual_chunk : sizeof(visual) - 1;
+            strncpy(visual, line + start, safe_chunk);
+            visual[safe_chunk] = '\0';
         } else {
             visual[0] = '\0';
         }
@@ -562,6 +566,10 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             vizero_text_info_t lninfo = { (float)content_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {0.5f, 0.5f, 0.5f, 1.0f}, NULL };
             vizero_renderer_draw_text(renderer, lnbuf, &lninfo);
         }
+        
+        /* Define current_line for both syntax highlighting and selection checks */
+        size_t current_line = (size_t)i;
+        
         if (syntax_enabled && state->plugin_manager) {
             // --- PATCH: Use caller-allocated tokens buffer for plugin syntax highlighting ---
             vizero_syntax_token_t tokens[64]; // 64 tokens per line should be enough for most cases
@@ -631,10 +639,10 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                     }
                     
                     /* Check if current position is within selection */
-                    if ((i > sel_start.line && i < sel_end.line) ||
-                        (i == sel_start.line && i == sel_end.line && logical_col >= sel_start.column && logical_col < sel_end.column) ||
-                        (i == sel_start.line && i < sel_end.line && logical_col >= sel_start.column) ||
-                        (i > sel_start.line && i == sel_end.line && logical_col < sel_end.column)) {
+                    if ((current_line > sel_start.line && current_line < sel_end.line) ||
+                        (current_line == sel_start.line && current_line == sel_end.line && logical_col >= sel_start.column && logical_col < sel_end.column) ||
+                        (current_line == sel_start.line && current_line < sel_end.line && logical_col >= sel_start.column) ||
+                        (current_line > sel_start.line && current_line == sel_end.line && logical_col < sel_end.column)) {
                         is_selected = 1;
                     }
                 }
@@ -699,15 +707,15 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 }
                 
                 /* Check if any part of this line is selected */
-                if ((i >= sel_start.line && i <= sel_end.line)) {
+                if ((current_line >= sel_start.line && current_line <= sel_end.line)) {
                     size_t line_start_col = 0;
                     size_t line_end_col = strlen(visual);
                     
                     /* Calculate selection bounds for this line */
-                    if (i == sel_start.line) {
+                    if (current_line == sel_start.line) {
                         line_start_col = (sel_start.column > line_end_col) ? line_end_col : sel_start.column;
                     }
-                    if (i == sel_end.line) {
+                    if (current_line == sel_end.line) {
                         line_end_col = (sel_end.column > strlen(visual)) ? strlen(visual) : sel_end.column;
                     }
                     

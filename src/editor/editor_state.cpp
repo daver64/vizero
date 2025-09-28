@@ -2100,6 +2100,7 @@ static int vizero_close_all_except_current_window(vizero_editor_state_t* state) 
     return 0;
 }
 
+#if 0  /* Unused function - kept for future use */
 static int vizero_edit_new_unnamed_buffer(vizero_editor_state_t* state) {
     if (!state) return -1;
     
@@ -2117,6 +2118,7 @@ static int vizero_edit_new_unnamed_buffer(vizero_editor_state_t* state) {
         return -1;
     }
 }
+#endif  /* End unused vizero_edit_new_unnamed_buffer */
 
 static int vizero_edit_new_buffer_with_name(vizero_editor_state_t* state, const char* name) {
     if (!state) return -1;
@@ -5473,7 +5475,7 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
     }
     
     /* Notify LSP plugins of buffer changes if content changed */
-    bool buffer_changed = (buffer != last_diagnostic_buffer || current_mod_time != last_modification_time);
+    /* bool buffer_changed = (buffer != last_diagnostic_buffer || current_mod_time != last_modification_time); */  /* Unused variable */
     /* For manual diagnostic refresh (Ctrl+D), trigger LSP analysis first */
     if (state->plugin_manager && buffer) {
         /* Send buffer changes to LSP plugins before requesting diagnostics */
@@ -5783,6 +5785,7 @@ int vizero_editor_handle_right_click(vizero_editor_state_t* state, vizero_editor
 }
 
 int vizero_editor_handle_left_click_release(vizero_editor_state_t* state, int x, int y) {
+    (void)x;  /* Parameter not currently used */
     if (!state) return -1;
     
     /* End mouse selection */

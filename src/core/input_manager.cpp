@@ -54,7 +54,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     static uint32_t last_consumed_key = 0;
     static uint32_t last_consumed_timestamp = 0;
     static uint32_t plugin_deactivation_time = 0;
-    static uint32_t recent_plugin_activity = 0;
+    /* static uint32_t recent_plugin_activity = 0; */  /* Unused variable */
     
     /* Async completion checking disabled - caused infinite loops */
     

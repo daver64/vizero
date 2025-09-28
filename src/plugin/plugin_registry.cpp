@@ -57,9 +57,16 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
         return -1;
     }
     
-    fread(json_content, 1, file_size, file);
-    json_content[file_size] = '\0';
+    size_t bytes_read = fread(json_content, 1, file_size, file);
     fclose(file);
+    
+    if (bytes_read != file_size) {
+        fprintf(stderr, "Plugin Registry: Warning - failed to read complete manifest file: %s\n", manifest_path);
+        free(json_content);
+        return -1;
+    }
+    
+    json_content[file_size] = '\0';
     
     /* Parse JSON using proper parser */
     vizero_json_t* json = vizero_json_parse(json_content, file_size);

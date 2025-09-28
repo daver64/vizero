@@ -569,7 +569,10 @@ static int lsp_client_start_process(vizero_lsp_client_t* client) {
         
         /* Change to working directory if specified */
         if (client->working_directory) {
-            chdir(client->working_directory);
+            if (chdir(client->working_directory) != 0) {
+                fprintf(stderr, "LSP: Warning - failed to change to working directory: %s\n", client->working_directory);
+                /* Continue execution - this is not a fatal error */
+            }
         }
         
         /* Execute the server */
