@@ -91,6 +91,22 @@ int vizero_json_array_size(vizero_json_t* json);
  */
 vizero_json_t* vizero_json_array_get(vizero_json_t* json, int index);
 
+/**
+ * Get all keys from a JSON object
+ * @param json The JSON handle (must be an object)
+ * @param keys Output array of key names (caller must free each string and the array)
+ * @param max_keys Maximum number of keys to return
+ * @return Number of keys returned, or -1 if not an object or error
+ */
+int vizero_json_object_get_keys(vizero_json_t* json, char*** keys, int max_keys);
+
+/**
+ * Free keys array returned by vizero_json_object_get_keys
+ * @param keys The keys array to free
+ * @param count Number of keys in the array
+ */
+void vizero_json_free_keys(char** keys, int count);
+
 #ifdef __cplusplus
 }
 #endif

@@ -772,15 +772,36 @@ static int sql_cmd_describe(vizero_editor_t* editor, const char* args) {
         return 1;
     }
     
+    /* Trim whitespace from table name */
+    char trimmed_table[256];
+    const char* start = args;
+    while (*start && isspace(*start)) start++;
+    
+    size_t len = strlen(start);
+    while (len > 0 && isspace(start[len - 1])) len--;
+    
+    if (len >= sizeof(trimmed_table)) {
+        sql_display_error("Table name too long");
+        return 1;
+    }
+    
+    strncpy(trimmed_table, start, len);
+    trimmed_table[len] = '\0';
+    
     char query[512];
     switch (g_sql_state.db_type) {
         case DB_TYPE_MYSQL:
-            snprintf(query, sizeof(query), "DESCRIBE %s", args);
+            /* Use backticks to handle special characters and try with database qualifier */
+            if (strlen(g_sql_state.database) > 0) {
+                snprintf(query, sizeof(query), "DESCRIBE `%s`.`%s`", g_sql_state.database, trimmed_table);
+            } else {
+                snprintf(query, sizeof(query), "DESCRIBE `%s`", trimmed_table);
+            }
             break;
         case DB_TYPE_POSTGRESQL:
             snprintf(query, sizeof(query), 
                     "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s'", 
-                    args);
+                    trimmed_table);
             break;
         default:
             sql_display_error("Unsupported database type");
@@ -983,27 +1004,30 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     g_sql_state.editor = editor;
     g_sql_state.api = api;
     
-#ifdef HAVE_MYSQL
-    mysql_library_init(0, NULL, NULL);
-#endif
+    /* DEBUG: Just print to console to test loading */
+    printf("[SQL REPL] Plugin loading test - basic initialization successful!\n");
     
-    /* Log available database support */
-    char support_msg[256];
-    char supported_dbs[128] = "";
+    /* Initialize database libraries and test support */
+    printf("[SQL REPL] Testing database support:\n");
     
 #ifdef HAVE_MYSQL
-    strcat(supported_dbs, "MySQL ");
-#endif
-#ifdef HAVE_POSTGRESQL
-    strcat(supported_dbs, "PostgreSQL ");
-#endif
-    
-    if (strlen(supported_dbs) == 0) {
-        strcpy(supported_dbs, "None");
+    if (mysql_library_init(0, NULL, NULL) == 0) {
+        printf("[SQL REPL] MySQL/MariaDB support: ENABLED\n");
+    } else {
+        printf("[SQL REPL] MySQL/MariaDB support: FAILED to initialize\n");
     }
+#else
+    printf("[SQL REPL] MySQL/MariaDB support: NOT COMPILED\n");
+#endif
+
+#ifdef HAVE_POSTGRESQL
+    /* Test PostgreSQL by creating a dummy connection info - this doesn't actually connect */
+    printf("[SQL REPL] PostgreSQL support: ENABLED\n");
+#else
+    printf("[SQL REPL] PostgreSQL support: NOT COMPILED\n");
+#endif
     
-    snprintf(support_msg, sizeof(support_msg), "SQL REPL plugin initialized - Database support: %s", supported_dbs);
-    sql_log_message(support_msg);
+    printf("[SQL REPL] Plugin initialized with database support testing ENABLED\n");
     
     /* Store plugin and API for later use */
     plugin->user_data = &g_sql_state;

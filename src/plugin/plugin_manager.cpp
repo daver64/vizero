@@ -362,6 +362,9 @@ int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager)
         vizero_plugin_registry_entry_t* entry = &manager->registry->entries[i];
         
         if (entry->always_load && !entry->is_loaded) {
+            /* DEBUG: Show which plugin we're trying to load */
+            printf("[DEBUG] Attempting to load always-load plugin: %s\n", entry->name);
+            
             /* Load the plugin */
             char plugin_path[1024];
             char plugin_filename[512];
@@ -386,11 +389,14 @@ int vizero_plugin_manager_ensure_always_loaded(vizero_plugin_manager_t* manager)
             snprintf(plugin_path, sizeof(plugin_path), "%s/%s", manager->plugin_directory, plugin_filename);
 #endif
             
+            printf("[DEBUG] Trying to load plugin from path: %s\n", plugin_path);
             if (vizero_plugin_manager_load_plugin(manager, plugin_path) == 0) {
                 entry->is_loaded = true;
                 entry->plugin_instance = manager->plugins[manager->plugin_count - 1];
                 loaded_count++;
                 printf("[PLUGIN] Loaded always-load: %s\n", entry->name);
+            } else {
+                printf("[DEBUG] Failed to load always-load plugin: %s\n", entry->name);
             }
         }
     }

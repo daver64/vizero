@@ -95,22 +95,24 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
     /* since our JSON parser doesn't have object iteration yet */
     registry->entry_count = 0;
     
-    /* Try to parse known plugin names from the manifest */
-    /* This is a temporary solution until we add object iteration to json_parser */
-    const char* known_plugins[] = {
-        "file_browser", "syntax_c", "syntax_csharp", "syntax_markdown", 
-        "syntax_xml", "syntax_python", "syntax_lisp", "syntax_php", 
-        "syntax_javascript", "irc", "lisp_repl", "clangd", "example_plugin"
-    };
+    /* Get all plugin keys from the JSON object */
+    char** plugin_names = nullptr;
+    int plugin_count = vizero_json_object_get_keys(plugins_obj, &plugin_names, 128);
     
-    for (size_t i = 0; i < sizeof(known_plugins) / sizeof(known_plugins[0]) && registry->entry_count < 128; i++) {
-        vizero_json_t* plugin_obj = vizero_json_get_object(plugins_obj, known_plugins[i]);
+    if (plugin_count <= 0 || !plugin_names) {
+        printf("Failed to get plugin keys from manifest\n");
+        vizero_json_free(json);
+        return -1;
+    }
+    
+    for (int i = 0; i < plugin_count && registry->entry_count < 128; i++) {
+        vizero_json_t* plugin_obj = vizero_json_get_object(plugins_obj, plugin_names[i]);
         if (!plugin_obj) continue;
         
         vizero_plugin_registry_entry_t* entry = &registry->entries[registry->entry_count];
         
         /* Set plugin name */
-        safe_copy_string(entry->name, known_plugins[i], sizeof(entry->name));
+        safe_copy_string(entry->name, plugin_names[i], sizeof(entry->name));
         
         /* Parse type */
         char* type_str = vizero_json_get_string(plugin_obj, "type");
@@ -134,6 +136,9 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
         /* Parse boolean flags */
         entry->load_on_demand = vizero_json_get_bool(plugin_obj, "load_on_demand", 0);
         entry->always_load = vizero_json_get_bool(plugin_obj, "always_load", 0);
+        
+        /* DEBUG: Show plugin parsing results */
+        printf("[DEBUG] Parsed plugin: %s, always_load=%d\n", entry->name, entry->always_load);
         
         /* Parse priority */
         entry->priority = vizero_json_get_int(plugin_obj, "priority", 0);
@@ -167,6 +172,9 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
         vizero_json_free(plugin_obj);
         registry->entry_count++;
     }
+    
+    /* Cleanup plugin names array */
+    vizero_json_free_keys(plugin_names, plugin_count);
     
     vizero_json_free(plugins_obj);
     

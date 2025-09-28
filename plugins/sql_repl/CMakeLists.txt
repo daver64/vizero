@@ -8,7 +8,7 @@ set(SQL_INCLUDES "")
 # Set MYSQL_ROOT environment variable to MySQL/MariaDB installation directory for custom locations
 find_path(MYSQL_INCLUDE_DIR mysql.h
     PATHS
-    $ENV{MYSQL_ROOT}/include
+    $ENV{MYSQL_ROOT}/include  
     $ENV{MYSQL_ROOT}/mysql/include
     $ENV{MYSQL_ROOT}/mariadb/include
     /usr/include/mysql
@@ -27,9 +27,12 @@ find_path(MYSQL_INCLUDE_DIR mysql.h
 )
 
 find_library(MYSQL_LIBRARY
-    NAMES mysqlclient mysql mariadb
+    NAMES mysqlclient mysql mariadb libmariadb mariadbclient
     PATHS
     $ENV{MYSQL_ROOT}/lib
+    $ENV{MYSQL_ROOT}/build/libmariadb/Debug
+    $ENV{MYSQL_ROOT}/build/libmariadb/Release
+    $ENV{MYSQL_ROOT}/build/libmariadb
     $ENV{MYSQL_ROOT}/mysql/lib
     $ENV{MYSQL_ROOT}/mariadb/lib
     /usr/lib
@@ -71,6 +74,10 @@ find_library(PGSQL_LIBRARY
 # Configure based on what we found
 if(MYSQL_INCLUDE_DIR AND MYSQL_LIBRARY)
     list(APPEND SQL_INCLUDES ${MYSQL_INCLUDE_DIR})
+    # Also include build directory for generated headers like mariadb_version.h
+    if(EXISTS "$ENV{MYSQL_ROOT}/build/include")
+        list(APPEND SQL_INCLUDES "$ENV{MYSQL_ROOT}/build/include")
+    endif()
     list(APPEND SQL_LIBS ${MYSQL_LIBRARY})
     set(HAVE_MYSQL TRUE)
     message(STATUS "Found MySQL/MariaDB: ${MYSQL_LIBRARY}")
@@ -118,6 +125,16 @@ if(WIN32)
     target_compile_definitions(sql_repl PRIVATE _WIN32_WINNT=0x0600)
     # Add Windows socket library for networking
     target_link_libraries(sql_repl PRIVATE ws2_32)
+    
+    # Copy required DLLs to the main executable directory
+    if(HAVE_MYSQL AND EXISTS "$ENV{MYSQL_ROOT}/build/libmariadb/libmariadb.dll")
+        add_custom_command(TARGET sql_repl POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$ENV{MYSQL_ROOT}/build/libmariadb/libmariadb.dll"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../libmariadb.dll"
+            COMMENT "Copying libmariadb.dll to executable directory"
+        )
+    endif()
 endif()
 
 message(STATUS "SQL REPL plugin: MySQL=${HAVE_MYSQL}, PostgreSQL=${HAVE_POSTGRESQL}")

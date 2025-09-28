@@ -173,4 +173,56 @@ vizero_json_t* vizero_json_array_get(vizero_json_t* json_obj, int index) {
     return nullptr;
 }
 
+int vizero_json_object_get_keys(vizero_json_t* json_obj, char*** keys, int max_keys) {
+    if (!json_obj || !json_obj->data || !keys || max_keys <= 0) {
+        return -1;
+    }
+    
+    try {
+        const json& j = *json_obj->data;
+        if (!j.is_object()) {
+            return -1;
+        }
+        
+        // Allocate array of char* pointers
+        char** key_array = static_cast<char**>(malloc(max_keys * sizeof(char*)));
+        if (!key_array) {
+            return -1;
+        }
+        
+        int count = 0;
+        for (auto it = j.begin(); it != j.end() && count < max_keys; ++it) {
+            const std::string& key = it.key();
+            key_array[count] = static_cast<char*>(malloc(key.length() + 1));
+            if (key_array[count]) {
+                strcpy(key_array[count], key.c_str());
+                count++;
+            } else {
+                // Cleanup on allocation failure
+                for (int i = 0; i < count; i++) {
+                    free(key_array[i]);
+                }
+                free(key_array);
+                return -1;
+            }
+        }
+        
+        *keys = key_array;
+        return count;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+void vizero_json_free_keys(char** keys, int count) {
+    if (!keys || count <= 0) {
+        return;
+    }
+    
+    for (int i = 0; i < count; i++) {
+        free(keys[i]);
+    }
+    free(keys);
+}
+
 } /* extern "C" */
