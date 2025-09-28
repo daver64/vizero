@@ -3070,6 +3070,18 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             return -1;
         }
         
+        /* Check if the current buffer has matches and set up highlighting */
+        vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(state);
+        if (current_buffer) {
+            vizero_search_match_t current_buffer_matches[256];
+            int current_match_count = vizero_search_find_all_in_buffer(current_buffer, pattern, current_buffer_matches, 256);
+            
+            if (current_match_count > 0) {
+                /* Set up proper search highlighting for the current buffer by calling vizero_search_forward */
+                vizero_search_forward(state, pattern);
+            }
+        }
+        
         /* Clean up any existing search results */
         if (state->search_result_files) {
             for (size_t k = 0; k < state->search_result_count; k++) {

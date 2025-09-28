@@ -652,17 +652,23 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                     vizero_colour_t bg_colour;
                     if (is_current_match) {
                         /* Current match: orange background */
-                        bg_colour = {1.0f, 0.5f, 0.0f, 0.7f}; /* Orange with transparency */
+                        bg_colour = {1.0f, 0.5f, 0.0f, 0.8f}; /* Orange with transparency */
                     } else {
                         /* Other matches: yellow background */
-                        bg_colour = {1.0f, 1.0f, 0.0f, 0.4f}; /* Yellow with transparency */
+                        bg_colour = {1.0f, 1.0f, 0.0f, 0.6f}; /* Yellow with transparency */
                     }
                     
-                    /* Draw background rectangle */
-                    vizero_renderer_draw_rect(renderer, 
+                    /* Draw filled background rectangle (like text selection) */
+                    vizero_renderer_fill_rect(renderer, 
                         (float)(text_x + (int)col * 8), 
                         (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16),
                         8.0f, 16.0f, bg_colour);
+                    
+                    /* Change text color to dark for contrast against bright backgrounds */
+                    colour.r = 0.0f;
+                    colour.g = 0.0f; 
+                    colour.b = 0.0f;
+                    colour.a = 1.0f;
                 }
                 /* Draw text selection background highlighting (lower priority than search) */
                 else if (is_selected) {
