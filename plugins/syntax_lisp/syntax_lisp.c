@@ -406,7 +406,7 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
 
 VIZERO_PLUGIN_DEFINE_INFO(
     "Common Lisp Syntax Highlighter",
-    "1.0.0",
+    VIZERO_PLUGIN_VERSION,
     "Vizero Team", 
     "Syntax highlighting plugin for Common Lisp and REPL buffers",
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER

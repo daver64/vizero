@@ -3,7 +3,7 @@
 
 VIZERO_PLUGIN_DEFINE_INFO(
     "File Browser",
-    "1.0.0",
+    VIZERO_PLUGIN_VERSION,
     "Vizero Team",
     "File browser plugin",
     VIZERO_PLUGIN_TYPE_UI_EXTENSION

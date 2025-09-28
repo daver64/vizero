@@ -42,12 +42,17 @@ Phase 4 represents the completion of Vizero's advanced feature set, transforming
   - Global replacement controls
 - **API Extensions**: `vizero_substitute_regex()`, interactive replacement callbacks
 
-### 4. Code Folding System
-- **Comprehensive API**: `include/vizero/code_folding.h` with full folding infrastructure
-- **Fold Types**: Support for functions, classes, blocks, comments, regions, and imports
-- **Automatic Detection**: Language-aware folding with configurable rules
-- **Visual Management**: Fold markers, nesting levels, and custom labels
-- **Line Mapping**: Visual-to-logical line number conversion for folded content
+### 4. Code Folding System ✅ FULLY IMPLEMENTED
+- **Complete Implementation**: `src/editor/code_folding.c` with full folding functionality
+- **Comprehensive API**: `include/vizero/code_folding.h` with complete folding infrastructure
+- **Brace-Matching Folding**: Intelligent detection of `{` and `}` code blocks with minimum size requirements
+- **Visual Indicators**: Line number markers (`+` folded, `-` open) and fold content preview
+- **Command Integration**: Full colon command support (`:za`, `:zo`, `:zc`, `:zR`, `:zM`, `:zf`, `:zd`)
+- **Fold-Aware Navigation**: Smart cursor movement that skips over folded regions in both Normal and Insert modes
+- **Visual Rendering**: Complete integration with editor window rendering to hide folded lines
+- **Per-Buffer State**: Individual fold management for each buffer with proper cleanup
+- **Memory Efficient**: Compact fold range storage instead of per-line tracking
+- **Precise Detection**: Cursor-aware fold creation (within 3 lines of opening braces)
 
 ### 5. Smart Indentation
 - **Language Support**: Multi-language indentation with C, C++, Python, JavaScript, etc.
@@ -98,6 +103,44 @@ Phase 4 represents the completion of Vizero's advanced feature set, transforming
 - **Resource Cleanup**: Proper lifecycle management for all new systems
 - **Error Recovery**: Graceful handling of allocation failures
 
+## Code Folding Implementation Details
+
+### Core Components
+- **`src/editor/code_folding.c`**: Complete folding logic with fold management, brace matching, and line visibility tracking
+- **`src/editor/editor_state.cpp`**: Integration with editor state, command handlers, and fold-aware cursor functions
+- **`src/ui/editor_window.cpp`**: Visual rendering integration with fold indicators and content preview
+- **`src/ui/editor_window_move_visual_row.c`**: Fold-aware visual row movement for cursor navigation
+- **`src/core/input_manager.cpp`**: Integration with arrow key handling for fold-aware navigation
+
+### Command System Integration
+All folding commands are implemented as colon commands with full functionality:
+- **`:za` (Toggle)**: Creates folds via brace matching or toggles existing folds
+- **`:zo` (Open)**: Opens folds containing cursor position
+- **`:zc` (Close)**: Closes folds at cursor or creates new ones
+- **`:zR` (Open All)**: Opens all folds in current buffer
+- **`:zM` (Close All)**: Closes all folds in current buffer
+- **`:zf` (Create)**: Creates new unfolded regions at cursor
+- **`:zd` (Delete)**: Removes fold definitions at cursor
+
+### Visual Feedback System
+- **Line Number Markers**: `+` indicates folded blocks, `-` indicates open blocks
+- **Content Preview**: Shows `{... [N lines folded]` with first line content and count
+- **Cursor Navigation**: Arrow keys automatically skip folded regions
+- **Real-time Updates**: Fold states update immediately with visual feedback
+
+### Fold Detection Algorithm
+1. **Cursor Position Check**: Finds existing folds at cursor location
+2. **Brace Search**: Searches current line and up to 3 lines above for opening `{`
+3. **Matching Logic**: Uses balanced brace counting to find closing `}`
+4. **Size Validation**: Only creates folds for blocks with 2+ lines of content
+5. **Conflict Resolution**: Handles overlapping folds and duplicate fold creation
+
+### Technical Architecture
+- **Data Structure**: Compact fold array with start/end line ranges and folded state
+- **Memory Management**: Automatic cleanup on buffer destruction and editor state cleanup
+- **Thread Safety**: All folding operations are single-threaded within editor state
+- **Error Handling**: Graceful degradation when folding initialization fails
+
 ## Technical Implementation Details
 
 ### Build System Integration
@@ -124,7 +167,7 @@ Phase 4 represents the completion of Vizero's advanced feature set, transforming
 
 ## Future Enhancement Opportunities
 - **Command Palette Implementation**: Full C implementation of command palette logic
-- **Code Folding Integration**: Connect folding system to syntax highlighting plugins
+- **Advanced Code Folding**: Connect folding system to syntax highlighting plugins for language-specific folding (functions, classes, comments)
 - **Smart Indent Integration**: Language-specific indentation rules via plugins
 - **Advanced Search UI**: Visual feedback for search operations
 - **Session Auto-Save**: Automatic session persistence with configurable intervals

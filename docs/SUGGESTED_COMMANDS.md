@@ -48,6 +48,15 @@
 ### Directory Operations
 - ✅ `:chdir <path>` - Change working directory
 
+### Code Folding
+- ✅ `:za` - Toggle fold at cursor (creates fold if none exists)
+- ✅ `:zo` - Open fold at cursor
+- ✅ `:zc` - Close fold at cursor (creates fold if needed)
+- ✅ `:zR` - Open all folds in buffer
+- ✅ `:zM` - Close all folds in buffer
+- ✅ `:zf` - Create fold at cursor (always creates new, unfolded)
+- ✅ `:zd` - Delete fold at cursor
+
 ### Compilation & Execution
 - ✅ `:cc <args>` - Compile C file
 - ✅ `:cpp <args>` - Compile C++ file

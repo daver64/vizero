@@ -28,16 +28,16 @@ int vizero_editor_window_move_visual_row(vizero_editor_window_t* window, struct 
     }
     
     if (direction > 0) {
-        /* Move down one visual row */
-        vizero_cursor_move_down(cursor);
+        /* Move down one visual row (fold-aware) */
+        vizero_editor_cursor_move_down_fold_aware(state);
         /* Try to maintain preferred column position */
         size_t new_line = vizero_cursor_get_line(cursor);
         if (new_line != current_line) {
             vizero_cursor_set_position(cursor, new_line, (size_t)window->preferred_column);
         }
     } else if (direction < 0) {
-        /* Move up one visual row */
-        vizero_cursor_move_up(cursor);
+        /* Move up one visual row (fold-aware) */
+        vizero_editor_cursor_move_up_fold_aware(state);
         /* Try to maintain preferred column position */
         size_t new_line = vizero_cursor_get_line(cursor);
         if (new_line != current_line) {

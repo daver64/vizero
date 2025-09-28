@@ -394,45 +394,84 @@ char   variable3    = 'a';
 
 ## Code Folding
 
-Code folding allows you to collapse and expand sections of code, making it easier to navigate large files and focus on specific areas of your codebase.
+**✅ FULLY IMPLEMENTED - Phase 4 Complete**
 
-### Folding Types
+Code folding allows you to collapse and expand sections of code for better navigation in large files. Vizero provides intelligent brace-matching fold detection with visual feedback and fold-aware cursor navigation.
 
-Vizero supports multiple types of code folds:
-- **Function Folding**: Collapse entire function definitions
-- **Class Folding**: Hide class implementations  
-- **Block Folding**: Fold code blocks enclosed in braces
-- **Comment Folding**: Collapse large comment sections
-- **Region Folding**: Custom regions with `#region`/`#endregion` markers
-- **Import Folding**: Collapse import/include statements
+### Visual Indicators
+
+Folded code is indicated in two ways:
+- **Line number markers**: `+` for folded blocks, `-` for open blocks, space for no fold
+- **Content preview**: Folded lines show `{... [N lines folded]` with a summary of hidden content
+
+### Supported Folding Types
+
+Vizero currently supports:
+- **Block Folding**: Automatic detection of code blocks enclosed in `{` and `}` braces
+- **Smart Cursor Navigation**: Arrow keys automatically skip over folded regions to keep cursor visible
+- **Precise Fold Detection**: Folds are created only when cursor is on or very near (within 3 lines) of opening braces
 
 ### Code Folding Commands
 
+All code folding commands are accessed via colon commands (type `Escape` then `:command`):
+
 | Command | Action |
 |---------|--------|
-| `za` | Toggle fold at cursor position |
-| `zo` | Open fold at cursor |
-| `zc` | Close fold at cursor |
-| `zR` | Open all folds in buffer |
-| `zM` | Close all folds in buffer |
-| `zf` | Create fold for selected text |
-| `zd` | Delete fold at cursor |
+| `:za` | Toggle fold at cursor position (creates fold if none exists) |
+| `:zo` | Open fold at cursor |
+| `:zc` | Close fold at cursor (creates fold if needed) |
+| `:zR` | Open all folds in buffer |
+| `:zM` | Close all folds in buffer |
+| `:zf` | Create fold at cursor (always creates new, unfolded) |
+| `:zd` | Delete fold at cursor |
 
-### Folding Features
+### Usage Examples
 
-#### Visual Indicators
-- **Fold Markers**: Visual indicators in the gutter show foldable regions
-- **Fold Labels**: Collapsed regions show descriptive text (function names, etc.)
-- **Nesting Levels**: Hierarchical folding with proper nesting visualization
+```bash
+# Navigate to a line with an opening brace like "if (condition) {"
+# Position cursor on the line or within 3 lines of it
 
-#### Language-Aware Folding
-- **Automatic Detection**: Recognize foldable structures based on file type
-- **Syntax Integration**: Work with syntax highlighting for accurate fold boundaries
-- **Customizable Rules**: Configure folding behavior per language
+:za    # Toggle fold - creates and closes the block
+:za    # Toggle again - opens the fold
+:zc    # Close the fold  
+:zo    # Open the fold
+:zR    # Open all folds in the file
+:zM    # Close all folds in the file
+:zd    # Delete the fold definition (removes fold, shows all lines)
+```
 
-### Folding Configuration
+### Fold-Aware Navigation
 
-#### Auto-Folding Settings
+When code is folded, cursor movement automatically handles folded regions:
+- **Down arrow** from above a fold jumps to the line after the fold
+- **Up arrow** from below a fold jumps to the line before the fold  
+- **No lost cursor** - you'll never get stuck inside invisible folded content
+- Works in both **Normal mode** (hjkl, arrow keys) and **Insert mode** (arrow keys)
+
+### Technical Details
+
+- **Brace Matching**: Automatically finds matching `{` and `}` pairs
+- **Minimum Fold Size**: Only folds blocks with 2+ lines of content
+- **Per-Buffer State**: Each buffer maintains its own fold state
+- **Memory Efficient**: Uses compact fold range storage instead of per-line tracking
+- **Robust Rendering**: Folded lines are completely hidden from display and navigation
+
+### Implementation Status
+
+#### ✅ Completed
+- **API Design**: Complete code folding API in `include/vizero/code_folding.h`
+- **Data Structures**: Fold management structures defined
+- **Integration Points**: Editor state integration planned
+
+#### ⏳ TODO - Implementation Needed
+- **Command Parser Integration**: Add fold commands to vi command parser
+- **Visual Rendering**: Fold markers and collapsed region display
+- **Language Detection**: Automatic fold boundary detection
+- **Persistence**: Save/restore fold state across sessions
+
+### Planned Folding Configuration
+
+**These settings will be available when implemented:**
 ```
 :set fold_functions on/off      # Auto-fold function definitions
 :set fold_classes on/off        # Auto-fold class definitions  
@@ -441,43 +480,52 @@ Vizero supports multiple types of code folds:
 :set min_fold_lines 3           # Minimum lines required for folding
 ```
 
-#### Manual Folding
-- **Custom Regions**: Create folds with `zf` command
-- **Selection-Based**: Fold any selected text region
-- **Persistent Folds**: Manual folds preserved across sessions
-
 ---
 
 ## Smart Indentation
 
-Smart indentation provides language-aware, context-sensitive automatic indentation that understands code structure and formatting conventions.
+**⚠️ PLANNED FEATURE - BASIC INDENTATION AVAILABLE**
 
-### Indentation Styles
+Smart indentation is a planned Phase 4 feature. The API has been designed (`include/vizero/smart_indent.h`) but most automatic features are not yet implemented.
 
-#### Style Configuration
-- **Tabs**: Use tab characters for indentation
-- **Spaces**: Use spaces for consistent alignment
-- **Mixed**: Allow combination of tabs and spaces
-- **Configurable Width**: Set tab width and indent size independently
+### Current Basic Indentation Support
 
-### Smart Indentation Features
+#### ✅ Available Now
 
-#### Language-Aware Rules
+| Command | Action |
+|---------|--------|
+| `>>` | Indent current line |
+| `<<` | Unindent current line |
+| `>` | Indent selected text (visual mode) |
+| `<` | Unindent selected text (visual mode) |
+| `>ip` | Indent current paragraph |
+| `<ip` | Unindent current paragraph |
+
+#### ✅ Basic Settings Available
+```
+:set tabstop 4                  # Set tab display width (works)
+```
+
+### Planned Smart Indentation Features
+
+#### ⏳ Language-Aware Rules (TODO)
 - **C/C++**: Proper brace alignment, case label indentation
 - **Python**: PEP 8 compliant indentation rules
 - **JavaScript**: Modern JS/ES6 indentation patterns
 - **Lisp**: S-expression aligned indentation
 - **Generic**: Intelligent fallback for any language
 
-#### Context-Sensitive Behavior
+#### ⏳ Context-Sensitive Behavior (TODO)
 - **Bracket Matching**: Automatic indentation based on opening/closing brackets
 - **Scope Awareness**: Indent based on code block structure
 - **Continuation Lines**: Proper alignment for multi-line statements
 - **Parameter Alignment**: Align function parameters and arguments
 
-### Smart Indentation Commands
+### Planned Smart Indentation Commands
 
-| Command | Action |
+**These commands are designed but not yet implemented:**
+
+| Command | Planned Action |
 |---------|--------|
 | `==` | Auto-indent current line |
 | `gg=G` | Auto-indent entire file |
@@ -486,17 +534,19 @@ Smart indentation provides language-aware, context-sensitive automatic indentati
 | `:set expandtab` | Use spaces instead of tabs |
 | `:set noexpandtab` | Use tabs for indentation |
 
-### Indentation Settings
+**Current Status**: Only basic `>>`, `<<`, `>`, `<` indentation commands work.
 
-#### Basic Configuration
+### Planned Indentation Settings
+
+#### ⏳ TODO Configuration
 ```
-:set tab_width 4                # Set tab display width
 :set indent_size 4              # Set indentation amount
 :set auto_indent on/off         # Enable automatic indentation
 :set smart_indent on/off        # Enable language-aware indentation
+:set expandtab on/off           # Use spaces instead of tabs
 ```
 
-#### Advanced Options
+#### ⏳ Planned Advanced Options
 ```
 :set trim_trailing_whitespace on/off    # Remove trailing spaces
 :set align_function_parameters on/off   # Align function parameters
@@ -504,39 +554,64 @@ Smart indentation provides language-aware, context-sensitive automatic indentati
 :set indent_case_labels on/off          # Indent switch case labels
 ```
 
-### Automatic Indentation
+### Implementation Status
 
-#### Trigger Events
-- **New Line**: Automatic indentation when pressing Enter
-- **Character Input**: Smart indentation on special characters (braces, etc.)
-- **Paste Operations**: Auto-indent pasted content to match context
+#### ✅ Completed
+- **API Design**: Complete smart indentation API in `include/vizero/smart_indent.h`
+- **Basic Manual**: `>>`, `<<` indentation commands work
+- **Visual Mode**: Block indentation with `>` and `<`
+- **Tab Settings**: Basic `:set tabstop` configuration
 
-#### Smart Features
-- **Blank Line Handling**: Intelligent behavior for empty lines
-- **Comment Preservation**: Maintain comment formatting during indentation
-- **String Literal Safety**: Avoid modifying indentation within strings
+#### ⏳ TODO - Implementation Needed
+- **Auto-Indent**: `==` command and automatic indentation
+- **Language Detection**: Automatic language-specific rules
+- **Settings Commands**: `:retab`, `:set expandtab`, etc.
+- **Real-Time**: Auto-indent on Enter, braces, etc.
 
 ---
 
 ## Command Palette
 
-The Command Palette provides a powerful, searchable interface to access all editor commands, making it easy to discover and execute functionality without memorizing complex key combinations.
+**⚠️ PLANNED FEATURE - NOT YET IMPLEMENTED**
 
-### Opening the Command Palette
+The Command Palette is a planned Phase 4 feature that will provide a searchable interface to access all editor commands. The API has been designed (`include/vizero/command_palette.h`) but the UI and key bindings are not yet implemented.
 
-| Key | Action |
+### Planned Command Palette Features
+
+#### ⏳ TODO - Opening Command Palette
+
+**These keybindings are planned but not yet implemented:**
+
+| Key | Planned Action |
 |-----|--------|
 | `Ctrl+Shift+P` | Open Command Palette |
 | `F1` | Open Command Palette (alternative) |
 
-### Command Palette Features
+**Current Status**: These key combinations are not currently bound - they will show "command not found" or have no effect.
 
-#### Fuzzy Search
-- **Intelligent Matching**: Find commands by typing partial names
-- **Abbreviation Support**: Use abbreviations like "bf" for "Buffer Find"
-- **Real-time Filtering**: Results update as you type
+#### ⏳ Planned Features
+- **Fuzzy Search**: Find commands by typing partial names
+- **Command Categories**: Organized command groups
+- **Recent Commands**: Quick access to frequently used commands
+- **Keybinding Display**: Show keyboard shortcuts for commands
 
-#### Command Categories
+### Implementation Status
+
+#### ✅ Completed
+- **API Design**: Complete command palette API in `include/vizero/command_palette.h`
+- **Integration Points**: Command palette integration functions in editor state
+- **Plugin Registration**: Framework for plugins to register commands
+
+#### ⏳ TODO - Implementation Needed
+- **UI Implementation**: Command palette popup window
+- **Key Binding**: `Ctrl+Shift+P` and `F1` key handlers
+- **Command Registration**: Register existing editor commands
+- **Search Engine**: Fuzzy search and filtering
+- **Visual Design**: Command palette appearance and navigation
+
+### Planned Command Categories
+
+When implemented, the command palette will include:
 - **File Operations**: Open, save, close, recent files
 - **Buffer Management**: Switch buffers, create new buffers
 - **Window Control**: Split, close, resize windows
@@ -545,45 +620,12 @@ The Command Palette provides a powerful, searchable interface to access all edit
 - **Settings**: Change preferences, toggle features
 - **Help & Info**: Documentation, version info, shortcuts
 
-### Command Palette Navigation
+### Current Alternative
 
-| Key | Action |
-|-----|--------|
-| `↑/↓` | Navigate command list |
-| `Enter` | Execute selected command |
-| `Esc` | Close Command Palette |
-| `Tab` | Auto-complete command name |
-
-### Example Command Palette Usage
-
-**Common Workflows:**
-```
-Ctrl+Shift+P → "save all" → Enter        # Save all modified buffers
-Ctrl+Shift+P → "split" → Enter           # Split current window
-Ctrl+Shift+P → "theme" → Enter           # Change color theme
-Ctrl+Shift+P → "fold all" → Enter        # Fold all code sections
-Ctrl+Shift+P → "format" → Enter          # Format current buffer
-```
-
-### Command Palette Configuration
-
-#### Customization Options
-- **Command Registration**: Add custom commands to palette
-- **Keybinding Display**: Show keyboard shortcuts for commands
-- **Category Organization**: Group related commands together
-- **Recent Commands**: Quick access to frequently used commands
-
-#### Adding Custom Commands
-```c
-// Example: Register custom command in plugin
-vizero_command_palette_register_command(palette,
-    "Format JSON", 
-    "Format current buffer as JSON",
-    "Developer Tools",
-    "Ctrl+Alt+J",
-    format_json_command,
-    NULL);
-```
+Until the command palette is implemented, use:
+- **Colon Commands**: Type `:` followed by command name
+- **Keyboard Shortcuts**: Direct key combinations for common actions
+- **Menu Navigation**: Use existing editor command system
 
 ---
 

@@ -15,7 +15,7 @@ This document tracks the accuracy of our documentation against the actual implem
 - **✅ Multiple Cursors**: API implemented in `src/editor/editor_state.cpp` with complete function signatures
 - **✅ Block Selection**: Full rectangular selection API with copy/cut/paste operations
 - **✅ Advanced Search**: Enhanced search system with regex, case sensitivity, and whole-word matching
-- **✅ Code Folding**: Comprehensive folding API defined in `include/vizero/code_folding.h`
+- **✅ Code Folding**: Complete implementation with brace-matching, visual indicators, and fold-aware cursor navigation
 - **✅ Smart Indentation**: Multi-language indentation system with configurable styles
 - **✅ Command Palette**: Complete command interface API in `include/vizero/command_palette.h`
 - **✅ Version Management**: Centralized version system (0.0.5) across all components
@@ -34,6 +34,7 @@ This document tracks the accuracy of our documentation against the actual implem
 - **Syntax highlighting** - All language plugins (C, JavaScript, Python, etc.) working
 - **Settings system** - Persistent configuration with `:set`, `:show` commands
 - **Colour themes** - `:colourscheme` with Default/Monokai/Solarized Dark themes
+- **Code folding** - `:za`, `:zc`, `:zo`, `:zR`, `:zM`, `:zf`, `:zd` with brace-matching and visual feedback
 
 ### Plugin System
 - **Plugin loading** - Dynamic plugin system with .dll/.so support
@@ -366,16 +367,19 @@ C:\Users\daver\source\vizero\docs\html\index.html
 - IRC `:connect` command: Plugin functional but uses different interface than documented
 
 **Phase 4 Completion Status:**
-- **Advanced Editing**: Multiple cursors, block selection, code folding, smart indentation fully implemented
-- **UI Enhancements**: Command palette, centralized version management, enhanced search complete
-- **System Maturity**: Robust error handling, comprehensive APIs, professional polish achieved
+- **Advanced Editing**: Multiple cursors ✅, block selection ✅, code folding ✅ (fully implemented), smart indentation ⚠️ (basic only)
+- **UI Enhancements**: Command palette ⚠️ (API only), centralized version management ✅, enhanced search ✅
+- **System Maturity**: Robust error handling ✅, comprehensive APIs ✅, implementation gaps discovered
 
-**Overall Assessment**: Vizero documentation is exceptionally accurate and comprehensive, representing a mature, feature-complete text editor suitable for professional development workflows.
+**Important Discovery**: User testing revealed that several documented features (smart indentation `==`, command palette `Ctrl+Shift+P`) are not actually implemented in the command parser, though their APIs exist as headers. **UPDATE**: Code folding commands (`:za`, `:zc`, `:zo`, etc.) have been **fully implemented** with visual feedback and fold-aware cursor navigation.
+
+**Overall Assessment**: Vizero documentation has been **corrected** to accurately reflect implementation vs design status. APIs are professionally designed but several command integrations need implementation work.
 
 ---
 
 **Phase 1 Completion Date**: September 25, 2025  
-**Phase 4 Completion Date**: September 28, 2025  
+**Phase 4 API Design Date**: September 28, 2025  
+**Documentation Correction Date**: September 28, 2025  
 **Total Development Time**: Multi-phase implementation over 3 days  
-**Quality Level**: Professional-grade editor with comprehensive documentation  
-**Status**: Phase 4 Advanced Features & Polish complete, ready for production use
+**Quality Level**: Professional APIs designed, mixed implementation completeness  
+**Status**: Phase 4 APIs complete, command parser integration needed for full functionality

@@ -10,6 +10,7 @@
 #include "vizero/cursor.h"
 #include "vizero/editor_window_constants.h"
 #include "vizero/plugin_manager.h"
+#include "vizero/code_folding.h"
 #include "../editor/editor_state_internal.h"
 #ifdef _WIN32
 #include <direct.h>
@@ -457,6 +458,24 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
     int row = 0;
     // Pass 1: Build visual map for the entire buffer
     for (size_t i = 0; i < line_count; ++i) {
+        // Check if this line starts a folded region
+        int is_fold_start = 0;
+        int fold_line_count = 0;
+        if (state->code_folding) {
+            for (size_t fold_idx = 0; fold_idx < state->code_folding->fold_count; fold_idx++) {
+                vizero_code_fold_t* fold = &state->code_folding->folds[fold_idx];
+                if (fold->start_line == i && fold->is_folded) {
+                    is_fold_start = 1;
+                    fold_line_count = fold->end_line - fold->start_line + 1;
+                    break;
+                }
+            }
+        }
+        
+        // Skip folded lines (except the first line of a fold)
+        if (state->code_folding && vizero_code_folding_is_line_folded(state->code_folding, i) && !is_fold_start) {
+            continue;
+        }
         const char* line = vizero_buffer_get_line_text(buffer, i);
         size_t len = line ? strlen(line) : 0;
         size_t start = 0;
@@ -579,9 +598,37 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
         } else {
             visual[0] = '\0';
         }
+        
+        /* If this is the start of a folded region, show fold summary instead */
+        if (state->code_folding) {
+            for (size_t fold_idx = 0; fold_idx < state->code_folding->fold_count; fold_idx++) {
+                vizero_code_fold_t* fold = &state->code_folding->folds[fold_idx];
+                if (fold->start_line == i && fold->is_folded) {
+                    int fold_line_count = fold->end_line - fold->start_line + 1;
+                    snprintf(visual, sizeof(visual), "%.*s... [%d lines folded]", 
+                             (int)(actual_chunk < 20 ? actual_chunk : 20), 
+                             line ? line + start : "", 
+                             fold_line_count - 1);
+                    break;
+                }
+            }
+        }
         if (show_line_numbers && first_visual_row) {
             char lnbuf[16];
-            snprintf(lnbuf, sizeof(lnbuf), "%5d ", i+1);
+            char fold_marker = ' ';
+            
+            /* Check if this line has a fold */
+            if (state->code_folding) {
+                for (size_t fold_idx = 0; fold_idx < state->code_folding->fold_count; fold_idx++) {
+                    vizero_code_fold_t* fold = &state->code_folding->folds[fold_idx];
+                    if (fold->start_line == i) {
+                        fold_marker = fold->is_folded ? '+' : '-';
+                        break;
+                    }
+                }
+            }
+            
+            snprintf(lnbuf, sizeof(lnbuf), "%4d%c ", i+1, fold_marker);
             vizero_text_info_t lninfo = { (float)content_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {0.5f, 0.5f, 0.5f, 1.0f}, NULL };
             vizero_renderer_draw_text(renderer, lnbuf, &lninfo);
         }

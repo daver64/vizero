@@ -3,7 +3,6 @@
 #include "vizero/version.h"
 #include "editor_state_internal.h"
 #include "vizero/buffer.h"
-#include "vizero/code_folding.h"
 #include "vizero/cursor.h"
 #include "vizero/line.h"
 #include "vizero/error.h"
@@ -263,9 +262,6 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         state->hover_x = 0;
         state->hover_y = 0;
         
-        /* Initialize code folding - will be set up when buffers are created */
-        state->code_folding = NULL;
-        
         /* Store startup directory for resource loading */
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -279,12 +275,6 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
         state->cursors[0] = vizero_cursor_create(state->buffers[0]);
         if (state->buffers[0] && state->cursors[0]) {
             state->buffer_count = 1;
-            
-            /* Initialize code folding with the first buffer */
-            state->code_folding = vizero_code_folding_create(state->buffers[0]);
-            if (!state->code_folding) {
-                fprintf(stderr, "Warning: Failed to initialize code folding\n");
-            }
             if (vizero_editor_create_window_for_buffer(state, state->buffers[0], 100, 100) != 0) {
                 /* Cleanup on failure */
                 if (state->buffers[0]) vizero_buffer_destroy(state->buffers[0]);
@@ -397,11 +387,6 @@ void vizero_editor_state_destroy(vizero_editor_state_t* state) {
     
     /* Clean up startup directory */
     if (state->startup_directory) free(state->startup_directory);
-    
-    /* Clean up code folding */
-    if (state->code_folding) {
-        vizero_code_folding_destroy(state->code_folding);
-    }
     
     /* Clean up undo stack */
     if (state->undo_stack) {
@@ -2666,48 +2651,6 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
         }
         
-    /* CODE FOLDING COMMANDS */
-    } else if (strcmp(command, "za") == 0) {
-        /* Toggle fold at cursor */
-        return vizero_editor_toggle_fold_at_cursor(state);
-        
-    } else if (strcmp(command, "zc") == 0) {
-        /* Close fold at cursor */
-        return vizero_editor_close_fold_at_cursor(state);
-        
-    } else if (strcmp(command, "zo") == 0) {
-        /* Open fold at cursor */
-        return vizero_editor_open_fold_at_cursor(state);
-        
-    } else if (strcmp(command, "zf") == 0) {
-        /* Create fold at cursor */
-        return vizero_editor_create_fold_at_cursor(state);
-        
-    } else if (strcmp(command, "zd") == 0) {
-        /* Delete fold at cursor */
-        return vizero_editor_delete_fold_at_cursor(state);
-        
-    } else if (strcmp(command, "zR") == 0) {
-        /* Open all folds */
-        return vizero_editor_open_all_folds(state);
-        
-    } else if (strcmp(command, "zM") == 0) {
-        /* Close all folds */
-        return vizero_editor_close_all_folds(state);
-        
-    /* SMART INDENTATION COMMANDS */
-    } else if (strcmp(command, "indent") == 0 || strcmp(command, "==") == 0) {
-        /* Auto-indent current line */
-        return vizero_editor_auto_indent_line(state);
-        
-    } else if (strcmp(command, "indent-to-end") == 0 || strcmp(command, "=G") == 0) {
-        /* Auto-indent from cursor to end */
-        return vizero_editor_auto_indent_to_end(state);
-        
-    } else if (strcmp(command, "indent-all") == 0 || strcmp(command, "gg=G") == 0) {
-        /* Auto-indent entire file */
-        return vizero_editor_auto_indent_entire_file(state);
-        
     } else if (strncmp(command, "e ", 2) == 0 || strncmp(command, "edit ", 5) == 0) {
         /* Open file */
         const char* filename = strchr(command, ' ');
@@ -4020,7 +3963,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         vizero_editor_window_t* window = vizero_window_manager_get_focused_window(state->window_manager);
         if (!window) return -1;
         
-        vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window, state);
+        vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window);
         if (!buffer) return -1;
         
         /* Simple retab implementation - convert all tabs to spaces */
@@ -4031,7 +3974,7 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         int changed_lines = 0;
         
         for (size_t i = 0; i < line_count; i++) {
-            const char* line = vizero_buffer_get_line_text(buffer, i);
+            const char* line = vizero_buffer_get_line(buffer, i);
             if (!line) continue;
             
             /* Check if line contains tabs */
@@ -4056,9 +3999,8 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             }
             *dst = '\0';
             
-            /* Replace the line in the buffer by deleting and inserting */
-            vizero_buffer_delete_line(buffer, i);
-            vizero_buffer_insert_line(buffer, i, new_line);
+            /* Replace the line in the buffer */
+            vizero_buffer_replace_line(buffer, i, new_line);
             changed_lines++;
         }
         
@@ -6615,37 +6557,18 @@ void* vizero_editor_get_command_palette(vizero_editor_state_t* state) {
 }
 
 int vizero_editor_toggle_command_palette(vizero_editor_state_t* state) {
-    if (!state) return -1;
+    if (!state || !state->command_palette) return -1;
     
-    /* Enhanced implementation - show commands in a popup with timeout */
-    const char* command_help = 
-        "VIZERO COMMAND REFERENCE\n\n"
-        "== CODE FOLDING ==\n"
-        ":za    - Toggle fold at cursor\n"
-        ":zc    - Close fold at cursor\n"
-        ":zo    - Open fold at cursor\n"
-        ":zf    - Create fold at cursor\n"
-        ":zd    - Delete fold at cursor\n"
-        ":zR    - Open all folds\n"
-        ":zM    - Close all folds\n\n"
-        "== SMART INDENTATION ==\n"
-        ":==    - Auto-indent current line\n"
-        "       (also :indent)\n"
-        ":=G    - Auto-indent to end of file\n"
-        "       (also :indent-to-end)\n"
-        ":gg=G  - Auto-indent entire file\n"
-        "       (also :indent-all)\n\n"
-        "== FILE OPERATIONS ==\n"
-        ":w     - Write (save) file\n"
-        ":q     - Quit editor\n"
-        ":wq    - Write and quit\n\n"
-        "== OTHER ==\n"
-        "F1 or Ctrl+Shift+P - Show this help\n"
-        "ESC    - Return to normal mode\n\n"
-        "Press ESC to close this help.";
+    /* Note: Implementation depends on command_palette.h being included
+     * In actual implementation, this would call:
+     * vizero_command_palette_t* palette = (vizero_command_palette_t*)state->command_palette;
+     * if (vizero_command_palette_is_visible(palette)) {
+     *     vizero_command_palette_hide(palette);
+     * } else {
+     *     vizero_command_palette_show(palette);
+     * }
+     */
     
-    /* Show as popup with 10 second timeout */
-    vizero_editor_show_popup(state, command_help, 10000);
     return 0;
 }
 
@@ -6664,321 +6587,49 @@ int vizero_editor_is_command_palette_visible(vizero_editor_state_t* state) {
 /* Code folding implementation */
 
 int vizero_editor_toggle_fold_at_cursor(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
+    if (!state) return -1;
     
-    /* Simple implementation - find matching braces */
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!buffer || !cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    size_t line_count = vizero_buffer_get_line_count(buffer);
-    
-    /* First, check if there's an existing fold that starts exactly at cursor line */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        vizero_code_fold_t* fold = &state->code_folding->folds[i];
-        if (fold->start_line == cursor_line) {
-            /* Toggle existing fold that starts at cursor */
-            fold->is_folded = !fold->is_folded;
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Fold lines %zu-%zu %s", 
-                     fold->start_line + 1, fold->end_line + 1,
-                     fold->is_folded ? "closed" : "opened");
-            vizero_editor_set_status_message(state, msg);
-            return 0;
-        }
-    }
-    
-    /* Check if cursor is inside a folded region - if so, unfold the containing fold */
-    if (vizero_code_folding_is_line_folded(state->code_folding, cursor_line)) {
-        for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-            vizero_code_fold_t* fold = &state->code_folding->folds[i];
-            if (cursor_line >= fold->start_line && cursor_line <= fold->end_line && fold->is_folded) {
-                fold->is_folded = 0;  /* Unfold */
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Opened fold lines %zu-%zu", 
-                         fold->start_line + 1, fold->end_line + 1);
-                vizero_editor_set_status_message(state, msg);
-                return 0;
-            }
-        }
-    }
-    
-    /* Look for opening brace on current line first, then check nearby lines */
-    const char* current_line = vizero_buffer_get_line_text(buffer, cursor_line);
-    size_t fold_start = cursor_line;
-    int found_opening = 0;
-    
-    /* Check current line first */
-    if (current_line && strstr(current_line, "{")) {
-        fold_start = cursor_line;
-        found_opening = 1;
-    } else {
-        /* Look backwards only a few lines (max 3) to avoid folding distant blocks */
-        size_t search_limit = cursor_line > 3 ? cursor_line - 3 : 0;
-        for (size_t i = cursor_line; i >= search_limit && !found_opening; i--) {
-            const char* line_text = vizero_buffer_get_line_text(buffer, i);
-            if (line_text && strstr(line_text, "{")) {
-                fold_start = i;
-                found_opening = 1;
-                break;
-            }
-            if (i == 0) break; /* Prevent underflow */
-        }
-    }
-    
-    if (!found_opening) {
-        vizero_editor_set_status_message(state, "No foldable block found");
-        return -1;
-    }
-    
-    /* Find matching closing brace */
-    int brace_count = 0;
-    size_t fold_end = fold_start;
-    
-    for (size_t i = fold_start; i < line_count; i++) {
-        const char* line_text = vizero_buffer_get_line_text(buffer, i);
-        if (line_text) {
-            for (const char* c = line_text; *c; c++) {
-                if (*c == '{') brace_count++;
-                else if (*c == '}') {
-                    brace_count--;
-                    if (brace_count == 0) {
-                        fold_end = i;
-                        goto found_end;
-                    }
-                }
-            }
-        }
-    }
-    
-found_end:
-    if (brace_count != 0) {
-        vizero_editor_set_status_message(state, "No matching closing brace found");
-        return -1;
-    }
-    
-    if (fold_end <= fold_start + 1) {
-        vizero_editor_set_status_message(state, "Block too small to fold");
-        return -1;
-    }
-    
-    /* Check if this range is already folded */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        vizero_code_fold_t* fold = &state->code_folding->folds[i];
-        if (fold->start_line == fold_start && fold->end_line == fold_end) {
-            /* Toggle existing fold */
-            fold->is_folded = !fold->is_folded;
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Fold lines %zu-%zu %s", 
-                     fold_start + 1, fold_end + 1,
-                     fold->is_folded ? "closed" : "opened");
-            vizero_editor_set_status_message(state, msg);
-            return 0;
-        }
-    }
-    
-    /* Create new fold and close it */
-    if (vizero_code_folding_fold_range(state->code_folding, fold_start, fold_end) == 0) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Folded lines %zu-%zu (%zu lines)", 
-                 fold_start + 1, fold_end + 1, fold_end - fold_start + 1);
-        vizero_editor_set_status_message(state, msg);
-        return 0;
-    } else {
-        vizero_editor_set_status_message(state, "Failed to create fold");
-        return -1;
-    }
+    /* Stub implementation - code folding not yet implemented */
+    vizero_editor_set_status_message(state, "Code folding: za command not yet implemented");
+    return -1;
 }
 
 int vizero_editor_open_fold_at_cursor(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
+    if (!state) return -1;
     
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    
-    /* Find and open any fold containing the cursor line */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        vizero_code_fold_t* fold = &state->code_folding->folds[i];
-        if (cursor_line >= fold->start_line && cursor_line <= fold->end_line && fold->is_folded) {
-            fold->is_folded = 0;  /* Open the fold */
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Opened fold at lines %zu-%zu", 
-                     fold->start_line + 1, fold->end_line + 1);
-            vizero_editor_set_status_message(state, msg);
-            return 0;
-        }
-    }
-    
-    vizero_editor_set_status_message(state, "No folded block found at cursor");
+    /* Stub implementation - code folding not yet implemented */
+    vizero_editor_set_status_message(state, "Code folding: zo command not yet implemented");
     return -1;
 }
 
 int vizero_editor_close_fold_at_cursor(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
-    
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!buffer || !cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    
-    /* First try to find an existing fold at cursor and close it */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        vizero_code_fold_t* fold = &state->code_folding->folds[i];
-        if (cursor_line >= fold->start_line && cursor_line <= fold->end_line && !fold->is_folded) {
-            fold->is_folded = 1;  /* Close the fold */
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Closed fold at lines %zu-%zu", 
-                     fold->start_line + 1, fold->end_line + 1);
-            vizero_editor_set_status_message(state, msg);
-            return 0;
-        }
-    }
-    
-    /* If no existing fold, try to create one like za does */
-    return vizero_editor_toggle_fold_at_cursor(state);
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Code folding: zc command not yet implemented");
+    return -1;
 }
 
 int vizero_editor_create_fold_at_cursor(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
-    
-    /* Same logic as toggle but always creates a new fold */
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!buffer || !cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    size_t line_count = vizero_buffer_get_line_count(buffer);
-    
-    /* Look for opening brace on current line or lines above */
-    size_t fold_start = cursor_line;
-    int found_opening = 0;
-    
-    for (size_t i = cursor_line; i < line_count && i >= 0; i--) {
-        const char* line_text = vizero_buffer_get_line_text(buffer, i);
-        if (line_text && strstr(line_text, "{")) {
-            fold_start = i;
-            found_opening = 1;
-            break;
-        }
-        if (i == 0) break;
-    }
-    
-    if (!found_opening) {
-        vizero_editor_set_status_message(state, "No foldable block found");
-        return -1;
-    }
-    
-    /* Find matching closing brace */
-    int brace_count = 0;
-    size_t fold_end = fold_start;
-    
-    for (size_t i = fold_start; i < line_count; i++) {
-        const char* line_text = vizero_buffer_get_line_text(buffer, i);
-        if (line_text) {
-            for (const char* c = line_text; *c; c++) {
-                if (*c == '{') brace_count++;
-                else if (*c == '}') {
-                    brace_count--;
-                    if (brace_count == 0) {
-                        fold_end = i;
-                        goto found_end;
-                    }
-                }
-            }
-        }
-    }
-    
-found_end:
-    if (brace_count != 0 || fold_end <= fold_start + 1) {
-        vizero_editor_set_status_message(state, "Invalid foldable block");
-        return -1;
-    }
-    
-    /* Create new fold (always unfold initially) */
-    if (vizero_code_folding_unfold_range(state->code_folding, fold_start, fold_end) == 0) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Created fold for lines %zu-%zu", 
-                 fold_start + 1, fold_end + 1);
-        vizero_editor_set_status_message(state, msg);
-        return 0;
-    } else {
-        vizero_editor_set_status_message(state, "Failed to create fold");
-        return -1;
-    }
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Code folding: zf command not yet implemented");
+    return -1;
 }
 
 int vizero_editor_delete_fold_at_cursor(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
-    
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    
-    /* Find and remove any fold containing the cursor line */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        vizero_code_fold_t* fold = &state->code_folding->folds[i];
-        if (cursor_line >= fold->start_line && cursor_line <= fold->end_line) {
-            /* Remove this fold by shifting remaining folds down */
-            for (size_t j = i; j < state->code_folding->fold_count - 1; j++) {
-                state->code_folding->folds[j] = state->code_folding->folds[j + 1];
-            }
-            state->code_folding->fold_count--;
-            
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Deleted fold at lines %zu-%zu", 
-                     fold->start_line + 1, fold->end_line + 1);
-            vizero_editor_set_status_message(state, msg);
-            return 0;
-        }
-    }
-    
-    vizero_editor_set_status_message(state, "No fold found at cursor");
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Code folding: zd command not yet implemented");
     return -1;
 }
 
 int vizero_editor_open_all_folds(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
-    
-    size_t opened_count = 0;
-    
-    /* Open all existing folds */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        if (state->code_folding->folds[i].is_folded) {
-            state->code_folding->folds[i].is_folded = 0;
-            opened_count++;
-        }
-    }
-    
-    char msg[256];
-    snprintf(msg, sizeof(msg), "Opened %zu folds", opened_count);
-    vizero_editor_set_status_message(state, msg);
-    
-    return 0;
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Code folding: zR command not yet implemented");
+    return -1;
 }
 
 int vizero_editor_close_all_folds(vizero_editor_state_t* state) {
-    if (!state || !state->code_folding) return -1;
-    
-    size_t closed_count = 0;
-    
-    /* Close all existing folds */
-    for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-        if (!state->code_folding->folds[i].is_folded) {
-            state->code_folding->folds[i].is_folded = 1;
-            closed_count++;
-        }
-    }
-    
-    char msg[256];
-    snprintf(msg, sizeof(msg), "Closed %zu folds", closed_count);
-    vizero_editor_set_status_message(state, msg);
-    
-    return 0;
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Code folding: zM command not yet implemented");
+    return -1;
 }
 
 /* Smart indentation getter functions */
@@ -7008,218 +6659,117 @@ int vizero_editor_get_smart_indent(vizero_editor_state_t* state) {
 int vizero_editor_auto_indent_line(vizero_editor_state_t* state) {
     if (!state) return -1;
     
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!buffer || !cursor) return -1;
-    
-    size_t cursor_line = vizero_cursor_get_line(cursor);
-    const char* line_text = vizero_buffer_get_line_text(buffer, cursor_line);
-    if (!line_text) return -1;
-    
-    /* Calculate proper indentation based on previous lines */
-    size_t indent_level = 0;
-    
-    /* Look at previous non-empty line to determine base indentation */
-    for (size_t i = cursor_line; i > 0; i--) {
-        const char* prev_line = vizero_buffer_get_line_text(buffer, i - 1);
-        if (prev_line && strlen(prev_line) > 0) {
-            /* Count leading spaces/tabs */
-            size_t spaces = 0;
-            for (const char* c = prev_line; *c && (*c == ' ' || *c == '\t'); c++) {
-                if (*c == ' ') spaces++;
-                else if (*c == '\t') spaces += state->tabstop; /* Use tabstop setting */
-            }
-            indent_level = spaces;
-            
-            /* If previous line ends with {, increase indent */
-            size_t len = strlen(prev_line);
-            if (len > 0 && prev_line[len - 1] == '{') {
-                indent_level += state->tabstop;
-            }
-            break;
-        }
-    }
-    
-    /* If current line starts with }, decrease indent */
-    const char* trimmed = line_text;
-    while (*trimmed && (*trimmed == ' ' || *trimmed == '\t')) trimmed++;
-    if (*trimmed == '}' && indent_level >= state->tabstop) {
-        indent_level -= state->tabstop;
-    }
-    
-    /* Create new line with proper indentation */
-    char new_line[1024];
-    size_t pos = 0;
-    
-    /* Add indentation */
-    if (state->use_tabs) {
-        size_t tabs = indent_level / state->tabstop;
-        size_t spaces = indent_level % state->tabstop;
-        for (size_t i = 0; i < tabs && pos < sizeof(new_line) - 1; i++) {
-            new_line[pos++] = '\t';
-        }
-        for (size_t i = 0; i < spaces && pos < sizeof(new_line) - 1; i++) {
-            new_line[pos++] = ' ';
-        }
-    } else {
-        for (size_t i = 0; i < indent_level && pos < sizeof(new_line) - 1; i++) {
-            new_line[pos++] = ' ';
-        }
-    }
-    
-    /* Add non-whitespace content from original line */
-    for (const char* c = trimmed; *c && pos < sizeof(new_line) - 1; c++) {
-        new_line[pos++] = *c;
-    }
-    new_line[pos] = '\0';
-    
-    /* Replace the line */
-    vizero_buffer_delete_line(buffer, cursor_line);
-    vizero_buffer_insert_line(buffer, cursor_line, new_line);
-    
-    vizero_editor_set_status_message(state, "Line auto-indented");
-    return 0;
+    /* Stub implementation - smart indentation not yet implemented */
+    vizero_editor_set_status_message(state, "Smart indentation: == command not yet implemented");
+    return -1;
 }
 
 int vizero_editor_auto_indent_to_end(vizero_editor_state_t* state) {
     if (!state) return -1;
+    vizero_editor_set_status_message(state, "Smart indentation: =G command not yet implemented");
+    return -1;
+}
+
+int vizero_editor_auto_indent_entire_file(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    vizero_editor_set_status_message(state, "Smart indentation: gg=G command not yet implemented");
+    return -1;
+}
     
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(state->window_manager);
+    if (!window) return -1;
+    
+    vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window);
+    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window);
     if (!buffer || !cursor) return -1;
     
-    size_t cursor_line = vizero_cursor_get_line(cursor);
+    size_t start_line = vizero_cursor_get_line(cursor);
     size_t line_count = vizero_buffer_get_line_count(buffer);
-    size_t lines_processed = 0;
+    int lines_indented = 0;
     
-    /* Auto-indent from cursor line to end of buffer */
-    for (size_t i = cursor_line; i < line_count; i++) {
-        /* Set cursor to this line temporarily */
-        vizero_cursor_set_position(cursor, i, 0);
+    /* Auto-indent from current line to end of file */
+    for (size_t i = start_line; i < line_count; i++) {
+        const char* line = vizero_buffer_get_line(buffer, i);
+        if (!line || strlen(line) == 0) continue;
         
-        /* Auto-indent this line */
-        if (vizero_editor_auto_indent_line(state) == 0) {
-            lines_processed++;
+        /* Find previous non-empty line for indentation reference */
+        size_t ref_indent = 0;
+        for (size_t j = i - 1; j != SIZE_MAX && j >= start_line; j--) {
+            const char* ref_line = vizero_buffer_get_line(buffer, j);
+            if (!ref_line || strlen(ref_line) == 0) continue;
+            
+            /* Count leading whitespace */
+            while (ref_line[ref_indent] == ' ' || ref_line[ref_indent] == '\t') {
+                ref_indent++;
+            }
+            break;
+        }
+        
+        /* Skip if line already properly indented */
+        size_t current_indent = 0;
+        while (line[current_indent] == ' ' || line[current_indent] == '\t') {
+            current_indent++;
+        }
+        
+        if (current_indent != ref_indent && ref_indent > 0) {
+            /* Create new line with proper indentation */
+            char new_line[1024];
+            const char* content = line + current_indent;
+            
+            /* Use spaces or tabs based on settings */
+            if (state->use_tabs) {
+                size_t tabs = ref_indent / state->tabstop;
+                size_t spaces = ref_indent % state->tabstop;
+                
+                for (size_t t = 0; t < tabs; t++) {
+                    new_line[t] = '\t';
+                }
+                for (size_t s = 0; s < spaces; s++) {
+                    new_line[tabs + s] = ' ';
+                }
+                new_line[tabs + spaces] = '\0';
+            } else {
+                for (size_t s = 0; s < ref_indent; s++) {
+                    new_line[s] = ' ';
+                }
+                new_line[ref_indent] = '\0';
+            }
+            
+            strcat(new_line, content);
+            vizero_buffer_replace_line(buffer, i, new_line);
+            lines_indented++;
         }
     }
     
-    /* Restore cursor to original line */
-    vizero_cursor_set_position(cursor, cursor_line, 0);
-    
-    char msg[128];
-    snprintf(msg, sizeof(msg), "Auto-indented %zu lines to end", lines_processed);
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Auto-indented %d lines", lines_indented);
     vizero_editor_set_status_message(state, msg);
     return 0;
 }
 
 int vizero_editor_auto_indent_entire_file(vizero_editor_state_t* state) {
-    if (!state) return -1;
+    if (!state || !state->window_manager) return -1;
     
-    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!buffer || !cursor) return -1;
+    /* Save current cursor position */
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(state->window_manager);
+    if (!window) return -1;
+    
+    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window);
+    if (!cursor) return -1;
     
     size_t original_line = vizero_cursor_get_line(cursor);
-    size_t line_count = vizero_buffer_get_line_count(buffer);
-    size_t lines_processed = 0;
+    size_t original_column = vizero_cursor_get_column(cursor);
     
-    /* Auto-indent entire buffer */
-    for (size_t i = 0; i < line_count; i++) {
-        /* Set cursor to this line temporarily */
-        vizero_cursor_set_position(cursor, i, 0);
-        
-        /* Auto-indent this line */
-        if (vizero_editor_auto_indent_line(state) == 0) {
-            lines_processed++;
-        }
-    }
+    /* Go to beginning of file */
+    vizero_cursor_set_line(cursor, 0);
+    vizero_cursor_set_column(cursor, 0);
     
-    /* Restore cursor to original line */
-    vizero_cursor_set_position(cursor, original_line, 0);
+    /* Auto-indent to end */
+    int result = vizero_editor_auto_indent_to_end(state);
     
-    char msg[128];
-    snprintf(msg, sizeof(msg), "Auto-indented entire file (%zu lines)", lines_processed);
-    vizero_editor_set_status_message(state, msg);
-    return 0;
-}
-
-/* Fold-aware cursor movement functions */
-void vizero_editor_cursor_move_down_fold_aware(vizero_editor_state_t* state) {
-    if (!state) return;
+    /* Restore cursor position */
+    vizero_cursor_set_line(cursor, original_line);
+    vizero_cursor_set_column(cursor, original_column);
     
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!cursor) return;
-    
-    size_t current_line = vizero_cursor_get_line(cursor);
-    size_t line_count = vizero_buffer_get_line_count(vizero_editor_get_current_buffer(state));
-    
-    if (current_line >= line_count - 1) return;
-    
-    /* Move down one line first */
-    vizero_cursor_move_down(cursor);
-    size_t new_line = vizero_cursor_get_line(cursor);
-    
-    /* If we landed in a folded region, skip to the end of the fold */
-    if (state->code_folding && vizero_code_folding_is_line_folded(state->code_folding, new_line)) {
-        for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-            vizero_code_fold_t* fold = &state->code_folding->folds[i];
-            if (new_line >= fold->start_line && new_line <= fold->end_line && fold->is_folded) {
-                /* Move cursor to the line after the fold */
-                size_t target_line = fold->end_line + 1;
-                if (target_line < line_count) {
-                    vizero_cursor_set_position(cursor, target_line, 0);
-                    /* Clamp column to new line length */
-                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-                    if (buffer) {
-                        size_t line_len = vizero_buffer_get_line_length(buffer, target_line);
-                        if (vizero_cursor_get_column(cursor) > line_len) {
-                            vizero_cursor_set_position(cursor, target_line, line_len);
-                        }
-                    }
-                }
-                break;
-            }
-        }
-    }
-}
-
-void vizero_editor_cursor_move_up_fold_aware(vizero_editor_state_t* state) {
-    if (!state) return;
-    
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(state);
-    if (!cursor) return;
-    
-    size_t current_line = vizero_cursor_get_line(cursor);
-    
-    if (current_line == 0) return;
-    
-    /* Move up one line first */
-    vizero_cursor_move_up(cursor);
-    size_t new_line = vizero_cursor_get_line(cursor);
-    
-    /* If we landed in a folded region, skip to the start of the fold */
-    if (state->code_folding && vizero_code_folding_is_line_folded(state->code_folding, new_line)) {
-        for (size_t i = 0; i < state->code_folding->fold_count; i++) {
-            vizero_code_fold_t* fold = &state->code_folding->folds[i];
-            if (new_line >= fold->start_line && new_line <= fold->end_line && fold->is_folded) {
-                /* Move cursor to the line before the fold */
-                if (fold->start_line > 0) {
-                    size_t target_line = fold->start_line - 1;
-                    vizero_cursor_set_position(cursor, target_line, 0);
-                    /* Clamp column to new line length */
-                    vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
-                    if (buffer) {
-                        size_t line_len = vizero_buffer_get_line_length(buffer, target_line);
-                        if (vizero_cursor_get_column(cursor) > line_len) {
-                            vizero_cursor_set_position(cursor, target_line, line_len);
-                        }
-                    }
-                } else {
-                    /* If fold starts at line 0, stay at line 0 */
-                    vizero_cursor_set_position(cursor, 0, 0);
-                }
-                break;
-            }
-        }
-    }
+    return result;
 }

@@ -2,8 +2,9 @@
 #include "vizero/file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "vizero/version.h"
 int main(int argc, char* argv[]) {
-    printf("Vizero - Vi Clone v1.0.0\n");
+    printf("Vizero - Vi Clone v%s\n", VIZERO_VERSION_STRING);
     printf("Built with SDL2 and cross-platform plugin support\n\n");
     
     /* Application configuration */

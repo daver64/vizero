@@ -862,6 +862,26 @@ void* vizero_editor_get_command_palette(vizero_editor_state_t* state);
 int vizero_editor_toggle_command_palette(vizero_editor_state_t* state);
 int vizero_editor_is_command_palette_visible(vizero_editor_state_t* state);
 
+/* Code folding functions */
+int vizero_editor_toggle_fold_at_cursor(vizero_editor_state_t* state);
+int vizero_editor_open_fold_at_cursor(vizero_editor_state_t* state);
+int vizero_editor_close_fold_at_cursor(vizero_editor_state_t* state);
+int vizero_editor_create_fold_at_cursor(vizero_editor_state_t* state);
+int vizero_editor_delete_fold_at_cursor(vizero_editor_state_t* state);
+int vizero_editor_open_all_folds(vizero_editor_state_t* state);
+int vizero_editor_close_all_folds(vizero_editor_state_t* state);
+
+/* Smart indentation getter functions */
+int vizero_editor_get_tabstop(vizero_editor_state_t* state);
+int vizero_editor_get_use_tabs(vizero_editor_state_t* state);
+int vizero_editor_get_auto_indent(vizero_editor_state_t* state);
+int vizero_editor_get_smart_indent(vizero_editor_state_t* state);
+
+/* Smart indentation action functions */
+int vizero_editor_auto_indent_line(vizero_editor_state_t* state);
+int vizero_editor_auto_indent_to_end(vizero_editor_state_t* state);
+int vizero_editor_auto_indent_entire_file(vizero_editor_state_t* state);
+
 /* Help system */
 int vizero_editor_enter_help_mode(vizero_editor_state_t* state);
 int vizero_editor_exit_help_mode(vizero_editor_state_t* state);
@@ -1471,6 +1491,49 @@ vizero_position_t vizero_editor_get_hover_position(vizero_editor_state_t* state)
  * @thread_safety This function is not thread-safe
  */
 void vizero_editor_get_hover_screen_position(vizero_editor_state_t* state, int* x, int* y);
+
+/**
+ * @defgroup fold_aware_cursor Fold-Aware Cursor Movement
+ * @ingroup editor_state
+ * @brief Cursor movement functions that intelligently handle code folding
+ * @{
+ */
+
+/**
+ * @brief Move cursor down, skipping over folded regions
+ * 
+ * This function moves the cursor down one line, but if it lands in a folded
+ * region, it automatically skips to the end of the fold to keep the cursor
+ * visible and navigable.
+ * 
+ * @param state Editor state containing the cursor and folding information
+ * 
+ * @pre state must not be NULL
+ * @post Cursor is moved down and remains visible (not in folded region)
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_cursor_move_down_fold_aware(vizero_editor_state_t* state);
+
+/**
+ * @brief Move cursor up, skipping over folded regions
+ * 
+ * This function moves the cursor up one line, but if it lands in a folded
+ * region, it automatically skips to the start of the fold to keep the cursor
+ * visible and navigable.
+ * 
+ * @param state Editor state containing the cursor and folding information
+ * 
+ * @pre state must not be NULL
+ * @post Cursor is moved up and remains visible (not in folded region)
+ * 
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+void vizero_editor_cursor_move_up_fold_aware(vizero_editor_state_t* state);
+
+/** @} */ // end of fold_aware_cursor group
 
 /** @} */ // end of lsp_diagnostics group
 

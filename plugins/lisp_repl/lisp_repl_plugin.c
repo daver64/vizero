@@ -22,7 +22,7 @@
  * - Object inspection and modification capabilities
  * - Remote REPL connections for distributed development
  * 
- * @version 2.0.0
+ * @version 0.0.5
  * @date September 2025
  * @author Vizero Development Team
  * 
@@ -3772,7 +3772,7 @@ static vizero_plugin_command_t lisp_commands[] = {
  */
 VIZERO_PLUGIN_DEFINE_INFO(
     "lisp_repl",                                          /* name */
-    "2.0.0",                                              /* version */
+    VIZERO_PLUGIN_VERSION,                                /* version */
     "Vizero Team",                                        /* author */
     "Interactive LISP REPL with SBCL integration",       /* description */
     VIZERO_PLUGIN_TYPE_GENERIC                           /* type */

@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "0.0.5",
   "plugins": {
     "example_plugin": {
       "type": "generic",
@@ -105,7 +105,7 @@
       "dll_path": "lisp_repl.dll",
       "description": "Lisp REPL Plugin Phase 2 - Advanced SLIME Features",
       "always_load": true,
-      "version": "2.0.0",
+      "version": "0.0.5",
       "features": [
         "sbcl_detection", 
         "process_management", 

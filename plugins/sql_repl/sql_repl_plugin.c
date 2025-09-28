@@ -29,7 +29,7 @@
  * - :sql-describe table_name
  * - :sql-begin, :sql-commit, :sql-rollback
  * 
- * @version 1.0.0
+ * @version 0.0.5
  * @date September 2025
  * @author Vizero Development Team
  */
@@ -966,7 +966,7 @@ static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t 
 /* Plugin interface implementation */
 VIZERO_PLUGIN_DEFINE_INFO(
     "sql_repl",                                          /* name */
-    "1.0.0",                                             /* version */
+    VIZERO_PLUGIN_VERSION,                                /* version */
     "Vizero Development Team",                           /* author */
     "Interactive SQL REPL with multi-database support", /* description */
     VIZERO_PLUGIN_TYPE_GENERIC                          /* type */

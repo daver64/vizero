@@ -2,6 +2,8 @@
 #include "vizero/mode_manager.h"
 #include "vizero/editor_state.h"
 #include "vizero/buffer.h"
+#include "vizero/code_folding.h"
+#include "vizero/smart_indent.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -54,6 +56,9 @@ void vizero_mode_manager_enter_normal_mode(vizero_mode_manager_t* manager) {
         /* Clear command/search prompts */
         vizero_editor_set_status_message(manager->state, NULL);
     }
+    
+    /* Show brief normal mode confirmation that will timeout */
+    vizero_editor_set_status_message_with_timeout(manager->state, "-- NORMAL --", 1500);
 }
 
 void vizero_mode_manager_enter_insert_mode(vizero_mode_manager_t* manager) {
@@ -190,8 +195,14 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
         case 'x': /* Delete character */
             return 0; /* Let editor handle this */
             
-        case 'd': /* Delete commands (dd, dw, etc.) */
-            if (manager->pending_key == 'd') {
+        case 'd': /* Delete commands (dd, dw, etc.) or delete fold (zd) */
+            if (manager->pending_key == 'z') {
+                /* zd - delete fold at cursor */
+                manager->pending_key = 0;
+                manager->pending_key_time = 0;
+                vizero_editor_delete_fold_at_cursor(manager->state);
+                return 1; /* Key handled */
+            } else if (manager->pending_key == 'd') {
                 /* Second 'd' - execute delete line */
                 manager->pending_key = 0;
                 manager->pending_key_time = 0;
@@ -218,18 +229,36 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
                 return 1; /* Key handled */
             }
             
-        case 'G': /* Go to last line */
-            manager->pending_key = 0; /* Clear any pending key */
-            manager->pending_key_time = 0;
-            vizero_editor_go_to_end(manager->state);
-            return 1; /* Key handled */
-            
-        case 'o': /* Open line below and enter insert mode */
-            manager->pending_key = 0; /* Clear any pending key */
-            if (vizero_editor_open_line_below(manager->state) == 0) {
-                vizero_mode_manager_enter_insert_mode(manager);
+        case 'G': /* Go to last line or auto-indent (=G or gg=G) */
+            if (manager->pending_key == '=') {
+                /* =G - auto-indent from cursor to end of file */
+                manager->pending_key = 0;
+                manager->pending_key_time = 0;
+                vizero_editor_auto_indent_to_end(manager->state);
+                return 1; /* Key handled */
+            } else {
+                /* Regular G - go to last line */
+                manager->pending_key = 0; /* Clear any pending key */
+                manager->pending_key_time = 0;
+                vizero_editor_go_to_end(manager->state);
+                return 1; /* Key handled */
             }
-            return 1; /* Key handled */
+            
+        case 'o': /* Open line below and enter insert mode, or open fold (zo) */
+            if (manager->pending_key == 'z') {
+                /* zo - open fold at cursor */
+                manager->pending_key = 0;
+                manager->pending_key_time = 0;
+                vizero_editor_open_fold_at_cursor(manager->state);
+                return 1; /* Key handled */
+            } else {
+                /* Regular 'o' - open line below */
+                manager->pending_key = 0; /* Clear any pending key */
+                if (vizero_editor_open_line_below(manager->state) == 0) {
+                    vizero_mode_manager_enter_insert_mode(manager);
+                }
+                return 1; /* Key handled */
+            }
             
         case 'O': /* Open line above and enter insert mode */
             manager->pending_key = 0; /* Clear any pending key */
@@ -243,6 +272,24 @@ static int handle_normal_mode_key(vizero_mode_manager_t* manager, uint32_t key, 
             /* These would be handled by the main editor */
             return 0;
             
+        case 'z': /* Code folding commands - now using colon commands */
+            /* Let editor handle 'z' normally since we moved to colon commands */
+            return 0;
+            
+        case 'a': /* Insert mode after cursor */
+            manager->pending_key = 0; /* Clear any pending key */
+            vizero_mode_manager_enter_insert_mode(manager);
+            return 1; /* Key handled */
+            
+        case 'c': /* Change command - let editor handle normally */
+        case 'R': /* Replace mode - let editor handle normally */  
+        case 'M': /* Move command - let editor handle normally */
+        case 'f': /* Find command - let editor handle normally */
+            return 0; /* Let editor handle these normally */
+            
+        case '=': /* Equal sign - let editor handle normally */
+            return 0; /* Let editor handle normally */
+
         default:
             manager->pending_key = 0; /* Clear pending key on unhandled keys */
             return 0; /* Key not handled */

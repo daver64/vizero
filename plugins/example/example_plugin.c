@@ -13,7 +13,7 @@ static struct {
 /* Plugin information */
 VIZERO_PLUGIN_DEFINE_INFO(
     "Example Plugin",
-    "1.0.0", 
+    VIZERO_PLUGIN_VERSION, 
     "Vizero Team",
     "Example plugin demonstrating the plugin system",
     VIZERO_PLUGIN_TYPE_GENERIC

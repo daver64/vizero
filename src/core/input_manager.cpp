@@ -313,6 +313,29 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             goto keydown_handled; /* Always consume Ctrl+D */
                         }
                         
+                        /* Check for Ctrl+Shift+P to open command palette */
+                        if ((event.key.keysym.mod & (KMOD_CTRL | KMOD_SHIFT)) == (KMOD_CTRL | KMOD_SHIFT) && 
+                            (event.key.keysym.sym == SDLK_p)) {
+                            int result = vizero_editor_toggle_command_palette(editor);
+                            if (result == 0) {
+                                vizero_editor_set_status_message(editor, "Command Palette opened");
+                            } else {
+                                vizero_editor_set_status_message(editor, "Command Palette not available");
+                            }
+                            goto keydown_handled; /* Always consume Ctrl+Shift+P */
+                        }
+                        
+                        /* Check for F1 to open command palette (alternative) */
+                        if (event.key.keysym.sym == SDLK_F1) {
+                            int result = vizero_editor_toggle_command_palette(editor);
+                            if (result == 0) {
+                                vizero_editor_set_status_message(editor, "Command Palette opened");
+                            } else {
+                                vizero_editor_set_status_message(editor, "Command Palette not available");
+                            }
+                            goto keydown_handled; /* Always consume F1 */
+                        }
+                        
                         /* Check for ESC key to dismiss popups */
                         if (event.key.keysym.sym == SDLK_ESCAPE) {
                             if (vizero_editor_is_popup_visible(editor)) {
@@ -764,12 +787,12 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                             vizero_cursor_move_right(cursor);
                                             break;
                                         case SDLK_UP:
-                                            /* Up arrow - move cursor up */
-                                            vizero_cursor_move_up(cursor);
+                                            /* Up arrow - move cursor up (fold-aware) */
+                                            vizero_editor_cursor_move_up_fold_aware(editor);
                                             break;
                                         case SDLK_DOWN:
-                                            /* Down arrow - move cursor down */
-                                            vizero_cursor_move_down(cursor);
+                                            /* Down arrow - move cursor down (fold-aware) */
+                                            vizero_editor_cursor_move_down_fold_aware(editor);
                                             break;
                                         case SDLK_c:
                                             /* Ctrl+C for copy in insert mode */

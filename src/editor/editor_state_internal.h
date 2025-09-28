@@ -9,6 +9,7 @@
 #include "vizero/plugin_manager.h"
 #include "vizero/mode_manager.h"
 #include "vizero/colour_theme.h"
+#include "vizero/code_folding.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -80,6 +81,9 @@ struct vizero_editor_state_t {
     /* Command palette */
     void* command_palette;                  /* vizero_command_palette_t* - void* to avoid circular dependency */
     
+    /* Code folding */
+    vizero_code_folding_t* code_folding;    /* Code folding manager */
+    
     /* Clipboard */
     char* clipboard_content;
     size_t clipboard_size;
@@ -129,6 +133,12 @@ struct vizero_editor_state_t {
     
     /* Quit confirmation support */
     int quit_confirmation_active;
+    
+    /* Smart indentation settings */
+    int use_tabs;                   /* Use tabs instead of spaces for indentation */
+    int tabstop;                    /* Tab width in spaces */
+    int auto_indent;                /* Enable automatic indentation */
+    int smart_indent;               /* Enable smart language-aware indentation */
 };
 
 #ifdef __cplusplus

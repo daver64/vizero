@@ -2,6 +2,9 @@
 
 ![Vizero Editor Screenshot](images/screen1.png)
 
+A note from the human involved with this. I've used Claude Sonnet 4 extensively for this project, and it's responsible for the gushing nature of the text and the outlandish claims of stability :). However, it's much faster at documenting than I am so I'm sticking with it. Also, you will note that athough it's C++, we are basically using C with classes and all the code in functions is C, this is by design, when the AI goes off into the weeds, and it does, I find it far far easier to fix complicated C than complicated C++ ( and to be fair this applies to human code too, including my own if I'm revisiting an old code base). Also 2, this editor is inspired by Vi rather than being a Vi clone, there are important differences, so check the manual thoroughly. Now, over to the AI :)
+
+
 A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace capabilities, multi-buffer and multi-window support, and integrated compiler tools.
 
 ## Recent Improvements (2025)
@@ -38,7 +41,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated ren
 - **Multiple Cursors**: Full multi-cursor support with synchronized text operations across all cursor positions
 - **Block/Rectangular Selection**: Column-wise text selection and manipulation for efficient data editing
 - **Advanced Find/Replace**: Enhanced search with regex support, capture groups, interactive replacement, case sensitivity, and whole-word matching
-- **Code Folding System**: Language-aware code folding with support for functions, classes, blocks, comments, and custom regions
+- **Code Folding System**: Intelligent brace-matching code folding with visual indicators, fold-aware cursor navigation, and complete command set (`:za`, `:zo`, `:zc`, `:zR`, `:zM`, `:zf`, `:zd`)
 - **Smart Indentation**: Multi-language intelligent indentation with configurable styles, bracket matching, and automatic formatting
 - **Command Palette**: Comprehensive command system with fuzzy search, categorization, and extensible command registration
 - **Centralized Version Management**: Unified version system (0.0.5) across all components with single source of truth for consistency
@@ -269,6 +272,17 @@ N              # Previous match
 :run program   # Run program in new window
 :run           # Run last compiled executable
 :make          # Run make command in new window
+```
+
+#### Code Folding
+```
+:za                     # Toggle fold at cursor (creates if none exists)
+:zo                     # Open fold at cursor
+:zc                     # Close fold at cursor (creates if needed)
+:zR                     # Open all folds in buffer
+:zM                     # Close all folds in buffer
+:zf                     # Create fold at cursor (always unfolded)
+:zd                     # Delete fold at cursor
 ```
 
 #### Settings & Configuration

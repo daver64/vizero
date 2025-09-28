@@ -247,6 +247,7 @@ add_library(vizero_core STATIC
     src/editor/editor_state.cpp
     src/editor/command_parser.cpp
     src/editor/mode_manager.cpp
+    src/editor/code_folding.c
     src/project/project.cpp
     src/plugin/plugin_manager.cpp
     src/plugin/plugin_interface.cpp

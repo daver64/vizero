@@ -404,7 +404,7 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
 
 VIZERO_PLUGIN_DEFINE_INFO(
     "C/C++/Assembly Syntax Highlighter",
-    "1.0.0",
+    VIZERO_PLUGIN_VERSION,
     "Vizero Team", 
     "Syntax highlighting plugin for C, C++, and Assembly languages",
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER

@@ -275,7 +275,7 @@ static int highlight_syntax(vizero_buffer_t* buffer, size_t start_line, size_t e
 
 VIZERO_PLUGIN_DEFINE_INFO(
     "XML Syntax Highlighter",
-    "1.0.0",
+    VIZERO_PLUGIN_VERSION,
     "Vizero Team", 
     "Syntax highlighting plugin for XML, XSD, XSLT, XAML, and other XML-based files",
     VIZERO_PLUGIN_TYPE_SYNTAX_HIGHLIGHTER
