@@ -45,6 +45,11 @@ void vizero_search_clear_caches(void);
 const char** vizero_search_get_history(vizero_editor_state_t* state, size_t* count);
 void vizero_search_clear_history(vizero_editor_state_t* state);
 
+/* Incremental search for real-time feedback */
+int vizero_search_incremental_begin(vizero_editor_state_t* state);
+int vizero_search_incremental_update(vizero_editor_state_t* state, const char* pattern);
+void vizero_search_incremental_end(vizero_editor_state_t* state);
+
 /* Cleanup function - call when editor state is destroyed */
 void vizero_search_cleanup_editor_state(vizero_editor_state_t* state);
 

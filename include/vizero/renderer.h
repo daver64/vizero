@@ -37,6 +37,11 @@ void vizero_renderer_update_viewport(vizero_renderer_t* renderer, int width, int
 void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vizero_text_info_t* info);
 void vizero_renderer_get_text_size(vizero_renderer_t* renderer, const char* text, vizero_font_t* font, float* width, float* height);
 
+/* Batch text rendering for performance */
+void vizero_renderer_begin_batch(vizero_renderer_t* renderer);
+void vizero_renderer_add_char_to_batch(vizero_renderer_t* renderer, char c, float x, float y, vizero_colour_t colour);
+void vizero_renderer_flush_batch(vizero_renderer_t* renderer);
+
 /* Rectangle rendering */
 void vizero_renderer_draw_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_colour_t colour);
 void vizero_renderer_fill_rect(vizero_renderer_t* renderer, float x, float y, float width, float height, vizero_colour_t colour);

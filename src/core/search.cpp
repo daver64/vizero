@@ -32,9 +32,15 @@ struct SearchState {
     std::vector<std::string> search_history;
     static const size_t MAX_HISTORY_SIZE = 50;
     
+    /* Incremental search optimization */
+    std::string incremental_pattern;
+    std::vector<vizero_search_match_t> incremental_matches;
+    bool incremental_mode;
+    size_t last_incremental_length;
+    
     SearchState() : current_match_index(-1), has_pattern(false), last_direction(VIZERO_SEARCH_FORWARD),
                    pattern_cache_valid(false), cached_buffer(nullptr), cached_buffer_version(0), 
-                   matches_cache_valid(false) {}
+                   matches_cache_valid(false), incremental_mode(false), last_incremental_length(0) {}
     
     void add_to_history(const std::string& pattern) {
         /* Avoid duplicates - remove existing entry if present */
@@ -511,6 +517,121 @@ void vizero_search_clear_history(vizero_editor_state_t* state) {
     if (!search_state) return;
     
     search_state->search_history.clear();
+}
+
+/* Incremental search functions for performance */
+int vizero_search_incremental_begin(vizero_editor_state_t* state) {
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return -1;
+    
+    search_state->incremental_mode = true;
+    search_state->incremental_pattern.clear();
+    search_state->incremental_matches.clear();
+    search_state->last_incremental_length = 0;
+    
+    return 0;
+}
+
+int vizero_search_incremental_update(vizero_editor_state_t* state, const char* pattern) {
+    if (!state || !pattern) return -1;
+    
+    SearchState* search_state = get_search_state(state);
+    if (!search_state || !search_state->incremental_mode) return -1;
+    
+    std::string new_pattern(pattern);
+    size_t new_length = new_pattern.length();
+    
+    /* Check if we can optimize by filtering existing results */
+    if (new_length > search_state->last_incremental_length && 
+        new_pattern.substr(0, search_state->last_incremental_length) == search_state->incremental_pattern) {
+        
+        /* Pattern extended - filter existing matches */
+        try {
+            std::regex extended_pattern(new_pattern, std::regex_constants::ECMAScript);
+            std::vector<vizero_search_match_t> filtered_matches;
+            
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            if (buffer) {
+                for (const auto& match : search_state->incremental_matches) {
+                    const char* line_text = vizero_buffer_get_line_text(buffer, match.line);
+                    if (line_text) {
+                        std::string text(line_text);
+                        if (std::regex_search(text.begin() + match.column, text.end(), extended_pattern)) {
+                            filtered_matches.push_back(match);
+                        }
+                    }
+                }
+            }
+            
+            search_state->incremental_matches = filtered_matches;
+        } catch (const std::regex_error&) {
+            return -1;
+        }
+    } else {
+        /* Pattern changed significantly - full search */
+        try {
+            std::regex compiled_pattern(new_pattern, std::regex_constants::ECMAScript);
+            search_state->incremental_matches.clear();
+            
+            vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
+            if (buffer) {
+                size_t line_count = vizero_buffer_get_line_count(buffer);
+                search_state->incremental_matches.reserve(line_count / 20);
+                
+                for (size_t line = 0; line < line_count; line++) {
+                    const char* line_text = vizero_buffer_get_line_text(buffer, line);
+                    if (!line_text) continue;
+                    
+                    std::string text(line_text);
+                    std::sregex_iterator iter(text.begin(), text.end(), compiled_pattern);
+                    std::sregex_iterator end;
+                    
+                    for (; iter != end; ++iter) {
+                        const std::smatch& match = *iter;
+                        vizero_search_match_t result;
+                        result.line = (int)line;
+                        result.column = (int)match.position();
+                        result.length = (int)match.length();
+                        search_state->incremental_matches.push_back(result);
+                    }
+                }
+            }
+        } catch (const std::regex_error&) {
+            return -1;
+        }
+    }
+    
+    search_state->incremental_pattern = new_pattern;
+    search_state->last_incremental_length = new_length;
+    
+    /* Update status */
+    char status[256];
+    snprintf(status, sizeof(status), "Incremental: %d match%s for '%s'", 
+            (int)search_state->incremental_matches.size(),
+            search_state->incremental_matches.size() == 1 ? "" : "es",
+            pattern);
+    vizero_editor_set_status_message(state, status);
+    
+    return (int)search_state->incremental_matches.size();
+}
+
+void vizero_search_incremental_end(vizero_editor_state_t* state) {
+    SearchState* search_state = get_search_state(state);
+    if (!search_state) return;
+    
+    if (search_state->incremental_mode) {
+        /* Copy incremental results to main search results */
+        search_state->matches = search_state->incremental_matches;
+        search_state->pattern_string = search_state->incremental_pattern;
+        search_state->has_pattern = !search_state->incremental_pattern.empty();
+        search_state->current_match_index = search_state->matches.empty() ? -1 : 0;
+        
+        /* Clear incremental state */
+        search_state->incremental_mode = false;
+        search_state->incremental_pattern.clear();
+        search_state->incremental_matches.clear();
+        search_state->last_incremental_length = 0;
+    }
 }
 
 void vizero_search_cleanup_editor_state(vizero_editor_state_t* state) {

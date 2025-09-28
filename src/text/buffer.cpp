@@ -46,6 +46,20 @@ typedef struct {
     bool cache_valid;
 } line_cache_t;
 
+/* Streaming buffer support for large files */
+#define STREAMING_THRESHOLD_LINES 10000
+#define STREAMING_WINDOW_SIZE 2000
+#define STREAMING_BUFFER_MARGIN 500
+
+typedef struct {
+    size_t window_start;     /* First loaded line */
+    size_t window_end;       /* Last loaded line + 1 */
+    size_t total_lines;      /* Total lines in file */
+    FILE* file_handle;       /* Keep file open for streaming */
+    long* line_offsets;      /* File offsets for each line */
+    int is_streaming;        /* Flag indicating streaming mode */
+} streaming_info_t;
+
 struct vizero_buffer_t { 
     char* filename;
     char** lines;
@@ -59,6 +73,7 @@ struct vizero_buffer_t {
     uint64_t last_disk_mtime; /* Last known modification time on disk (for auto-reload) */
     uint64_t modification_version; /* Incremental counter for tracking buffer changes */
     line_cache_t line_cache; /* Performance optimization: cached line lengths */
+    streaming_info_t streaming; /* Large file streaming support */
 };
 
 struct vizero_line_t { int dummy; };
@@ -229,6 +244,14 @@ vizero_buffer_t* vizero_buffer_create(void) {
         buffer->line_cache.line_lengths = NULL;
         buffer->line_cache.cache_capacity = 0;
         buffer->line_cache.cache_valid = false;
+        
+        /* Initialize streaming support */
+        buffer->streaming.is_streaming = 0;
+        buffer->streaming.window_start = 0;
+        buffer->streaming.window_end = 0;
+        buffer->streaming.total_lines = 0;
+        buffer->streaming.file_handle = NULL;
+        buffer->streaming.line_offsets = NULL;
     }
     return buffer;
 }
@@ -246,25 +269,73 @@ vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
             return NULL;
         }
         
-        /* Load file content */
+        /* First pass: count lines and determine if streaming is needed */
         FILE* file = fopen(filename, "r");
         if (file) {
-            /* Clear the initial empty line since we're loading from file */
-            if (buffer->line_count == 1 && buffer->lines[0] && strlen(buffer->lines[0]) == 0) {
-                free(buffer->lines[0]);
-                buffer->line_count = 0;
+            size_t total_lines = 0;
+            char line_buffer[1024];
+            
+            /* Count total lines */
+            while (fgets(line_buffer, sizeof(line_buffer), file)) {
+                total_lines++;
             }
             
-            char line_buffer[1024];
-            while (fgets(line_buffer, sizeof(line_buffer), file)) {
-                /* Remove newline if present */
-                size_t len = strlen(line_buffer);
-                if (len > 0 && line_buffer[len - 1] == '\n') {
-                    line_buffer[len - 1] = '\0';
+            /* Decide on streaming vs full load */
+            if (total_lines > STREAMING_THRESHOLD_LINES) {
+                /* Setup streaming mode */
+                printf("Large file detected (%zu lines), enabling streaming mode\n", total_lines);
+                buffer->streaming.is_streaming = 1;
+                buffer->streaming.total_lines = total_lines;
+                buffer->streaming.window_start = 0;
+                buffer->streaming.window_end = (total_lines < STREAMING_WINDOW_SIZE) ? total_lines : STREAMING_WINDOW_SIZE;
+                buffer->streaming.file_handle = fopen(filename, "r");
+                
+                /* Build line offset index for quick seeking */
+                buffer->streaming.line_offsets = (long*)vizero_safe_malloc(total_lines * sizeof(long));
+                if (buffer->streaming.line_offsets) {
+                    rewind(file);
+                    size_t line_idx = 0;
+                    buffer->streaming.line_offsets[line_idx++] = ftell(file);
+                    
+                    while (fgets(line_buffer, sizeof(line_buffer), file) && line_idx < total_lines) {
+                        buffer->streaming.line_offsets[line_idx++] = ftell(file);
+                    }
                 }
                 
-                /* Add line to buffer */
-                vizero_buffer_insert_line(buffer, buffer->line_count, line_buffer);
+                /* Load initial window */
+                rewind(file);
+                buffer->line_count = 0;
+                for (size_t i = 0; i < buffer->streaming.window_end && fgets(line_buffer, sizeof(line_buffer), file); i++) {
+                    /* Remove newline if present */
+                    size_t len = strlen(line_buffer);
+                    if (len > 0 && line_buffer[len - 1] == '\n') {
+                        line_buffer[len - 1] = '\0';
+                    }
+                    vizero_buffer_insert_line(buffer, buffer->line_count, line_buffer);
+                }
+            } else {
+                /* Standard full file load */
+                buffer->streaming.is_streaming = 0;
+                buffer->streaming.file_handle = NULL;
+                buffer->streaming.line_offsets = NULL;
+                
+                /* Clear the initial empty line since we're loading from file */
+                if (buffer->line_count == 1 && buffer->lines[0] && strlen(buffer->lines[0]) == 0) {
+                    free(buffer->lines[0]);
+                    buffer->line_count = 0;
+                }
+                
+                rewind(file);
+                while (fgets(line_buffer, sizeof(line_buffer), file)) {
+                    /* Remove newline if present */
+                    size_t len = strlen(line_buffer);
+                    if (len > 0 && line_buffer[len - 1] == '\n') {
+                        line_buffer[len - 1] = '\0';
+                    }
+                    
+                    /* Add line to buffer */
+                    vizero_buffer_insert_line(buffer, buffer->line_count, line_buffer);
+                }
             }
             fclose(file);
             
@@ -305,6 +376,12 @@ void vizero_buffer_destroy(vizero_buffer_t* buffer) {
     
     /* Clean up line cache */
     vizero_safe_free(buffer->line_cache.line_lengths);
+    
+    /* Clean up streaming resources */
+    if (buffer->streaming.file_handle) {
+        fclose(buffer->streaming.file_handle);
+    }
+    vizero_safe_free(buffer->streaming.line_offsets);
     
     /* Final safe cleanup of buffer structure */
     vizero_safe_free(buffer);
@@ -352,7 +429,14 @@ void vizero_buffer_set_scratch(vizero_buffer_t* buffer, int scratch) {
 }
 
 size_t vizero_buffer_get_line_count(vizero_buffer_t* buffer) {
-    return buffer ? buffer->line_count : 0;
+    if (!buffer) return 0;
+    
+    /* In streaming mode, return total file lines, not just loaded window */
+    if (buffer->streaming.is_streaming) {
+        return buffer->streaming.total_lines;
+    }
+    
+    return buffer->line_count;
 }
 
 const char* vizero_buffer_get_text(vizero_buffer_t* buffer) {
@@ -402,8 +486,27 @@ vizero_line_t* vizero_buffer_get_line(vizero_buffer_t* buffer, size_t line_num) 
 }
 
 const char* vizero_buffer_get_line_text(vizero_buffer_t* buffer, size_t line_num) {
-    if (!buffer)
+    if (!buffer) return NULL;
+    
+    /* Handle streaming mode */
+    if (buffer->streaming.is_streaming) {
+        if (line_num >= buffer->streaming.total_lines) return NULL;
+        
+        /* Check if line is in current window */
+        if (line_num >= buffer->streaming.window_start && line_num < buffer->streaming.window_end) {
+            size_t local_index = line_num - buffer->streaming.window_start;
+            if (local_index < buffer->line_count) {
+                return buffer->lines[local_index];
+            }
+        }
+        
+        /* Line not in window - need to load new window */
+        /* For now, return NULL to indicate streaming needed */
+        /* TODO: Implement dynamic window loading */
         return NULL;
+    }
+    
+    /* Standard mode */
     if (line_num >= buffer->line_count) return NULL;
     return buffer->lines[line_num];
 }

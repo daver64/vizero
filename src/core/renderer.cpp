@@ -14,6 +14,17 @@ static const int CHAR_HEIGHT = 16;
 static const int FONT_COLS = 16;
 static const int FONT_ROWS = 16;
 
+/* Batch rendering structures for performance */
+#define MAX_BATCH_CHARS 4096
+#define VERTICES_PER_CHAR 4
+#define FLOATS_PER_VERTEX 4
+
+typedef struct {
+    float x, y;
+    vizero_colour_t colour;
+    unsigned char character;
+} batch_char_t;
+
 struct vizero_renderer_t { 
     GLuint shader_program;
     GLuint vao, vbo;
@@ -25,6 +36,16 @@ struct vizero_renderer_t {
     GLuint font_texture;
     float projection[16];
     int width, height;
+    
+    /* Batch rendering support */
+    GLuint batch_vao, batch_vbo, batch_ebo;
+    batch_char_t batch_chars[MAX_BATCH_CHARS];
+    size_t batch_count;
+    GLint batch_mvp_uniform;
+    GLint batch_colour_uniform;
+    GLint batch_char_uniform;
+    GLint batch_font_texture_uniform;
+    GLint batch_use_font_texture_uniform;
 };
 
 struct vizero_font_t { 
@@ -43,6 +64,57 @@ static const char* vertex_shader_source =
 "void main() {\n"
 "    gl_Position = uMVP * vec4(aPos, 0.0, 1.0);\n"
 "    TexCoord = aTexCoord;\n"
+"}\n";
+
+/* Batch vertex shader for instanced text rendering */
+static const char* batch_vertex_shader_source = 
+"#version 330 core\n"
+"layout (location = 0) in vec2 aPos;\n"
+"layout (location = 1) in vec2 aTexCoord;\n"
+"layout (location = 2) in vec2 aInstancePos;\n"  /* Instance position */
+"layout (location = 3) in vec4 aInstanceColour;\n"  /* Instance colour */
+"layout (location = 4) in float aInstanceChar;\n"  /* Instance character */
+"uniform mat4 uMVP;\n"
+"out vec2 TexCoord;\n"
+"out vec4 InstanceColour;\n"
+"out float InstanceChar;\n"
+"void main() {\n"
+"    vec2 worldPos = aPos * vec2(8.0, 16.0) + aInstancePos;\n"  /* Scale by char size */
+"    gl_Position = uMVP * vec4(worldPos, 0.0, 1.0);\n"
+"    TexCoord = aTexCoord;\n"
+"    InstanceColour = aInstanceColour;\n"
+"    InstanceChar = aInstanceChar;\n"
+"}\n";
+
+/* Batch fragment shader for instanced text rendering */
+static const char* batch_fragment_shader_source = 
+"#version 330 core\n"
+"in vec2 TexCoord;\n"
+"in vec4 InstanceColour;\n"
+"in float InstanceChar;\n"
+"uniform sampler2D uFontTexture;\n"
+"uniform int uUseFontTexture;\n"
+"out vec4 FragColour;\n"
+"\n"
+"void main() {\n"
+"    if (uUseFontTexture == 1 && InstanceChar > 0.0) {\n"
+"        int char_code = int(InstanceChar);\n"
+"        int char_col = char_code % 32;\n"
+"        int char_row = char_code / 32;\n"
+"        \n"
+"        vec2 char_offset = vec2(float(char_col) / 32.0, float(char_row) / 8.0);\n"
+"        vec2 char_size = vec2(1.0 / 32.0, 1.0 / 8.0);\n"
+"        vec2 font_coord = char_offset + TexCoord * char_size;\n"
+"        \n"
+"        vec4 tex_sample = texture(uFontTexture, font_coord);\n"
+"        if (tex_sample.r > 0.5) {\n"
+"            FragColour = InstanceColour;\n"
+"        } else {\n"
+"            discard;\n"
+"        }\n"
+"    } else {\n"
+"        FragColour = InstanceColour;\n"
+"    }\n"
 "}\n";
 
 /* Fragment shader for bitmap font rendering */
@@ -274,6 +346,45 @@ vizero_renderer_t* vizero_renderer_create(vizero_window_t* window) {
     /* Create projection matrix */
     create_ortho_matrix(renderer->projection, 0.0f, (float)width, (float)height, 0.0f);
     
+    /* Initialize batch rendering */
+    renderer->batch_count = 0;
+    
+    /* Create batch VAO and VBO for instanced rendering */
+    glGenVertexArrays(1, &renderer->batch_vao);
+    glGenBuffers(1, &renderer->batch_vbo);
+    glGenBuffers(1, &renderer->batch_ebo);
+    
+    /* Setup batch VAO - quad template */
+    glBindVertexArray(renderer->batch_vao);
+    
+    /* Quad vertices (template for each character) */
+    float quad_vertices[] = {
+        0.0f, 0.0f, 0.0f, 0.0f,  /* Top-left */
+        1.0f, 0.0f, 1.0f, 0.0f,  /* Top-right */
+        1.0f, 1.0f, 1.0f, 1.0f,  /* Bottom-right */
+        0.0f, 1.0f, 0.0f, 1.0f   /* Bottom-left */
+    };
+    
+    GLuint quad_indices[] = {
+        0, 1, 2, 2, 3, 0
+    };
+    
+    /* Setup quad template */
+    GLuint quad_vbo;
+    glGenBuffers(1, &quad_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+    
+    /* Position and texture coordinates (per vertex) */
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    /* Setup element buffer */
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, renderer->batch_ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_indices), quad_indices, GL_STATIC_DRAW);
+    
     /* Enable blending for text */
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -286,6 +397,9 @@ void vizero_renderer_destroy(vizero_renderer_t* renderer) {
         if (renderer->shader_program) glDeleteProgram(renderer->shader_program);
         if (renderer->vao) glDeleteVertexArrays(1, &renderer->vao);
         if (renderer->vbo) glDeleteBuffers(1, &renderer->vbo);
+        if (renderer->batch_vao) glDeleteVertexArrays(1, &renderer->batch_vao);
+        if (renderer->batch_vbo) glDeleteBuffers(1, &renderer->batch_vbo);
+        if (renderer->batch_ebo) glDeleteBuffers(1, &renderer->batch_ebo);
         if (renderer->font_texture) glDeleteTextures(1, &renderer->font_texture);
         free(renderer);
     }
@@ -378,6 +492,39 @@ void vizero_renderer_draw_text(vizero_renderer_t* renderer, const char* text, vi
         
         x += CHAR_WIDTH;
     }
+}
+
+/* Batch rendering functions for performance optimization */
+void vizero_renderer_begin_batch(vizero_renderer_t* renderer) {
+    if (!renderer) return;
+    renderer->batch_count = 0;
+}
+
+void vizero_renderer_add_char_to_batch(vizero_renderer_t* renderer, char c, float x, float y, vizero_colour_t colour) {
+    if (!renderer || renderer->batch_count >= MAX_BATCH_CHARS) return;
+    
+    batch_char_t* batch_char = &renderer->batch_chars[renderer->batch_count];
+    batch_char->x = x;
+    batch_char->y = y;
+    batch_char->colour = colour;
+    batch_char->character = (unsigned char)c;
+    
+    renderer->batch_count++;
+}
+
+void vizero_renderer_flush_batch(vizero_renderer_t* renderer) {
+    if (!renderer || renderer->batch_count == 0) return;
+    
+    /* For now, fall back to individual character rendering */
+    /* TODO: Implement instanced rendering with proper batch shader */
+    for (size_t i = 0; i < renderer->batch_count; i++) {
+        batch_char_t* batch_char = &renderer->batch_chars[i];
+        char text[2] = { (char)batch_char->character, '\0' };
+        vizero_text_info_t info = { batch_char->x, batch_char->y, batch_char->colour, NULL };
+        vizero_renderer_draw_text(renderer, text, &info);
+    }
+    
+    renderer->batch_count = 0;
 }
 
 void vizero_renderer_get_text_size(vizero_renderer_t* renderer, const char* text, vizero_font_t* font, float* width, float* height) {
