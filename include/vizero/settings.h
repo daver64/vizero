@@ -44,6 +44,7 @@ void vizero_settings_load_window_state(vizero_settings_t* settings, int* x, int*
 #define VIZERO_SETTING_TAB_SIZE "tab_size"
 #define VIZERO_SETTING_WORD_WRAP "word_wrap"
 #define VIZERO_SETTING_SYNTAX_HIGHLIGHTING "syntax_highlighting"
+#define VIZERO_SETTING_SEARCH_HIGHLIGHTING "search_highlighting"
 
 /* Window settings */
 #define VIZERO_SETTING_WINDOW_X "window_x"

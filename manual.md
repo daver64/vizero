@@ -1516,6 +1516,11 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 |---------|--------|
 | `:set name=value` | Set configuration option |
 | `:set readonly on/off` | Set buffer read-only status |
+| `:set number` | Show line numbers (alias for `:linenum on`) |
+| `:set nonumber` | Hide line numbers (alias for `:linenum off`) |
+| `:set hlsearch` | Enable search result highlighting |
+| `:set nohlsearch` | Disable search result highlighting |
+| `:source filename` | Execute commands from file |
 | `:ro`, `:readonly` | Make current buffer read-only |
 | `:noro`, `:noreadonly` | Make current buffer writable |
 | `:show` | Display all current settings |
@@ -1539,7 +1544,10 @@ The SQL REPL integration transforms Vizero into a powerful database development 
 |---------|---------|-------------|
 | `tab_size` | 4 | Number of spaces per tab |
 | `auto_indent` | true | Automatic indentation |
-| `show_line_numbers` | false | Display line numbers |
+| `line_numbers` | false | Display line numbers |
+| `search_highlighting` | true | Highlight search matches |
+| `word_wrap` | true | Enable word wrapping |
+| `syntax_highlighting` | true | Enable syntax highlighting |
 | `linewrap` | true | Word wrap at word boundaries |
 | `colour_theme` | "Default" | Current colour theme (Default/Monokai/Solarized Dark) |
 | `c_compiler` | "gcc" | C compiler (gcc, msvc) |

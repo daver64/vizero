@@ -288,6 +288,11 @@ N              # Previous match
 #### Settings & Configuration
 ```
 :set linewrap on/off    # Toggle word wrap
+:set number             # Show line numbers (alias for :linenum on)
+:set nonumber           # Hide line numbers (alias for :linenum off)
+:set hlsearch           # Enable search highlighting
+:set nohlsearch         # Disable search highlighting
+:source filename        # Execute commands from file
 :linenum on/off         # Toggle line numbers
 :syntax on/off          # Toggle syntax highlighting
 :tabs 4                 # Set tab size

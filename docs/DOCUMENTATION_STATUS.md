@@ -32,7 +32,9 @@ This document tracks the accuracy of our documentation against the actual implem
 - **Window management** - `:split`, `:vsplit`, `:close`, `:only` implemented
 - **LSP integration** - clangd support with Ctrl+Space completion
 - **Syntax highlighting** - All language plugins (C, JavaScript, Python, etc.) working
-- **Settings system** - Persistent configuration with `:set`, `:show` commands
+- **Settings system** - Persistent configuration with `:set`, `:show` commands including vi-compatible aliases
+- **Configuration aliases** - `:set number/nonumber`, `:set hlsearch/nohlsearch` working like vi/vim
+- **Script execution** - `:source filename` for executing command files
 - **Colour themes** - `:colourscheme` with Default/Monokai/Solarized Dark themes
 - **Code folding** - `:za`, `:zc`, `:zo`, `:zR`, `:zM`, `:zf`, `:zd` with brace-matching and visual feedback
 

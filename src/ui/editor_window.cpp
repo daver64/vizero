@@ -11,6 +11,7 @@
 #include "vizero/editor_window_constants.h"
 #include "vizero/plugin_manager.h"
 #include "vizero/code_folding.h"
+#include "vizero/settings.h"
 #include "../editor/editor_state_internal.h"
 #ifdef _WIN32
 #include <direct.h>
@@ -667,10 +668,11 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                     }
                 }
                 
-                /* Check for search match highlighting - only show for current buffer */
+                /* Check for search match highlighting - only show for current buffer and if enabled */
                 int is_search_match = 0;
                 int is_current_match = 0;
-                if (vizero_search_has_results(state) && vizero_search_results_for_buffer(state, buffer)) {
+                int search_highlighting_enabled = vizero_settings_get_bool(settings, VIZERO_SETTING_SEARCH_HIGHLIGHTING);
+                if (search_highlighting_enabled && vizero_search_has_results(state) && vizero_search_results_for_buffer(state, buffer)) {
                     const vizero_search_match_t* matches = vizero_search_get_all_matches(state);
                     int match_count = vizero_search_get_match_count(state);
                     int current_match_index = vizero_search_get_current_match_index(state);

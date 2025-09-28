@@ -2814,6 +2814,22 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
                 vizero_editor_set_status_message(state, "No current buffer");
                 return -1;
             }
+        } else if (strcmp(args, "number") == 0) {
+            /* Enable line numbers */
+            return vizero_editor_execute_command(state, "linenum on");
+        } else if (strcmp(args, "nonumber") == 0) {
+            /* Disable line numbers */
+            return vizero_editor_execute_command(state, "linenum off");
+        } else if (strcmp(args, "hlsearch") == 0) {
+            /* Enable search highlighting */
+            vizero_settings_set_bool(state->settings, VIZERO_SETTING_SEARCH_HIGHLIGHTING, true);
+            vizero_editor_set_status_message(state, "Search highlighting enabled");
+            return 0;
+        } else if (strcmp(args, "nohlsearch") == 0) {
+            /* Disable search highlighting */
+            vizero_settings_set_bool(state->settings, VIZERO_SETTING_SEARCH_HIGHLIGHTING, false);
+            vizero_editor_set_status_message(state, "Search highlighting disabled");
+            return 0;
         }
         vizero_editor_set_status_message(state, "Usage: :set key value");
         return -1;
@@ -4214,6 +4230,59 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             vizero_editor_set_status_message_with_timeout(state, "Session manager not available", 3000);
             return -1;
         }
+        
+    } else if (strncmp(command, "source ", 7) == 0) {
+        /* Execute commands from file */
+        const char* filename = command + 7;
+        while (*filename == ' ') filename++; /* Skip spaces */
+        
+        if (*filename == '\0') {
+            vizero_editor_set_status_message(state, "Usage: :source <filename>");
+            return -1;
+        }
+        
+        FILE* file = fopen(filename, "r");
+        if (!file) {
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Cannot open file: %s", filename);
+            vizero_editor_set_status_message(state, msg);
+            return -1;
+        }
+        
+        char line[512];
+        int executed_count = 0;
+        int error_count = 0;
+        
+        while (fgets(line, sizeof(line), file)) {
+            /* Remove newline */
+            size_t len = strlen(line);
+            if (len > 0 && line[len - 1] == '\n') {
+                line[len - 1] = '\0';
+            }
+            
+            /* Skip empty lines and comments */
+            if (line[0] == '\0' || line[0] == '#' || line[0] == '"') {
+                continue;
+            }
+            
+            /* Execute command */
+            if (vizero_editor_execute_command(state, line) == 0) {
+                executed_count++;
+            } else {
+                error_count++;
+            }
+        }
+        
+        fclose(file);
+        
+        char msg[256];
+        if (error_count == 0) {
+            snprintf(msg, sizeof(msg), "Sourced %s: %d commands executed", filename, executed_count);
+        } else {
+            snprintf(msg, sizeof(msg), "Sourced %s: %d commands executed, %d errors", filename, executed_count, error_count);
+        }
+        vizero_editor_set_status_message(state, msg);
+        return (error_count == 0) ? 0 : -1;
         
     } else {
         /* Check if command is a line number */

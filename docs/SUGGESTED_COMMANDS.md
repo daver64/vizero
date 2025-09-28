@@ -190,18 +190,18 @@
 - ❌ `:session-save` - Save current session (shows "not yet implemented" message)
 
 ### Advanced Features
-- ❌ `:grep pattern files` - Run grep and load results
-- ❌ `:source filename` - Execute commands from file
+- ❌ `:grep pattern files` - Run grep and load results (external file search)
+- ✅ `:source filename` - Execute commands from file
 
 ### Theme System (Partially Implemented)
 - ✅ `:colourscheme Default|Monokai|Solarized\ Dark` - Switch colour themes (implemented)
 - ❌ Custom theme creation/loading
 
 ### Configuration Aliases
-- ❌ `:set number` - Show line numbers (alias for :linenum on)
-- ❌ `:set nonumber` - Hide line numbers (alias for :linenum off)
-- ❌ `:set hlsearch` - Highlight search results (search highlighting is always on)
-- ❌ `:set nohlsearch` - Don't highlight search results
+- ✅ `:set number` - Show line numbers (alias for :linenum on)
+- ✅ `:set nonumber` - Hide line numbers (alias for :linenum off)
+- ✅ `:set hlsearch` - Highlight search results (toggleable setting)
+- ✅ `:set nohlsearch` - Don't highlight search results
 
 ## Priority Implementation Order for Remaining Commands
 
@@ -210,8 +210,8 @@
 2. ❌ `:grep pattern files` - Search integration (cross-platform solution needed)
 
 ### Medium Priority (Quality of Life)
-1. ❌ `:source filename` - Script execution for configuration
-2. ❌ Configuration aliases (`:set number`, `:set nonumber`)
+1. ✅ `:source filename` - Script execution for configuration
+2. ✅ Configuration aliases (`:set number`, `:set nonumber`, `:set hlsearch`, `:set nohlsearch`)
 3. ❌ Custom theme creation/loading
 
 ### Lower Priority (Advanced Features)
