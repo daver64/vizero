@@ -512,6 +512,22 @@ int vizero_plugin_manager_on_key_input(vizero_plugin_manager_t* manager, vizero_
     return 0; /* Key not handled */
 }
 
+int vizero_plugin_manager_on_mouse_click(vizero_plugin_manager_t* manager, vizero_editor_t* editor, 
+                                         int x, int y, int button) {
+    if (!manager) return 0;
+    
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.on_mouse_click) {
+            if (plugin->callbacks.on_mouse_click(editor, x, y, button) != 0) {
+                return 1; /* Mouse click handled */
+            }
+        }
+    }
+    
+    return 0; /* Mouse click not handled */
+}
+
 // --- PATCH: Use caller-allocated tokens buffer for plugin syntax highlighting ---
 // Helper for max tokens per line
 #define VIZERO_SYNTAX_MAX_TOKENS_PER_LINE 32

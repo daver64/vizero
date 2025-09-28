@@ -96,6 +96,17 @@ struct vizero_editor_state_t {
     char* hover_text;
     vizero_position_t hover_position;
     int hover_x, hover_y; /* Screen coordinates for hover popup */
+    
+    /* Mouse selection support */
+    int mouse_selection_active;
+    vizero_position_t mouse_selection_start;
+    
+    /* Context menu support */
+    int context_menu_active;
+    int context_menu_x, context_menu_y;
+    
+    /* Quit confirmation support */
+    int quit_confirmation_active;
 };
 
 #ifdef __cplusplus

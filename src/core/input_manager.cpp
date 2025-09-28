@@ -2,6 +2,7 @@
 #include "vizero/input_manager.h"
 #include "vizero/application.h"
 #include "vizero/editor_state.h"
+#include "../editor/editor_state_internal.h" // for quit_confirmation_active access
 #include "vizero/cursor.h"
 #include "vizero/buffer.h"
 #include "vizero/window.h"
@@ -109,9 +110,16 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
-                /* Signal application to quit */
+                /* Check for unsaved buffers before quitting */
                 if (input->app) {
-                    vizero_application_quit(input->app);
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor && vizero_editor_has_unsaved_buffers(editor)) {
+                        /* Show quit confirmation dialog */
+                        vizero_editor_show_quit_confirmation(editor);
+                    } else {
+                        /* No unsaved buffers, quit immediately */
+                        vizero_application_quit(input->app);
+                    }
                 }
                 break;
             case SDL_WINDOWEVENT:
@@ -128,6 +136,32 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     if (editor) {
                         /* Hide welcome message on any key press */
                         vizero_application_on_user_input(input->app);
+                        
+                        /* Check for quit confirmation handling first */
+                        if (editor->quit_confirmation_active) {
+                            char key_char = (char)event.key.keysym.sym;
+                            if (key_char == 'y' || key_char == 'Y') {
+                                /* Save all modified buffers and quit */
+                                vizero_editor_save_all_buffers(editor);
+                                vizero_editor_hide_popup(editor);
+                                editor->quit_confirmation_active = 0;
+                                vizero_application_quit(input->app);
+                                break;
+                            } else if (key_char == 'n' || key_char == 'N') {
+                                /* Quit without saving */
+                                vizero_editor_hide_popup(editor);
+                                editor->quit_confirmation_active = 0;
+                                vizero_application_quit(input->app);
+                                break;
+                            } else if (key_char == 'c' || key_char == 'C' || event.key.keysym.sym == SDLK_ESCAPE) {
+                                /* Cancel quit and continue editing */
+                                vizero_editor_hide_popup(editor);
+                                editor->quit_confirmation_active = 0;
+                                break;
+                            }
+                            /* Any other key is ignored while in quit confirmation */
+                            break;
+                        }
                         
                         /* Check for completion UI key handling first */
                         if (vizero_editor_is_completion_visible(editor)) {
@@ -515,6 +549,12 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                         /* Ctrl+Z for undo */
                                         if (event.key.keysym.mod & KMOD_CTRL) {
                                             vizero_editor_undo(editor);
+                                        }
+                                        break;
+                                    case SDLK_y:
+                                        /* Ctrl+Y for redo */
+                                        if (event.key.keysym.mod & KMOD_CTRL) {
+                                            vizero_editor_redo(editor);
                                         }
                                         break;
                                     case SDLK_a:
@@ -920,6 +960,64 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 }
             textinput_handled:
                 break;
+            case SDL_MOUSEBUTTONDOWN:
+                /* Handle mouse button press */
+                if (input->app) {
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        /* Check if any plugin wants to handle mouse input */
+                        vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
+                        if (plugin_manager && vizero_plugin_manager_on_mouse_click(plugin_manager, (vizero_editor_t*)editor, 
+                                                                                   event.button.x, event.button.y, event.button.button)) {
+                            break; /* Plugin consumed the mouse click */
+                        }
+                        
+                        /* Handle mouse clicks for core editor functionality */
+                        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(editor);
+                        if (window_manager) {
+                            vizero_editor_window_t* clicked_window = vizero_editor_find_window_at_position(window_manager, event.button.x, event.button.y);
+                            if (clicked_window) {
+                                /* Set focus to clicked window */
+                                vizero_window_manager_set_focus(window_manager, clicked_window->window_id);
+                                
+                                /* Handle different mouse buttons */
+                                if (event.button.button == SDL_BUTTON_LEFT) {
+                                    /* Left click: position cursor and handle text selection */
+                                    vizero_editor_handle_left_click(editor, clicked_window, event.button.x, event.button.y, 
+                                                                   (event.button.state == SDL_PRESSED) ? 1 : 0);
+                                } else if (event.button.button == SDL_BUTTON_RIGHT) {
+                                    /* Right click: show context menu with copy/paste */
+                                    vizero_editor_handle_right_click(editor, clicked_window, event.button.x, event.button.y);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            case SDL_MOUSEBUTTONUP:
+                /* Handle mouse button release */
+                if (input->app) {
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        /* End text selection on left button release */
+                        if (event.button.button == SDL_BUTTON_LEFT) {
+                            vizero_editor_handle_left_click_release(editor, event.button.x, event.button.y);
+                        }
+                    }
+                }
+                break;
+            case SDL_MOUSEMOTION:
+                /* Handle mouse movement for text selection */
+                if (input->app) {
+                    vizero_editor_state_t* editor = vizero_application_get_editor(input->app);
+                    if (editor) {
+                        /* Update text selection if left button is held down */
+                        if (event.motion.state & SDL_BUTTON_LMASK) {
+                            vizero_editor_handle_mouse_drag(editor, event.motion.x, event.motion.y);
+                        }
+                    }
+                }
+                break;
             case SDL_DROPFILE:
                 /* Handle drag and drop file events */
                 if (input->app && event.drop.file) {
@@ -988,11 +1086,16 @@ uint32_t vizero_input_manager_get_modifiers(vizero_input_manager_t* input) {
 
 void vizero_input_manager_get_mouse_position(vizero_input_manager_t* input, int* x, int* y) {
     (void)input;
-    if (x) *x = 0;
-    if (y) *y = 0;
+    SDL_GetMouseState(x, y);
 }
 
 int vizero_input_manager_is_mouse_button_pressed(vizero_input_manager_t* input, int button) {
-    (void)input; (void)button;
-    return 0;
+    (void)input;
+    Uint32 mouse_state = SDL_GetMouseState(NULL, NULL);
+    switch (button) {
+        case 1: return (mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+        case 2: return (mouse_state & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+        case 3: return (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+        default: return 0;
+    }
 }

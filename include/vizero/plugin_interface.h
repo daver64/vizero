@@ -821,6 +821,9 @@ typedef struct {
     /* Optional: Called for key input processing */
     int (*on_key_input)(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
     
+    /* Optional: Called for mouse input processing */
+    int (*on_mouse_click)(vizero_editor_t* editor, int x, int y, int button);
+    
     /**
      * @defgroup syntax_highlighting_callbacks Syntax Highlighting Callbacks
      * @brief Callbacks for syntax highlighting plugins

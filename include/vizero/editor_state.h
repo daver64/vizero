@@ -840,6 +840,17 @@ int vizero_editor_is_help_mode_active(vizero_editor_state_t* state);
 /* Application control */
 int vizero_editor_should_quit(vizero_editor_state_t* state);
 void vizero_editor_set_quit_flag(vizero_editor_state_t* state);
+int vizero_editor_has_unsaved_buffers(vizero_editor_state_t* state);
+int vizero_editor_show_quit_confirmation(vizero_editor_state_t* state);
+int vizero_editor_save_all_buffers(vizero_editor_state_t* state);
+
+/* Mouse support */
+vizero_editor_window_t* vizero_editor_find_window_at_position(vizero_window_manager_t* manager, int x, int y);
+int vizero_editor_handle_left_click(vizero_editor_state_t* state, vizero_editor_window_t* window, int x, int y, int pressed);
+int vizero_editor_handle_right_click(vizero_editor_state_t* state, vizero_editor_window_t* window, int x, int y);
+int vizero_editor_handle_left_click_release(vizero_editor_state_t* state, int x, int y);
+int vizero_editor_handle_mouse_drag(vizero_editor_state_t* state, int x, int y);
+vizero_position_t vizero_editor_screen_to_buffer_position(vizero_editor_window_t* window, vizero_editor_state_t* state, int screen_x, int screen_y);
 
 /**
  * @defgroup search_replace Search and Replace

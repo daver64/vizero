@@ -4428,6 +4428,8 @@ int vizero_editor_cut_selection(vizero_editor_state_t* state) {
     if (state->has_selection) {
         char* selected_text = vizero_editor_get_selected_text(state);
         if (selected_text) {
+            /* Show cut confirmation */
+            
             /* Copy to clipboard first */
             int result = vizero_editor_set_clipboard(state, selected_text);
             free(selected_text);
@@ -4440,12 +4442,14 @@ int vizero_editor_cut_selection(vizero_editor_state_t* state) {
                     vizero_position_t start = {0, 0}, end = {0, 0};
                     vizero_editor_get_selection_range(state, &start, &end);
                     
+
+                    
                     /* Delete the selection */
                     if (vizero_buffer_delete_range(buffer, start.line, start.column, end.line, end.column) == 0) {
                         /* Move cursor to start of deleted selection */
                         vizero_cursor_set_position(cursor, start.line, start.column);
                         vizero_editor_clear_selection(state);
-                        vizero_editor_set_status_message(state, "Selection cut");
+                        vizero_editor_set_status_message_with_timeout(state, "Selection cut to clipboard", 2000);
                         return 0;
                     }
                 }
@@ -4478,6 +4482,8 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         return -1;
     }
     
+
+    
     vizero_position_t pos = vizero_cursor_get_position(cursor);
     
     /* Check if clipboard content contains newlines (multi-line paste) */
@@ -4486,7 +4492,7 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
     
     /* Handle multi-line paste if we find any line ending characters */
     if (newline_pos != NULL || carriage_return_pos != NULL) {
-        /* Multi-line paste - normalize line endings and handle line by line */
+        /* Multi-line paste - split into lines and insert each one */
         char* content_copy = (char*)malloc(strlen(content_to_paste) + 1);
         if (!content_copy) {
             if (clipboard_text) SDL_free(clipboard_text);
@@ -4513,9 +4519,73 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
         }
         *dst = '\0';
         
-        /* Split the current line at cursor position */
+        /* Split content into lines */
+        char** lines = NULL;
+        size_t line_count = 0;
+        size_t line_capacity = 8;
+        
+        lines = (char**)malloc(line_capacity * sizeof(char*));
+        if (!lines) {
+            free(content_copy);
+            if (clipboard_text) SDL_free(clipboard_text);
+            return -1;
+        }
+        
+        char* line_start = content_copy;
+        while (*line_start) {
+            char* line_end = strchr(line_start, '\n');
+            size_t line_length;
+            
+            if (line_end) {
+                line_length = line_end - line_start;
+            } else {
+                line_length = strlen(line_start);
+            }
+            
+            /* Expand lines array if needed */
+            if (line_count >= line_capacity) {
+                line_capacity *= 2;
+                char** new_lines = (char**)realloc(lines, line_capacity * sizeof(char*));
+                if (!new_lines) {
+                    /* Cleanup and return error */
+                    for (size_t i = 0; i < line_count; i++) {
+                        free(lines[i]);
+                    }
+                    free(lines);
+                    free(content_copy);
+                    if (clipboard_text) SDL_free(clipboard_text);
+                    return -1;
+                }
+                lines = new_lines;
+            }
+            
+            /* Copy this line */
+            lines[line_count] = (char*)malloc(line_length + 1);
+            if (!lines[line_count]) {
+                /* Cleanup and return error */
+                for (size_t i = 0; i < line_count; i++) {
+                    free(lines[i]);
+                }
+                free(lines);
+                free(content_copy);
+                if (clipboard_text) SDL_free(clipboard_text);
+                return -1;
+            }
+            
+            strncpy(lines[line_count], line_start, line_length);
+            lines[line_count][line_length] = '\0';
+            line_count++;
+            
+            if (line_end) {
+                line_start = line_end + 1;
+            } else {
+                break;
+            }
+        }
+        
+        /* Now insert the lines into the buffer */
         const char* current_line = vizero_buffer_get_line_text(buffer, pos.line);
-        if (current_line) {
+        if (current_line && line_count > 0) {
             size_t current_line_len = strlen(current_line);
             
             /* Split current line: part before cursor + part after cursor */
@@ -4527,65 +4597,66 @@ int vizero_editor_paste_at_cursor(vizero_editor_state_t* state) {
                 line_before[pos.column] = '\0';
                 strcpy(line_after, current_line + pos.column);
                 
-                /* Replace current line with the part before cursor + first paste line */
-                char* first_line_end = strchr(content_copy, '\n');
-                if (first_line_end) {
-                    *first_line_end = '\0';
+                /* Create first line: line_before + first_paste_line */
+                char* new_first_line = (char*)malloc(strlen(line_before) + strlen(lines[0]) + 1);
+                if (new_first_line) {
+                    strcpy(new_first_line, line_before);
+                    strcat(new_first_line, lines[0]);
                     
-                    /* Create new first line: line_before + first_paste_line */
-                    char* new_first_line = (char*)malloc(strlen(line_before) + strlen(content_copy) + 1);
-                    if (new_first_line) {
-                        strcpy(new_first_line, line_before);
-                        strcat(new_first_line, content_copy);
+                    /* Replace current line with new first line */
+                    if (vizero_buffer_delete_line(buffer, pos.line) == 0 &&
+                        vizero_buffer_insert_line(buffer, pos.line, new_first_line) == 0) {
                         
-                        /* Delete the current line */
-                        if (vizero_buffer_delete_line(buffer, pos.line) == 0) {
-                            /* Insert the new first line */
-                            if (vizero_buffer_insert_line(buffer, pos.line, new_first_line) == 0) {
-                                /* Insert middle lines */
-                                char* line_start = first_line_end + 1;
-                                size_t insert_line = pos.line + 1;
-                                
-                                while (line_start < content_copy + strlen(content_copy)) {
-                                    char* line_end = strchr(line_start, '\n');
-                                    if (line_end) {
-                                        *line_end = '\0';
-                                        vizero_buffer_insert_line(buffer, insert_line, line_start);
-                                        insert_line++;
-                                        line_start = line_end + 1;
-                                    } else {
-                                        /* Last line - combine with remaining part */
-                                        char* final_line = (char*)malloc(strlen(line_start) + strlen(line_after) + 1);
-                                        if (final_line) {
-                                            strcpy(final_line, line_start);
-                                            strcat(final_line, line_after);
-                                            vizero_buffer_insert_line(buffer, insert_line, final_line);
-                                            free(final_line);
-                                            
-                                            /* Move cursor to end of pasted content */
-                                            vizero_cursor_set_position(cursor, insert_line, strlen(line_start));
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
+                        /* Insert middle lines (if any) */
+                        size_t insert_line = pos.line + 1;
+                        for (size_t i = 1; i < line_count - 1; i++) {
+                            vizero_buffer_insert_line(buffer, insert_line, lines[i]);
+                            insert_line++;
                         }
-                        free(new_first_line);
                         
-                        vizero_editor_set_status_message(state, "Multi-line text pasted");
+                        /* Handle last line if there are multiple lines */
+                        if (line_count > 1) {
+                            char* final_line = (char*)malloc(strlen(lines[line_count - 1]) + strlen(line_after) + 1);
+                            if (final_line) {
+                                strcpy(final_line, lines[line_count - 1]);
+                                strcat(final_line, line_after);
+                                vizero_buffer_insert_line(buffer, insert_line, final_line);
+                                
+                                /* Move cursor to end of pasted content */
+                                vizero_cursor_set_position(cursor, insert_line, strlen(lines[line_count - 1]));
+                                free(final_line);
+                            }
+                        } else {
+                            /* Single line case - cursor should be at end of pasted text */
+                            vizero_cursor_set_position(cursor, pos.line, strlen(line_before) + strlen(lines[0]));
+                        }
+                        
+                        vizero_editor_set_status_message_with_timeout(state, "Multi-line text pasted", 2000);
+                        
+                        /* Cleanup */
+                        free(new_first_line);
                         free(line_before);
                         free(line_after);
+                        for (size_t i = 0; i < line_count; i++) {
+                            free(lines[i]);
+                        }
+                        free(lines);
                         free(content_copy);
                         if (clipboard_text) SDL_free(clipboard_text);
                         return 0;
                     }
-                } /* End if (first_line_end) */
-            } /* End if (line_before && line_after) */
-            
-            if (line_before) free(line_before);
-            if (line_after) free(line_after);
-        } /* End if (current_line) */
+                    free(new_first_line);
+                }
+                free(line_before);
+                free(line_after);
+            }
+        }
         
+        /* Cleanup on failure */
+        for (size_t i = 0; i < line_count; i++) {
+            free(lines[i]);
+        }
+        free(lines);
         free(content_copy);
     } else {
         /* Single-line paste - insert at current position */
@@ -5507,4 +5578,280 @@ void vizero_editor_get_hover_screen_position(vizero_editor_state_t* state, int* 
     if (!state || !x || !y) return;
     *x = state->hover_x;
     *y = state->hover_y;
+}
+
+/* Application control functions */
+
+int vizero_editor_has_unsaved_buffers(vizero_editor_state_t* state) {
+    if (!state) return 0;
+    
+    for (size_t i = 0; i < state->buffer_count; i++) {
+        if (state->buffers[i] && vizero_buffer_is_modified(state->buffers[i])) {
+            return 1; /* Found at least one unsaved buffer */
+        }
+    }
+    
+    return 0; /* No unsaved buffers */
+}
+
+int vizero_editor_show_quit_confirmation(vizero_editor_state_t* state) {
+    if (!state) return 0;
+    
+    /* Simple confirmation using popup system */
+    const char* confirmation_text = 
+        "You have unsaved changes!\n\n"
+        "Do you want to save before quitting?\n\n"
+        "Press 'y' to save and quit\n"
+        "Press 'n' to quit without saving\n"
+        "Press 'c' to cancel and continue editing\n\n"
+        "Choice: ";
+    
+    vizero_editor_show_popup(state, confirmation_text, 0); /* Show indefinitely */
+    
+    /* Set a flag to indicate we're in quit confirmation mode */
+    state->quit_confirmation_active = 1;
+    
+    return 1; /* Confirmation dialog is active */
+}
+
+int vizero_editor_save_all_buffers(vizero_editor_state_t* state) {
+    if (!state) return -1;
+    
+    int saved_count = 0;
+    char status_msg[256];
+    
+    for (size_t i = 0; i < state->buffer_count; i++) {
+        if (state->buffers[i] && vizero_buffer_is_modified(state->buffers[i])) {
+            const char* filename = vizero_buffer_get_filename(state->buffers[i]);
+            if (filename && vizero_buffer_save_to_file(state->buffers[i], filename) == 0) {
+                saved_count++;
+            } else {
+                /* Handle unnamed buffers or save failures */
+                char auto_filename[128];
+                snprintf(auto_filename, sizeof(auto_filename), "untitled_%zu.txt", i + 1);
+                if (vizero_buffer_save_to_file(state->buffers[i], auto_filename) == 0) {
+                    saved_count++;
+                }
+            }
+        }
+    }
+    
+    if (saved_count > 0) {
+        snprintf(status_msg, sizeof(status_msg), "Saved %d file(s)", saved_count);
+        vizero_editor_set_status_message_with_timeout(state, status_msg, 2000);
+    }
+    
+    return saved_count;
+}
+
+/* Mouse Support Functions */
+
+vizero_editor_window_t* vizero_editor_find_window_at_position(vizero_window_manager_t* manager, int x, int y) {
+    if (!manager) return NULL;
+    return vizero_window_manager_get_window_at_position(manager, x, y);
+}
+
+vizero_position_t vizero_editor_screen_to_buffer_position(vizero_editor_window_t* window, vizero_editor_state_t* state, int screen_x, int screen_y) {
+    vizero_position_t pos = {0, 0};
+    if (!window || !state) return pos;
+    
+    /* Get window content area */
+    int content_x, content_y, content_width, content_height;
+    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, &content_width, &content_height) != 0) {
+        return pos;
+    }
+    
+    /* Check if click is within content area */
+    if (screen_x < content_x || screen_x >= content_x + content_width ||
+        screen_y < content_y || screen_y >= content_y + content_height) {
+        return pos;
+    }
+    
+    /* Get settings for rendering parameters */
+    vizero_settings_t* settings = vizero_editor_get_settings(state);
+    int show_line_numbers = vizero_settings_get_bool(settings, VIZERO_SETTING_LINE_NUMBERS);
+    int word_wrap = vizero_settings_get_bool(settings, VIZERO_SETTING_WORD_WRAP);
+    int line_number_width = show_line_numbers ? 6 * 8 : 0; // 6 chars wide, 8px per char
+    
+    const int CHAR_WIDTH = 8;
+    const int CHAR_HEIGHT = 16;
+    
+    /* Convert screen coordinates to text coordinates */
+    int relative_x = screen_x - content_x - line_number_width;
+    int relative_y = screen_y - content_y;
+    
+    /* Calculate text column and row */
+    int text_col = (relative_x + window->scroll_x) / CHAR_WIDTH;
+    int text_row = (relative_y + window->scroll_y) / CHAR_HEIGHT;
+    
+    /* Ensure coordinates are not negative */
+    if (text_col < 0) text_col = 0;
+    if (text_row < 0) text_row = 0;
+    
+    /* Get the buffer to check bounds */
+    vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window, state);
+    if (buffer) {
+        size_t line_count = vizero_buffer_get_line_count(buffer);
+        
+        /* Handle word wrap or simple line mapping */
+        if (word_wrap) {
+            /* TODO: Implement proper word wrap coordinate mapping */
+            /* For now, use simple mapping */
+            pos.line = (size_t)text_row;
+            pos.column = (size_t)text_col;
+        } else {
+            pos.line = (size_t)text_row;
+            pos.column = (size_t)text_col;
+        }
+        
+        /* Clamp to buffer bounds */
+        if (pos.line >= line_count) {
+            pos.line = line_count > 0 ? line_count - 1 : 0;
+        }
+        
+        /* Clamp column to line length */
+        const char* line_text = vizero_buffer_get_line_text(buffer, pos.line);
+        if (line_text) {
+            size_t line_length = strlen(line_text);
+            if (pos.column > line_length) {
+                pos.column = line_length;
+            }
+        }
+    }
+    
+    return pos;
+}
+
+int vizero_editor_handle_left_click(vizero_editor_state_t* state, vizero_editor_window_t* window, int x, int y, int pressed) {
+    if (!state || !window) return -1;
+    
+    /* Convert screen coordinates to buffer position */
+    vizero_position_t pos = vizero_editor_screen_to_buffer_position(window, state, x, y);
+    
+    /* Get the cursor for this window */
+    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window, state);
+    if (!cursor) return -1;
+    
+    /* Check if Shift is held for selection */
+    SDL_Keymod mod_state = SDL_GetModState();
+    int shift_held = (mod_state & KMOD_SHIFT) != 0;
+    
+    if (shift_held && vizero_editor_has_selection(state)) {
+        /* Extend existing selection */
+        vizero_cursor_set_position(cursor, pos.line, pos.column);
+        vizero_editor_update_selection(state);
+    } else if (shift_held) {
+        /* Start new selection from current cursor position */
+        vizero_editor_start_selection(state);
+        vizero_cursor_set_position(cursor, pos.line, pos.column);
+        vizero_editor_update_selection(state);
+    } else {
+        /* Clear any existing selection and position cursor */
+        vizero_editor_clear_selection(state);
+        vizero_cursor_set_position(cursor, pos.line, pos.column);
+        
+        /* If this is a press (not release), start potential drag selection */
+        if (pressed) {
+            state->mouse_selection_active = 1;
+            state->mouse_selection_start = pos;
+        }
+    }
+    
+    return 0;
+}
+
+int vizero_editor_handle_right_click(vizero_editor_state_t* state, vizero_editor_window_t* window, int x, int y) {
+    if (!state || !window) return -1;
+    
+    /* Show context menu with copy/paste options */
+    const char* menu_text;
+    if (vizero_editor_has_selection(state)) {
+        menu_text = "Copy\nCut\nPaste";
+    } else {
+        menu_text = "Paste";
+    }
+    
+    /* Show popup at mouse position */
+    vizero_editor_show_popup(state, menu_text, 0); /* 0 = no timeout, stays until dismissed */
+    
+    /* Store context menu position for handling clicks */
+    state->context_menu_x = x;
+    state->context_menu_y = y;
+    state->context_menu_active = 1;
+    
+    return 0;
+}
+
+int vizero_editor_handle_left_click_release(vizero_editor_state_t* state, int x, int y) {
+    if (!state) return -1;
+    
+    /* End mouse selection */
+    state->mouse_selection_active = 0;
+    
+    /* Handle context menu clicks if menu is active */
+    if (state->context_menu_active) {
+        /* Simple context menu handling - check Y position relative to menu */
+        int menu_y_offset = y - state->context_menu_y;
+        const int MENU_ITEM_HEIGHT = 20;
+        int menu_item = menu_y_offset / MENU_ITEM_HEIGHT;
+        
+        if (vizero_editor_has_selection(state)) {
+            /* Menu: Copy, Cut, Paste */
+            switch (menu_item) {
+                case 0: /* Copy */
+                    vizero_editor_copy_selection(state);
+                    vizero_editor_set_status_message_with_timeout(state, "Copied to clipboard", 1000);
+                    break;
+                case 1: /* Cut */
+                    vizero_editor_cut_selection(state);
+                    vizero_editor_set_status_message_with_timeout(state, "Cut to clipboard", 1000);
+                    break;
+                case 2: /* Paste */
+                    vizero_editor_paste_at_cursor(state);
+                    vizero_editor_set_status_message_with_timeout(state, "Pasted from clipboard", 1000);
+                    break;
+            }
+        } else {
+            /* Menu: Paste only */
+            if (menu_item == 0) {
+                vizero_editor_paste_at_cursor(state);
+                vizero_editor_set_status_message_with_timeout(state, "Pasted from clipboard", 1000);
+            }
+        }
+        
+        /* Hide context menu */
+        vizero_editor_hide_popup(state);
+        state->context_menu_active = 0;
+    }
+    
+    return 0;
+}
+
+int vizero_editor_handle_mouse_drag(vizero_editor_state_t* state, int x, int y) {
+    if (!state || !state->mouse_selection_active) return -1;
+    
+    /* Get the active window */
+    vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(state);
+    if (!window_manager) return -1;
+    
+    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(window_manager);
+    if (!window) return -1;
+    
+    /* Convert screen coordinates to buffer position */
+    vizero_position_t pos = vizero_editor_screen_to_buffer_position(window, state, x, y);
+    
+    /* Get the cursor for this window */
+    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window, state);
+    if (!cursor) return -1;
+    
+    /* Start selection if not already started */
+    if (!vizero_editor_has_selection(state)) {
+        vizero_editor_start_selection_at(state, state->mouse_selection_start.line, state->mouse_selection_start.column);
+    }
+    
+    /* Update cursor position and selection */
+    vizero_cursor_set_position(cursor, pos.line, pos.column);
+    vizero_editor_update_selection(state);
+    
+    return 0;
 }

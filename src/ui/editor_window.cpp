@@ -616,6 +616,29 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 char ch[2] = {visual[col], '\0'};
                 vizero_text_info_t info = { (float)(text_x + (int)col * 8), (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), colour, NULL };
                 
+                /* Check if this character is within text selection */
+                int is_selected = 0;
+                if (vizero_editor_has_selection(state)) {
+                    vizero_position_t sel_start, sel_end;
+                    vizero_editor_get_selection_range(state, &sel_start, &sel_end);
+                    
+                    /* Ensure start <= end for comparison */
+                    if (sel_start.line > sel_end.line || 
+                        (sel_start.line == sel_end.line && sel_start.column > sel_end.column)) {
+                        vizero_position_t temp = sel_start;
+                        sel_start = sel_end;
+                        sel_end = temp;
+                    }
+                    
+                    /* Check if current position is within selection */
+                    if ((i > sel_start.line && i < sel_end.line) ||
+                        (i == sel_start.line && i == sel_end.line && logical_col >= sel_start.column && logical_col < sel_end.column) ||
+                        (i == sel_start.line && i < sel_end.line && logical_col >= sel_start.column) ||
+                        (i > sel_start.line && i == sel_end.line && logical_col < sel_end.column)) {
+                        is_selected = 1;
+                    }
+                }
+
                 /* Draw search match background highlighting */
                 if (is_search_match) {
                     vizero_colour_t bg_colour;
@@ -633,6 +656,24 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                         (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16),
                         8.0f, 16.0f, bg_colour);
                 }
+                /* Draw text selection background highlighting (lower priority than search) */
+                else if (is_selected) {
+                    /* Selection: swap foreground and background colors */
+                    vizero_colour_t sel_bg_colour = {0.9f, 0.9f, 0.9f, 1.0f}; /* Light background for selected text */
+                    
+                    /* Draw filled background rectangle */
+                    vizero_renderer_fill_rect(renderer, 
+                        (float)(text_x + (int)col * 8), 
+                        (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16),
+                        8.0f, 16.0f, sel_bg_colour);
+                    
+                    /* Change text color to dark for contrast */
+                    colour.r = 0.1f;
+                    colour.g = 0.1f; 
+                    colour.b = 0.1f;
+                    colour.a = 1.0f;
+                    info.colour = colour;
+                }
                 
                 /* Diagnostic error underlines disabled during character rendering for performance */
                 /* TODO: Implement efficient batch diagnostic rendering outside the character loop */
@@ -644,8 +685,86 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             }
             // No free needed, stack buffer
         } else {
+            /* Check for text selection highlighting when syntax highlighting is disabled */
+            if (vizero_editor_has_selection(state)) {
+                vizero_position_t sel_start, sel_end;
+                vizero_editor_get_selection_range(state, &sel_start, &sel_end);
+                
+                /* Ensure start <= end for comparison */
+                if (sel_start.line > sel_end.line || 
+                    (sel_start.line == sel_end.line && sel_start.column > sel_end.column)) {
+                    vizero_position_t temp = sel_start;
+                    sel_start = sel_end;
+                    sel_end = temp;
+                }
+                
+                /* Check if any part of this line is selected */
+                if ((i >= sel_start.line && i <= sel_end.line)) {
+                    size_t line_start_col = 0;
+                    size_t line_end_col = strlen(visual);
+                    
+                    /* Calculate selection bounds for this line */
+                    if (i == sel_start.line) {
+                        line_start_col = (sel_start.column > line_end_col) ? line_end_col : sel_start.column;
+                    }
+                    if (i == sel_end.line) {
+                        line_end_col = (sel_end.column > strlen(visual)) ? strlen(visual) : sel_end.column;
+                    }
+                    
+                    /* Draw selection background and render selected text with swapped colors */
+                    if (line_start_col < line_end_col) {
+                        vizero_colour_t sel_bg_colour = {0.9f, 0.9f, 0.9f, 1.0f}; /* Light background for selected text */
+                        float sel_x = (float)(text_x + (int)line_start_col * 8);
+                        float sel_width = (float)((line_end_col - line_start_col) * 8);
+                        
+                        vizero_renderer_fill_rect(renderer, 
+                            sel_x, 
+                            (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16),
+                            sel_width, 16.0f, sel_bg_colour);
+                        
+                        /* Draw the line in parts: unselected, selected, unselected */
+                        float y_pos = (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16);
+                        
+                        /* Draw text before selection (if any) */
+                        if (line_start_col > 0) {
+                            char* before_text = (char*)malloc(line_start_col + 1);
+                            if (before_text) {
+                                strncpy(before_text, visual, line_start_col);
+                                before_text[line_start_col] = '\0';
+                                vizero_text_info_t before_info = { (float)text_x, y_pos, {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
+                                vizero_renderer_draw_text(renderer, before_text, &before_info);
+                                free(before_text);
+                            }
+                        }
+                        
+                        /* Draw selected text with dark color */
+                        char* selected_text = (char*)malloc(line_end_col - line_start_col + 1);
+                        if (selected_text) {
+                            strncpy(selected_text, visual + line_start_col, line_end_col - line_start_col);
+                            selected_text[line_end_col - line_start_col] = '\0';
+                            vizero_text_info_t sel_info = { sel_x, y_pos, {0.1f, 0.1f, 0.1f, 1.0f}, NULL };
+                            vizero_renderer_draw_text(renderer, selected_text, &sel_info);
+                            free(selected_text);
+                        }
+                        
+                        /* Draw text after selection (if any) */
+                        if (line_end_col < strlen(visual)) {
+                            vizero_text_info_t after_info = { 
+                                (float)(text_x + (int)line_end_col * 8), y_pos, {1.0f, 1.0f, 1.0f, 1.0f}, NULL 
+                            };
+                            vizero_renderer_draw_text(renderer, visual + line_end_col, &after_info);
+                        }
+                        
+                        /* Skip the normal text rendering since we handled it above */
+                        goto skip_normal_text_render;
+                    }
+                }
+            }
+            
             vizero_text_info_t info = { (float)text_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
             vizero_renderer_draw_text(renderer, visual, &info);
+            
+            skip_normal_text_render:;
         }
     }
 

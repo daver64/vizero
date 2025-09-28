@@ -48,6 +48,7 @@ void vizero_plugin_manager_on_text_changed(vizero_plugin_manager_t* manager, viz
 void vizero_plugin_manager_on_cursor_moved(vizero_plugin_manager_t* manager, vizero_cursor_t* cursor, vizero_position_t old_pos, vizero_position_t new_pos);
 int vizero_plugin_manager_on_command(vizero_plugin_manager_t* manager, vizero_editor_t* editor, const char* command, const char* args);
 int vizero_plugin_manager_on_key_input(vizero_plugin_manager_t* manager, vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
+int vizero_plugin_manager_on_mouse_click(vizero_plugin_manager_t* manager, vizero_editor_t* editor, int x, int y, int button);
 
 /* Syntax highlighting */
 // Updated API: caller allocates tokens buffer, plugin fills it

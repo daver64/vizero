@@ -1095,14 +1095,27 @@ static void irc_render_channel_list_gl(vizero_renderer_t* renderer, int x, int y
     int line_y = y + 25;
     int line_height = 20;
     
+    /* Get mouse position for hover effects */
+    int mouse_x, mouse_y;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    
     for (size_t i = 0; i < g_irc_state->buffer_count && line_y < y + height - line_height; i++) {
         irc_buffer_t* buffer = g_irc_state->buffers[i];
         if (!buffer) continue;
+        
+        /* Check if mouse is hovering over this buffer */
+        bool is_hovered = (mouse_x >= x && mouse_x <= x + width && 
+                          mouse_y >= line_y && mouse_y < line_y + line_height);
         
         /* Highlight active buffer */
         if (buffer->is_active) {
             vizero_colour_t active_bg = {0.2f, 0.3f, 0.5f, 1.0f};
             vizero_renderer_fill_rect(renderer, (float)x, (float)line_y, (float)width, (float)line_height, active_bg);
+        }
+        /* Highlight hovered buffer (if not active) */
+        else if (is_hovered) {
+            vizero_colour_t hover_bg = {0.15f, 0.15f, 0.25f, 1.0f};
+            vizero_renderer_fill_rect(renderer, (float)x, (float)line_y, (float)width, (float)line_height, hover_bg);
         }
         
         /* Buffer name */
@@ -1142,8 +1155,22 @@ static void irc_render_nick_list_gl(vizero_renderer_t* renderer, int x, int y, i
     int line_y = y + 25;
     int line_height = 18;
     
+    /* Get mouse position for hover effects */
+    int mouse_x, mouse_y;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    
     for (size_t i = 0; i < current_buffer->channel_info.user_count && line_y < y + height - line_height; i++) {
         irc_user_t* user = &current_buffer->channel_info.users[i];
+        
+        /* Check if mouse is hovering over this user */
+        bool is_hovered = (mouse_x >= x && mouse_x <= x + width && 
+                          mouse_y >= line_y && mouse_y < line_y + line_height);
+        
+        /* Add hover background */
+        if (is_hovered) {
+            vizero_colour_t hover_bg = {0.15f, 0.15f, 0.25f, 1.0f};
+            vizero_renderer_fill_rect(renderer, (float)x, (float)line_y, (float)width, (float)line_height, hover_bg);
+        }
         
         /* Choose color based on operator status */
         vizero_colour_t text_color;
@@ -1844,6 +1871,286 @@ static int irc_cmd_help(vizero_editor_t* editor, const char* args) {
     return 0;
 }
 
+/* Helper to check if mouse is over a clickable area */
+static int irc_is_mouse_over_buffer_list(int x, int y, int* buffer_index) {
+    if (x >= 0 && x <= 200 && y >= 25) {
+        int index = (y - 25) / 20; /* 20 = line_height */
+        if (index >= 0 && index < (int)g_irc_state->buffer_count) {
+            if (buffer_index) *buffer_index = index;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int irc_is_mouse_over_user_list(int x, int y, int* user_index) {
+    if (x >= 600 && y >= 25) { /* Approximate user list area */
+        irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+        if (current_buffer && current_buffer->channel_info.user_count > 0) {
+            int index = (y - 25) / 18; /* 18 = line_height */
+            if (index >= 0 && index < (int)current_buffer->channel_info.user_count) {
+                if (user_index) *user_index = index;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Double-click detection */
+static uint32_t last_click_time = 0;
+static int last_click_x = -1, last_click_y = -1;
+static int last_click_button = -1;
+
+/* Context menu state */
+typedef struct {
+    bool visible;
+    int x, y;
+    int item_count;
+    char items[10][128];
+    int (*actions[10])(void); /* Function pointers for menu actions */
+    char context_data[64]; /* Store context (username, buffer name, etc.) */
+} irc_context_menu_t;
+
+static irc_context_menu_t g_context_menu = {false, 0, 0, 0, {0}, {0}, {0}};
+
+/* Context menu helper functions */
+static void irc_show_user_context_menu(int x, int y, const char* username) {
+    g_context_menu.visible = true;
+    g_context_menu.x = x;
+    g_context_menu.y = y;
+    g_context_menu.item_count = 0;
+    strncpy(g_context_menu.context_data, username, sizeof(g_context_menu.context_data) - 1);
+    
+    /* Add menu items */
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Private message %s", username);
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Whois %s", username);
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Kick %s", username);
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Ban %s", username);
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Give op to %s", username);
+}
+
+static void irc_show_buffer_context_menu(int x, int y, const char* buffer_name) {
+    g_context_menu.visible = true;
+    g_context_menu.x = x;
+    g_context_menu.y = y;
+    g_context_menu.item_count = 0;
+    strncpy(g_context_menu.context_data, buffer_name, sizeof(g_context_menu.context_data) - 1);
+    
+    /* Add menu items */
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Close buffer %s", buffer_name);
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Clear history");
+    snprintf(g_context_menu.items[g_context_menu.item_count++], 128, "Buffer info");
+}
+
+static void irc_hide_context_menu(void) {
+    g_context_menu.visible = false;
+    g_context_menu.item_count = 0;
+}
+
+/* Calculate adjusted menu position to keep it within window bounds */
+static void irc_calculate_menu_position(irc_context_menu_t* menu, int* out_x, int* out_y) {
+    int menu_width = 250;
+    int item_height = 25;
+    int menu_height = menu->item_count * item_height;
+    
+    /* Get window dimensions - we can get these from SDL */
+    int window_width = 1200;  /* Default */
+    int window_height = 800;  /* Default */
+    
+    /* Try to get actual window size from SDL */
+    SDL_Window* window = SDL_GetMouseFocus();
+    if (window) {
+        SDL_GetWindowSize(window, &window_width, &window_height);
+    }
+    
+    int menu_x = menu->x;
+    int menu_y = menu->y;
+    
+    /* Check right boundary */
+    if (menu_x + menu_width > window_width) {
+        menu_x = menu->x - menu_width;
+        if (menu_x < 0) {
+            menu_x = window_width - menu_width;
+            if (menu_x < 0) menu_x = 0;
+        }
+    }
+    
+    /* Check bottom boundary */
+    if (menu_y + menu_height > window_height) {
+        menu_y = menu->y - menu_height;
+        if (menu_y < 0) {
+            menu_y = window_height - menu_height;
+            if (menu_y < 0) menu_y = 0;
+        }
+    }
+    
+    *out_x = menu_x;
+    *out_y = menu_y;
+}
+
+/* Render context menu */
+static void irc_render_context_menu(vizero_renderer_t* renderer, irc_context_menu_t* menu) {
+    if (!menu->visible || menu->item_count == 0) return;
+    
+    int menu_width = 250;
+    int item_height = 25;
+    int menu_height = menu->item_count * item_height;
+    
+    /* Calculate adjusted menu position to keep it within window bounds */
+    int menu_x, menu_y;
+    irc_calculate_menu_position(menu, &menu_x, &menu_y);
+    
+    /* Menu background */
+    vizero_colour_t bg_color = {0.2f, 0.2f, 0.2f, 0.95f}; /* Semi-transparent dark */
+    vizero_renderer_fill_rect(renderer, (float)menu_x, (float)menu_y, (float)menu_width, (float)menu_height, bg_color);
+    
+    /* Menu border */
+    vizero_colour_t border_color = {0.6f, 0.6f, 0.6f, 1.0f};
+    vizero_renderer_draw_rect(renderer, (float)menu_x, (float)menu_y, (float)menu_width, (float)menu_height, border_color);
+    
+    /* Get mouse position for hover highlighting */
+    int mouse_x, mouse_y;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    
+    /* Render menu items */
+    vizero_text_info_t text_info = {0};
+    text_info.font = NULL;
+    
+    for (int i = 0; i < menu->item_count; i++) {
+        int item_y = menu_y + (i * item_height);
+        
+        /* Check if mouse is over this item */
+        bool is_hovered = (mouse_x >= menu_x && mouse_x < menu_x + menu_width &&
+                          mouse_y >= item_y && mouse_y < item_y + item_height);
+        
+        /* Highlight hovered item */
+        if (is_hovered) {
+            vizero_colour_t hover_color = {0.3f, 0.4f, 0.6f, 1.0f};
+            vizero_renderer_fill_rect(renderer, (float)menu_x, (float)item_y, (float)menu_width, (float)item_height, hover_color);
+        }
+        
+        /* Render item text */
+        text_info.x = (float)(menu_x + 10);
+        text_info.y = (float)(item_y + 5);
+        text_info.colour = is_hovered ? 
+            (vizero_colour_t){1.0f, 1.0f, 1.0f, 1.0f} : /* White when hovered */
+            (vizero_colour_t){0.9f, 0.9f, 0.9f, 1.0f};   /* Light gray normally */
+        
+        vizero_renderer_draw_text(renderer, menu->items[i], &text_info);
+    }
+}
+
+static bool is_double_click(int x, int y, int button, uint32_t current_time) {
+    const uint32_t DOUBLE_CLICK_TIME = 500; /* 500ms */
+    const int DOUBLE_CLICK_DISTANCE = 5; /* 5 pixel tolerance */
+    
+    if (button == last_click_button &&
+        (current_time - last_click_time) < DOUBLE_CLICK_TIME &&
+        abs(x - last_click_x) < DOUBLE_CLICK_DISTANCE &&
+        abs(y - last_click_y) < DOUBLE_CLICK_DISTANCE) {
+        return true;
+    }
+    
+    last_click_time = current_time;
+    last_click_x = x;
+    last_click_y = y;
+    last_click_button = button;
+    return false;
+}
+
+/* Handle mouse clicks for IRC UI elements */
+static int irc_handle_mouse_click(vizero_editor_t* editor, int x, int y, int button) {
+    (void)editor; /* Currently unused */
+    
+    if (!g_irc_state || !g_irc_state->irc_buffer) return 0; /* Not in IRC mode */
+    
+    uint32_t current_time = SDL_GetTicks();
+    bool is_double = is_double_click(x, y, button, current_time);
+    
+    /* Check if click is on context menu first */
+    if (g_context_menu.visible && button == 1) { /* Left click on menu */
+        int menu_width = 250;
+        int item_height = 25;
+        
+        /* Calculate the actual rendered position */
+        int menu_x, menu_y;
+        irc_calculate_menu_position(&g_context_menu, &menu_x, &menu_y);
+        
+        if (x >= menu_x && x < menu_x + menu_width &&
+            y >= menu_y && y < menu_y + (g_context_menu.item_count * item_height)) {
+            
+            /* Calculate which menu item was clicked */
+            int item_index = (y - menu_y) / item_height;
+            if (item_index >= 0 && item_index < g_context_menu.item_count) {
+                printf("[IRC] Context menu item %d clicked: %s\n", item_index, g_context_menu.items[item_index]);
+                /* TODO: Execute menu action based on item_index and context_data */
+                irc_hide_context_menu();
+                return 1; /* Consumed click */
+            }
+        } else {
+            /* Click outside menu - hide it */
+            irc_hide_context_menu();
+            return 1; /* Consumed click */
+        }
+    }
+    
+    /* Hide context menu on any other click */
+    if (g_context_menu.visible) {
+        irc_hide_context_menu();
+    }
+    
+    /* Check if click is in the buffer list area */
+    int buffer_index;
+    if (irc_is_mouse_over_buffer_list(x, y, &buffer_index)) {
+        irc_buffer_t* clicked_buffer = g_irc_state->buffers[buffer_index];
+        if (clicked_buffer) {
+            if (button == 1) { /* Left click - switch buffer */
+                printf("[IRC] Left click: switching to buffer '%s'\n", clicked_buffer->name);
+                irc_set_active_buffer(clicked_buffer->name);
+                return 1; /* Consumed click */
+            } else if (button == 3) { /* Right click - show buffer options */
+                printf("[IRC] Right click on buffer '%s' - showing context menu\n", clicked_buffer->name);
+                irc_show_buffer_context_menu(x, y, clicked_buffer->name);
+                return 1; /* Consumed click */
+            }
+        }
+    }
+    
+    /* Check if click is in the user list area */
+    int user_index;
+    if (irc_is_mouse_over_user_list(x, y, &user_index)) {
+        irc_buffer_t* current_buffer = irc_find_buffer(g_irc_state->current_buffer);
+        if (current_buffer) {
+            irc_user_t* clicked_user = &current_buffer->channel_info.users[user_index];
+            
+            if (button == 1) { /* Left click */
+                if (is_double) { /* Double-click - whois user */
+                    printf("[IRC] Double-click: getting whois info for '%s'\n", clicked_user->nick);
+                    char whois_msg[256];
+                    snprintf(whois_msg, sizeof(whois_msg), "WHOIS %s", clicked_user->nick);
+                    irc_send_raw(whois_msg);
+                    return 1; /* Consumed click */
+                } else { /* Single click - private message */
+                    printf("[IRC] Left click: starting private message with '%s'\n", clicked_user->nick);
+                    
+                    /* Start private message - this creates a query buffer */
+                    char msg_command[256];
+                    snprintf(msg_command, sizeof(msg_command), "%s Hello!", clicked_user->nick);
+                    irc_cmd_msg(editor, msg_command);
+                    return 1; /* Consumed click */
+                }
+            } else if (button == 3) { /* Right click - user context menu */
+                printf("[IRC] Right click on user '%s' - showing context menu\n", clicked_user->nick);
+                irc_show_user_context_menu(x, y, clicked_user->nick);
+                return 1; /* Consumed click */
+            }
+        }
+    }
+    
+    return 0; /* Click not handled */
+}
+
 /* Plugin update callback for networking and UI */
 static void irc_plugin_update(void) {
     if (!g_irc_state) return;
@@ -1882,6 +2189,11 @@ static int irc_render_full_window(vizero_editor_t* editor, vizero_renderer_t* re
     irc_render_nick_list_gl(renderer, width - nick_list_width, 0, nick_list_width, height - input_height);
     irc_render_message_area_gl(renderer, message_x, message_y, message_width, message_height);
     irc_render_input_box_gl(renderer, message_x, height - input_height, message_width, input_height);
+    
+    /* Render context menu if visible (must be last to appear on top) */
+    if (g_context_menu.visible) {
+        irc_render_context_menu(renderer, &g_context_menu);
+    }
     
     return 1; /* Successfully rendered */
 }
@@ -2493,6 +2805,7 @@ int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const v
     plugin->callbacks.render_full_window = irc_render_full_window;
     plugin->callbacks.wants_full_window = irc_wants_full_window;
     plugin->callbacks.on_key_input = irc_on_key_input;
+    plugin->callbacks.on_mouse_click = irc_handle_mouse_click;
     plugin->callbacks.on_command = irc_on_any_command;
     
     printf("[IRC] Full IRC client initialized with %zu commands\n", plugin->callbacks.command_count);

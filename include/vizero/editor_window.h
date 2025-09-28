@@ -99,6 +99,7 @@ int vizero_editor_window_maximize(vizero_editor_window_t* window);
 int vizero_editor_window_restore(vizero_editor_window_t* window);
 
 /* Window state queries */
+vizero_editor_window_t* vizero_window_manager_get_window_at_position(vizero_window_manager_t* manager, int x, int y);
 int vizero_editor_window_is_focused(vizero_editor_window_t* window);
 int vizero_editor_window_is_maximized(vizero_editor_window_t* window);
 const char* vizero_editor_window_get_title(vizero_editor_window_t* window);
