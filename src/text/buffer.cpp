@@ -370,14 +370,14 @@ const char* vizero_buffer_get_text(vizero_buffer_t* buffer) {
     }
     total_len++; /* For null terminator */
     
-    /* Allocate buffer for combined text */
-    static char* combined_text = NULL;
-    static size_t combined_capacity = 0;
+    /* Use thread-local storage for combined text buffer */
+    static thread_local char* combined_text = NULL;
+    static thread_local size_t combined_capacity = 0;
     
     if (total_len > combined_capacity) {
-        free(combined_text);
-        combined_text = (char*)malloc(total_len);
-        combined_capacity = total_len;
+        vizero_safe_free(combined_text);
+        combined_text = (char*)vizero_safe_malloc(total_len);
+        combined_capacity = combined_text ? total_len : 0;
     }
     
     if (!combined_text) return "";
@@ -445,7 +445,7 @@ vizero_result_t vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, 
     buffer_push_undo(buffer, UNDO_OP_MODIFY_LINE, line, current_line, NULL, 0);
     
     /* Allocate new line with room for one more character */
-    char* new_line = (char*)malloc(line_len + 2);
+    char* new_line = (char*)vizero_safe_malloc(line_len + 2);
     if (!new_line) return VIZERO_ERROR_MEMORY;
     
     /* Copy before insertion point */
@@ -456,7 +456,7 @@ vizero_result_t vizero_buffer_insert_char(vizero_buffer_t* buffer, size_t line, 
     strcpy(new_line + col + 1, current_line + col);
     
     /* Replace line */
-    free(buffer->lines[line]);
+    vizero_safe_free(buffer->lines[line]);
     buffer->lines[line] = new_line;
     buffer->modified = 1;
     
@@ -723,17 +723,17 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     
     /* Clear existing lines */
     for (size_t i = 0; i < buffer->line_count; i++) {
-        free(buffer->lines[i]);
+        vizero_safe_free(buffer->lines[i]);
         buffer->lines[i] = NULL;
     }
-    free(buffer->lines);
+    vizero_safe_free(buffer->lines);
     buffer->lines = NULL;
     /* Read file into memory first */
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     
-    char* file_content = (char*)malloc(file_size + 1);
+    char* file_content = (char*)vizero_safe_malloc(file_size + 1);
     if (!file_content) {
         fclose(file);
         return -1;
@@ -752,10 +752,14 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     }
     
     /* Allocate line array */
-    buffer->lines = (char**)calloc(line_count, sizeof(char*));
+    buffer->lines = (char**)vizero_safe_malloc(line_count * sizeof(char*));
     if (!buffer->lines) {
-        free(file_content);
+        vizero_safe_free(file_content);
         return -1;
+    }
+    /* Initialize to NULL */
+    for (size_t i = 0; i < line_count; i++) {
+        buffer->lines[i] = NULL;
     }
     
     /* Split content into lines */
@@ -767,7 +771,7 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
         if (*pos == '\n') {
             /* Create line (without the newline) */
             size_t line_len = pos - line_start;
-            buffer->lines[buffer->line_count] = (char*)malloc(line_len + 1);
+            buffer->lines[buffer->line_count] = (char*)vizero_safe_malloc(line_len + 1);
             if (buffer->lines[buffer->line_count]) {
                 strncpy(buffer->lines[buffer->line_count], line_start, line_len);
                 buffer->lines[buffer->line_count][line_len] = '\0';
@@ -784,7 +788,7 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     /* Handle last line if file doesn't end with newline */
     if (line_start < file_content + bytes_read) {
         size_t line_len = (file_content + bytes_read) - line_start;
-        buffer->lines[buffer->line_count] = (char*)malloc(line_len + 1);
+        buffer->lines[buffer->line_count] = (char*)vizero_safe_malloc(line_len + 1);
         if (buffer->lines[buffer->line_count]) {
             strncpy(buffer->lines[buffer->line_count], line_start, line_len);
             buffer->lines[buffer->line_count][line_len] = '\0';
@@ -798,7 +802,7 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
         buffer->line_count = 1;
     }
     
-    free(file_content);
+    vizero_safe_free(file_content);
     buffer->modified = 0;
     
     /* Set filename */

@@ -28,6 +28,8 @@ int vizero_search_get_match_count(vizero_editor_state_t* state);
 int vizero_search_get_current_match_index(vizero_editor_state_t* state);
 /* Get all search matches for highlighting - returns pointer to internal array, do not free */
 const vizero_search_match_t* vizero_search_get_all_matches(vizero_editor_state_t* state);
+/* Check if search results are for the specified buffer */
+int vizero_search_results_for_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer);
 
 /* Find all matches in a specific buffer without affecting global search state
  * Returns number of matches found, fills matches array up to max_matches

@@ -600,10 +600,10 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                     }
                 }
                 
-                /* Check for search match highlighting */
+                /* Check for search match highlighting - only show for current buffer */
                 int is_search_match = 0;
                 int is_current_match = 0;
-                if (vizero_search_has_results(state)) {
+                if (vizero_search_has_results(state) && vizero_search_results_for_buffer(state, buffer)) {
                     const vizero_search_match_t* matches = vizero_search_get_all_matches(state);
                     int match_count = vizero_search_get_match_count(state);
                     int current_match_index = vizero_search_get_current_match_index(state);

@@ -522,4 +522,14 @@ void vizero_search_cleanup_editor_state(vizero_editor_state_t* state) {
     }
 }
 
+int vizero_search_results_for_buffer(vizero_editor_state_t* state, vizero_buffer_t* buffer) {
+    SearchState* search_state = get_search_state(state);
+    if (!search_state || !buffer) return 0;
+    
+    /* Check if search results exist and are for the specified buffer */
+    return search_state->has_pattern && 
+           search_state->matches_cache_valid && 
+           search_state->cached_buffer == buffer;
+}
+
 } /* extern "C" */

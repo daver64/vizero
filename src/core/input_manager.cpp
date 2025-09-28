@@ -55,15 +55,14 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
     input->mode_changed_this_frame = 0;
     
     /* Track recent plugin key consumption to prevent double processing */
-    static uint32_t last_consumed_key = 0;
-    static uint32_t last_consumed_timestamp = 0;
-    static uint32_t plugin_deactivation_time = 0;
-    /* static uint32_t recent_plugin_activity = 0; */  /* Unused variable */
+    static thread_local uint32_t last_consumed_key = 0;
+    static thread_local uint32_t last_consumed_timestamp = 0;
+    static thread_local uint32_t plugin_deactivation_time = 0;
     
     /* Async completion checking disabled - caused infinite loops */
     
     /* CAUTIOUS: Only process LSP messages and check for results if we're actually using completion */
-    static int frames_since_startup = 0;
+    static thread_local int frames_since_startup = 0;
     frames_since_startup++;
     
     /* Only check for completion results if we have a pending request and enough time has passed */
@@ -94,8 +93,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                                     completion_result->item_count, trigger_pos);
                     }
                 } else {
-                    printf("DEBUG: No completion items to show (item_count = %zu)\n", completion_result->item_count);
-                    fflush(stdout);
+                    /* No completion items available */
                 }
                 
                 /* Clean up completion result (editor copied the data it needs) */

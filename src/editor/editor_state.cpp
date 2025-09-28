@@ -673,7 +673,7 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
                 state->current_buffer_index = state->buffer_count;
                 state->buffer_count++;
                 if (vizero_editor_create_window_for_buffer(state, buffer, 100, 100) != 0) {
-                    printf("Warning: Could not create window for buffer\n");
+                    /* Note: Window creation failed, but buffer is still available */
                 }
             } else {
                 vizero_buffer_destroy(buffer);
@@ -1060,7 +1060,7 @@ void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state) 
     if (!state) return;
     
     char popup[2048];
-    sprintf(popup, "Buffer List (Total: %zu) - Use arrows to select, Enter to switch\n\n", state->buffer_count);
+    snprintf(popup, sizeof(popup), "Buffer List (Total: %zu) - Use arrows to select, Enter to switch\n\n", state->buffer_count);
     
     for (size_t i = 0; i < state->buffer_count; i++) {
         const char* filename = vizero_buffer_get_filename(state->buffers[i]);
@@ -1076,13 +1076,13 @@ void vizero_editor_update_buffer_selector_content(vizero_editor_state_t* state) 
             strcpy(indicator, " * ");  /* Current buffer */
         }
         
-        sprintf(line, "%s%2zu: %-30s %6zu chars%s\n",
+        snprintf(line, sizeof(line), "%s%2zu: %-30s %6zu chars%s\n",
                 indicator,
                 i + 1,
                 filename ? filename : "[No Name]",
                 text_len,
                 (i == state->current_buffer_index) ? "  [CURRENT]" : "");
-        strcat(popup, line);
+        strncat(popup, line, sizeof(popup) - strlen(popup) - 1);
     }
     
     strcat(popup, "\nPress ENTER to switch to selected buffer, ESC to cancel");
@@ -2539,26 +2539,13 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
         
         /* Check buffer level changes - skip scratch buffers */
         if (!has_unsaved) {
-            printf("[QUIT] Checking %zu buffers for unsaved changes...\n", state->buffer_count);
             for (size_t i = 0; i < state->buffer_count; i++) {
                 int is_modified = vizero_buffer_is_modified(state->buffers[i]);
                 int is_scratch = vizero_buffer_is_scratch(state->buffers[i]);
-                const char* filename = vizero_buffer_get_filename(state->buffers[i]);
-                
-                printf("[QUIT] Buffer %zu: '%s' - modified=%d, scratch=%d\n", 
-                       i, filename ? filename : "NULL", is_modified, is_scratch);
                 
                 if (is_modified && !is_scratch) {
-                    printf("[QUIT] Buffer %zu ('%s') has unsaved changes and is not scratch - blocking quit\n", 
-                           i, filename ? filename : "NULL");
                     has_unsaved = 1;
                     break;
-                } else if (is_modified && is_scratch) {
-                    printf("[QUIT] Buffer %zu ('%s') has unsaved changes but is scratch - allowing quit\n", 
-                           i, filename ? filename : "NULL");
-                } else {
-                    printf("[QUIT] Buffer %zu ('%s') - no unsaved changes\n", 
-                           i, filename ? filename : "NULL");
                 }
             }
         }
@@ -2800,12 +2787,12 @@ int vizero_editor_execute_command(vizero_editor_state_t* state, const char* comm
             char msg[256];
             vizero_buffer_t* buffer = vizero_editor_get_current_buffer(state);
             const char* filename = buffer ? vizero_buffer_get_filename(buffer) : NULL;
-            sprintf(msg, "Buffer %d: %s", buffer_num, filename ? filename : "[No Name]");
+            snprintf(msg, sizeof(msg), "Buffer %d: %s", buffer_num, filename ? filename : "[No Name]");
             vizero_editor_set_status_message(state, msg);
             return 0;
         } else {
             char msg[256];
-            sprintf(msg, "No buffer %d (valid range: 1-%zu)", buffer_num, state->buffer_count);
+            snprintf(msg, sizeof(msg), "No buffer %d (valid range: 1-%zu)", buffer_num, state->buffer_count);
             vizero_editor_set_status_message(state, msg);
             return -1;
         }

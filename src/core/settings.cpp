@@ -155,7 +155,7 @@ void vizero_settings_set_string(vizero_settings_t* settings, const char* key, co
 /* Settings persistence implementation */
 
 const char* vizero_settings_get_config_directory(void) {
-    static char config_dir[MAX_PATH] = {0};
+    static thread_local char config_dir[MAX_PATH] = {0};
     
     if (config_dir[0] == '\0') {
 #ifdef _WIN32
@@ -187,7 +187,7 @@ const char* vizero_settings_get_config_directory(void) {
 }
 
 const char* vizero_settings_get_config_file_path(void) {
-    static char config_file[MAX_PATH] = {0};
+    static thread_local char config_file[MAX_PATH] = {0};
     
     if (config_file[0] == '\0') {
         const char* config_dir = vizero_settings_get_config_directory();
