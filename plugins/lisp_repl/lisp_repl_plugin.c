@@ -43,8 +43,13 @@
 #include "vizero/log.h"
 
 /* Disable unused function warnings for development code */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
+#ifdef __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wunused-function"
+#elif defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable: 4505) /* unreferenced local function has been removed */
+#endif
 
 #ifdef _WIN32
     #include <windows.h>
@@ -3953,4 +3958,9 @@ void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
     printf("[LISP] Lisp REPL plugin cleaned up\n");
 }
 
-#pragma GCC diagnostic pop  /* Re-enable unused function warnings */
+/* Re-enable unused function warnings */
+#ifdef __GNUC__
+    #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+    #pragma warning(pop)
+#endif

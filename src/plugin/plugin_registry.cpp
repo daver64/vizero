@@ -40,7 +40,7 @@ void vizero_plugin_registry_destroy(vizero_plugin_registry_t* registry) {
 int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, const char* manifest_path) {
     if (!registry || !manifest_path) return -1;
     
-    FILE* file = fopen(manifest_path, "r");
+    FILE* file = fopen(manifest_path, "rb");
     if (!file) {
         printf("[REGISTRY] Warning: Could not open manifest file: %s\n", manifest_path);
         return -1;

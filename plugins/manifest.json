@@ -99,7 +99,6 @@
       "description": "IRC Client Plugin with command registration - Fixed for coexistence",
       "always_load": true
     },
-
     "lisp_repl": {
       "type": "generic",
       "load_on_demand": false,
@@ -128,11 +127,10 @@
       "type": "language_server",
       "file_extensions": [".c", ".h", ".cpp", ".cxx", ".cc", ".hpp"],
       "load_on_demand": true,
-      "dll_path": "clangd.so",
+      "dll_path": "clangd.dll",
       "description": "clangd Language Server for C/C++ IntelliSense",
       "priority": 2,
       "capabilities": ["completion", "hover", "goto_definition", "diagnostics"]
     }
   }
 }
-<!-- Directory scan mode loads all plugins including SQL REPL -->

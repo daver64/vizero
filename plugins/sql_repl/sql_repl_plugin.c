@@ -577,7 +577,7 @@ static int sql_execute_query(const char* query, char** result, size_t* result_si
         
         /* Convert to uppercase for comparison */
         for (char* p = query_upper; *p; p++) {
-            *p = toupper(*p);
+            *p = (char)toupper((unsigned char)*p);
         }
         
         if (strstr(query_upper, "BEGIN") || strstr(query_upper, "START TRANSACTION")) {
