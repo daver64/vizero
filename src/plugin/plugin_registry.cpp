@@ -48,9 +48,15 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
     
     /* Read entire file */
     fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
+    long file_size_long = ftell(file);
     fseek(file, 0, SEEK_SET);
     
+    if (file_size_long < 0) {
+        fclose(file);
+        return -1;
+    }
+    
+    size_t file_size = (size_t)file_size_long;
     char* json_content = (char*)malloc(file_size + 1);
     if (!json_content) {
         fclose(file);

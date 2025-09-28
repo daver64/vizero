@@ -5541,25 +5541,7 @@ void vizero_editor_update_diagnostics(vizero_editor_state_t* state, vizero_buffe
     state->diagnostic_count = 0;
     state->diagnostic_buffer = NULL;
     
-    /* Check if buffer has been modified since last diagnostic update */
-    static vizero_buffer_t* last_diagnostic_buffer = NULL;
-    static time_t last_modification_time = 0;
-    
-    time_t current_mod_time = 0;
-    if (buffer) {
-        /* Use a simple hash of buffer content as modification indicator */
-        const char* content = vizero_buffer_get_text(buffer);
-        if (content) {
-            /* Simple hash of first and last 100 chars to detect changes quickly */
-            size_t len = strlen(content);
-            current_mod_time = (time_t)len; /* Use length as simple modification indicator */
-            if (len > 0) current_mod_time += content[0];
-            if (len > 100) current_mod_time += content[len-1];
-        }
-    }
-    
-    /* Notify LSP plugins of buffer changes if content changed */
-    /* bool buffer_changed = (buffer != last_diagnostic_buffer || current_mod_time != last_modification_time); */  /* Unused variable */
+    /* Notify LSP plugins of buffer changes */
     /* For manual diagnostic refresh (Ctrl+D), trigger LSP analysis first */
     if (state->plugin_manager && buffer) {
         /* Send buffer changes to LSP plugins before requesting diagnostics */

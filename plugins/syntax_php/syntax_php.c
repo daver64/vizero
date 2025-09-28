@@ -402,7 +402,7 @@ static int UNUSED_PARAM highlight_php_line(const char* line, size_t line_num,
             size_t op_len = 1;
             
             if (i + 1 < line_len) {
-                char op[3] = {line[i], line[i + 1], '\0'};
+                char op[4] = {line[i], line[i + 1], '\0', '\0'};  /* Extended for 3-char operators */
                 if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<=") == 0 ||
                     strcmp(op, ">=") == 0 || strcmp(op, "&&") == 0 || strcmp(op, "||") == 0 ||
                     strcmp(op, "++") == 0 || strcmp(op, "--") == 0 || strcmp(op, "+=") == 0 ||
@@ -414,8 +414,12 @@ static int UNUSED_PARAM highlight_php_line(const char* line, size_t line_num,
                 }
                 
                 /* Check for three-character operators */
-                if (i + 2 < line_len && strcmp(op, "===") == 0 || strcmp(op, "!==") == 0) {
-                    op_len = 3;
+                if (i + 2 < line_len) {
+                    op[2] = line[i + 2];
+                    op[3] = '\0';
+                    if (strcmp(op, "===") == 0 || strcmp(op, "!==") == 0) {
+                        op_len = 3;
+                    }
                 }
             }
             

@@ -3344,10 +3344,11 @@ static int lisp_extract_current_input(char* buffer, size_t buffer_size) {
                         /* Append this line safely */
                         size_t space_left = buffer_size - current_len - 1;
                         if (space_left > 0) {
-                            size_t chars_to_copy = strlen(next_line);
-                            if (chars_to_copy > space_left) chars_to_copy = space_left;
+                            size_t line_len = strlen(next_line);
+                            size_t chars_to_copy = (line_len < space_left) ? line_len : space_left;
                             
-                            strncpy(buffer + current_len, next_line, chars_to_copy);
+                            /* Use memcpy for known bounds to avoid strncpy warnings */
+                            memcpy(buffer + current_len, next_line, chars_to_copy);
                             current_len += chars_to_copy;
                             buffer[current_len] = '\0';
                         }

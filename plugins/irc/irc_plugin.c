@@ -17,6 +17,13 @@
 #include <SDL_ttf.h>
 #endif
 
+/* Cross-platform unused attribute */
+#ifdef _MSC_VER
+    #define UNUSED_PARAM
+#else
+    #define UNUSED_PARAM __attribute__((unused))
+#endif
+
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
@@ -203,7 +210,7 @@ static void irc_send_raw(const char* message);
 
 
 /* Generate color for nick */
-static uint32_t irc_generate_nick_color(const char* nick) {
+static uint32_t UNUSED_PARAM irc_generate_nick_color(const char* nick) {
     if (!nick) return 0x808080; /* Default gray */
     
     /* Simple hash to generate consistent colors */
@@ -1009,13 +1016,13 @@ static void irc_prev_buffer(void) {
 }
 
 /* SDL Color conversion helper */
-static SDL_Color irc_to_sdl_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+static SDL_Color UNUSED_PARAM irc_to_sdl_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     SDL_Color color = {r, g, b, a};
     return color;
 }
 
 /* Simple text rendering without TTF - draws colored rectangles as placeholders */
-static void irc_draw_simple_text(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color) {
+static void UNUSED_PARAM irc_draw_simple_text(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color) {
     if (!renderer || !text) return;
     
     /* Set text color */
@@ -1035,7 +1042,7 @@ static void irc_draw_simple_text(SDL_Renderer* renderer, const char* text, int x
 
 #ifdef HAVE_SDL2_TTF
 /* TTF text rendering when available */
-static void irc_draw_ttf_text(SDL_Renderer* renderer, TTF_Font* font, const char* text, int x, int y, SDL_Color color) {
+static void UNUSED_PARAM irc_draw_ttf_text(SDL_Renderer* renderer, TTF_Font* font, const char* text, int x, int y, SDL_Color color) {
     if (!renderer || !font || !text) return;
     
     SDL_Surface* text_surface = TTF_RenderText_Solid(font, text, color);

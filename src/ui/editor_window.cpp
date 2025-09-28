@@ -735,10 +735,11 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                         
                         /* Draw text before selection (if any) */
                         if (line_start_col > 0) {
-                            char* before_text = (char*)malloc(line_start_col + 1);
+                            size_t copy_len = (line_start_col < sizeof(visual)) ? line_start_col : sizeof(visual) - 1;
+                            char* before_text = (char*)malloc(copy_len + 1);
                             if (before_text) {
-                                strncpy(before_text, visual, line_start_col);
-                                before_text[line_start_col] = '\0';
+                                memcpy(before_text, visual, copy_len);
+                                before_text[copy_len] = '\0';
                                 vizero_text_info_t before_info = { (float)text_x, y_pos, {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
                                 vizero_renderer_draw_text(renderer, before_text, &before_info);
                                 free(before_text);
