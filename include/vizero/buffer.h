@@ -683,6 +683,21 @@ int vizero_buffer_search(vizero_buffer_t* buffer, const char* pattern, int use_r
 uint64_t vizero_buffer_get_last_disk_mtime(vizero_buffer_t* buffer);
 
 /**
+ * @brief Get the buffer modification version counter
+ * 
+ * Returns an incrementing counter that changes whenever the buffer content
+ * is modified. Used for cache invalidation in search and other systems.
+ * 
+ * @param buffer Buffer to query (must not be NULL)
+ * @return Current modification version counter
+ * 
+ * @pre buffer must not be NULL
+ * @since 1.0.0
+ * @thread_safety This function is not thread-safe
+ */
+uint64_t vizero_buffer_get_modification_time(vizero_buffer_t* buffer);
+
+/**
  * @brief Set the last known disk modification time
  * 
  * Updates the stored modification time for the buffer's associated file.

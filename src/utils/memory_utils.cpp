@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+void* vizero_safe_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    
+    return malloc(size);
+}
+
 char* vizero_safe_strdup(const char* str) {
     if (!str) {
         return NULL;

@@ -10,6 +10,15 @@ extern "C" {
 #include "vizero/plugin_interface.h"
 
 /**
+ * @brief Safe malloc with null check
+ * 
+ * @param size Size to allocate
+ * @return Allocated pointer on success, NULL on failure
+ * @note Caller must free() the returned pointer
+ */
+void* vizero_safe_malloc(size_t size);
+
+/**
  * @brief Safe string duplication with error handling
  * 
  * @param str String to duplicate (can be NULL)

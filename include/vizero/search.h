@@ -35,6 +35,10 @@ const vizero_search_match_t* vizero_search_get_all_matches(vizero_editor_state_t
 int vizero_search_find_all_in_buffer(vizero_buffer_t* buffer, const char* pattern, 
                                      vizero_search_match_t* matches, int max_matches);
 
+/* Performance optimization: clear search caches to force recomputation
+ * Call this when buffer content changes significantly */
+void vizero_search_clear_caches(void);
+
 #ifdef __cplusplus
 }
 #endif

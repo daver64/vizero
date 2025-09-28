@@ -39,6 +39,13 @@ typedef struct {
     size_t count;
 } undo_stack_t;
 
+/* Performance optimization: line length cache for large files */
+typedef struct {
+    size_t* line_lengths;   /* Cached line lengths */
+    size_t cache_capacity;
+    bool cache_valid;
+} line_cache_t;
+
 struct vizero_buffer_t { 
     char* filename;
     char** lines;
@@ -50,6 +57,8 @@ struct vizero_buffer_t {
     undo_stack_t undo_stack;
     undo_stack_t redo_stack;
     uint64_t last_disk_mtime; /* Last known modification time on disk (for auto-reload) */
+    uint64_t modification_version; /* Incremental counter for tracking buffer changes */
+    line_cache_t line_cache; /* Performance optimization: cached line lengths */
 };
 
 struct vizero_line_t { int dummy; };
@@ -61,8 +70,8 @@ static undo_op_t* undo_op_create(undo_op_type_t type, size_t line_num, const cha
     
     op->type = type;
     op->line_num = line_num;
-    op->old_text = old_text ? strdup(old_text) : NULL;
-    op->new_text = new_text ? strdup(new_text) : NULL;
+    op->old_text = old_text ? vizero_safe_strdup(old_text) : NULL;
+    op->new_text = new_text ? vizero_safe_strdup(new_text) : NULL;
     op->split_pos = split_pos;
     op->next = NULL;
     
@@ -132,8 +141,54 @@ static undo_op_t* undo_stack_pop(undo_stack_t* stack) {
     return op;
 }
 
+/* Helper function to rebuild line length cache for performance */
+static void rebuild_line_cache(vizero_buffer_t* buffer) {
+    if (!buffer) return;
+    
+    /* Only cache for larger files to avoid overhead on small files */
+    if (buffer->line_count < 100) {
+        buffer->line_cache.cache_valid = false;
+        return;
+    }
+    
+    /* Ensure cache capacity */
+    if (buffer->line_cache.cache_capacity < buffer->line_count) {
+        size_t new_capacity = buffer->line_count + 50; /* Add some headroom */
+        size_t* new_cache = (size_t*)vizero_safe_realloc(buffer->line_cache.line_lengths, 
+                                                        new_capacity * sizeof(size_t));
+        if (new_cache) {
+            buffer->line_cache.line_lengths = new_cache;
+            buffer->line_cache.cache_capacity = new_capacity;
+        } else {
+            buffer->line_cache.cache_valid = false;
+            return;
+        }
+    }
+    
+    /* Rebuild cache */
+    for (size_t i = 0; i < buffer->line_count; i++) {
+        const char* line = buffer->lines[i];
+        buffer->line_cache.line_lengths[i] = line ? strlen(line) : 0;
+    }
+    
+    buffer->line_cache.cache_valid = true;
+}
+
+/* Helper function to increment modification version */
+static void increment_modification_version(vizero_buffer_t* buffer) {
+    if (buffer) {
+        buffer->modification_version++;
+        buffer->modified = 1;
+        /* Invalidate line cache when buffer is modified */
+        buffer->line_cache.cache_valid = false;
+    }
+}
+
 static void buffer_push_undo(vizero_buffer_t* buffer, undo_op_type_t type, size_t line_num, const char* old_text, const char* new_text, size_t split_pos) {
     if (!buffer || buffer->in_undo_redo) return;
+    
+    /* Increment modification version for cache invalidation */
+    increment_modification_version(buffer);
     
     undo_op_t* op = undo_op_create(type, line_num, old_text, new_text, split_pos);
     if (op) {
@@ -147,7 +202,7 @@ vizero_buffer_t* vizero_buffer_create(void) {
     vizero_buffer_t* buffer = (vizero_buffer_t*)calloc(1, sizeof(vizero_buffer_t));
     if (buffer) {
         buffer->lines = (char**)calloc(1, sizeof(char*));
-        buffer->lines[0] = strdup("");
+        buffer->lines[0] = vizero_safe_strdup("");
         buffer->line_count = 1;
         
         /* Initialize undo/redo stacks */
@@ -158,6 +213,14 @@ vizero_buffer_t* vizero_buffer_create(void) {
         buffer->redo_stack.max_operations = 100;
         buffer->redo_stack.operations = NULL;
         buffer->redo_stack.count = 0;
+        
+        /* Initialize modification version counter */
+        buffer->modification_version = 1;
+        
+        /* Initialize line cache */
+        buffer->line_cache.line_lengths = NULL;
+        buffer->line_cache.cache_capacity = 0;
+        buffer->line_cache.cache_valid = false;
     }
     return buffer;
 }
@@ -165,7 +228,7 @@ vizero_buffer_t* vizero_buffer_create(void) {
 vizero_buffer_t* vizero_buffer_create_from_file(const char* filename) {
     vizero_buffer_t* buffer = vizero_buffer_create();
     if (buffer && filename) {
-        buffer->filename = strdup(filename);
+        buffer->filename = vizero_safe_strdup(filename);
         
         /* Check for UTF-16 encoding before attempting to load */
         if (vizero_file_is_utf16(filename)) {
@@ -231,6 +294,9 @@ void vizero_buffer_destroy(vizero_buffer_t* buffer) {
     /* Clean up undo/redo stacks */
     undo_stack_clear(&buffer->undo_stack);
     undo_stack_clear(&buffer->redo_stack);
+    
+    /* Clean up line cache */
+    vizero_safe_free(buffer->line_cache.line_lengths);
     
     /* Final safe cleanup of buffer structure */
     vizero_safe_free(buffer);
@@ -335,7 +401,21 @@ const char* vizero_buffer_get_line_text(vizero_buffer_t* buffer, size_t line_num
 }
 
 size_t vizero_buffer_get_line_length(vizero_buffer_t* buffer, size_t line_num) {
-    const char* line = vizero_buffer_get_line_text(buffer, line_num);
+    if (!buffer || line_num >= buffer->line_count) return 0;
+    
+    /* Performance optimization: use cached line lengths for large files */
+    if (buffer->line_count >= 100) {
+        if (!buffer->line_cache.cache_valid) {
+            rebuild_line_cache(buffer);
+        }
+        
+        if (buffer->line_cache.cache_valid && line_num < buffer->line_cache.cache_capacity) {
+            return buffer->line_cache.line_lengths[line_num];
+        }
+    }
+    
+    /* Fallback to direct calculation for small files or cache failure */
+    const char* line = buffer->lines[line_num];
     return line ? strlen(line) : 0;
 }
 
@@ -563,9 +643,9 @@ int vizero_buffer_split_line(vizero_buffer_t* buffer, size_t line_num, size_t co
     first_part[col] = '\0';
     
     /* Create second part (after split point) */
-    char* second_part = strdup(current_line + col);
+    char* second_part = vizero_safe_strdup(current_line + col);
     if (!second_part) {
-        free(first_part);
+        vizero_safe_free(first_part);
         return -1;
     }
     
@@ -706,7 +786,7 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     
     /* Ensure we have at least one line */
     if (buffer->line_count == 0) {
-        buffer->lines[0] = strdup("");
+        buffer->lines[0] = vizero_safe_strdup("");
         buffer->line_count = 1;
     }
     
@@ -717,7 +797,7 @@ int vizero_buffer_load_from_file(vizero_buffer_t* buffer, const char* filename) 
     if (buffer->filename) {
         free(buffer->filename);
     }
-    buffer->filename = strdup(filename);
+    buffer->filename = vizero_safe_strdup(filename);
     
     return 0;
 }
@@ -749,9 +829,9 @@ int vizero_buffer_save_to_file(vizero_buffer_t* buffer, const char* filename) {
     /* Update filename if it was different */
     if (buffer->filename && strcmp(buffer->filename, filename) != 0) {
         free(buffer->filename);
-        buffer->filename = strdup(filename);
+        buffer->filename = vizero_safe_strdup(filename);
     } else if (!buffer->filename) {
-        buffer->filename = strdup(filename);
+        buffer->filename = vizero_safe_strdup(filename);
     }
     
     return 0;
@@ -846,7 +926,7 @@ int vizero_buffer_undo(vizero_buffer_t* buffer) {
                     for (size_t i = buffer->line_count; i > op->line_num; i--) {
                         buffer->lines[i] = buffer->lines[i - 1];
                     }
-                    buffer->lines[op->line_num] = strdup(op->old_text);
+                    buffer->lines[op->line_num] = vizero_safe_strdup(op->old_text);
                     buffer->line_count++;
                 }
             }
@@ -858,7 +938,7 @@ int vizero_buffer_undo(vizero_buffer_t* buffer) {
                 redo_op = undo_op_create(UNDO_OP_MODIFY_LINE, op->line_num, buffer->lines[op->line_num], op->old_text, 0);
                 
                 free(buffer->lines[op->line_num]);
-                buffer->lines[op->line_num] = strdup(op->old_text);
+                buffer->lines[op->line_num] = vizero_safe_strdup(op->old_text);
             }
             break;
             
@@ -901,8 +981,8 @@ int vizero_buffer_undo(vizero_buffer_t* buffer) {
                     }
                     
                     free(buffer->lines[op->line_num]);
-                    buffer->lines[op->line_num] = strdup(op->old_text);
-                    buffer->lines[op->line_num + 1] = strdup(op->new_text);
+                    buffer->lines[op->line_num] = vizero_safe_strdup(op->old_text);
+                    buffer->lines[op->line_num + 1] = vizero_safe_strdup(op->new_text);
                     buffer->line_count++;
                 }
             }
@@ -959,7 +1039,7 @@ int vizero_buffer_redo(vizero_buffer_t* buffer) {
                     for (size_t i = buffer->line_count; i > op->line_num; i--) {
                         buffer->lines[i] = buffer->lines[i - 1];
                     }
-                    buffer->lines[op->line_num] = strdup(op->old_text);
+                    buffer->lines[op->line_num] = vizero_safe_strdup(op->old_text);
                     buffer->line_count++;
                 }
             }
@@ -971,7 +1051,7 @@ int vizero_buffer_redo(vizero_buffer_t* buffer) {
                 undo_op = undo_op_create(UNDO_OP_MODIFY_LINE, op->line_num, buffer->lines[op->line_num], op->new_text, 0);
                 
                 free(buffer->lines[op->line_num]);
-                buffer->lines[op->line_num] = strdup(op->new_text);
+                buffer->lines[op->line_num] = vizero_safe_strdup(op->new_text);
             }
             break;
             
@@ -1053,6 +1133,11 @@ void vizero_buffer_get_stats(vizero_buffer_t* buffer, vizero_buffer_stats_t* sta
 uint64_t vizero_buffer_get_last_disk_mtime(vizero_buffer_t* buffer) {
     if (!buffer) return 0;
     return buffer->last_disk_mtime;
+}
+
+uint64_t vizero_buffer_get_modification_time(vizero_buffer_t* buffer) {
+    if (!buffer) return 0;
+    return buffer->modification_version;
 }
 
 void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime) {

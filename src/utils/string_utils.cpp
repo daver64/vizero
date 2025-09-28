@@ -14,7 +14,7 @@
 #endif
 
 char* vizero_string_duplicate(const char* str) {
-    return str ? strdup(str) : NULL;
+    return str ? vizero_safe_strdup(str) : NULL;
 }
 
 char* vizero_string_substring(const char* str, size_t start, size_t length) {
@@ -28,7 +28,7 @@ char* vizero_string_substring(const char* str, size_t start, size_t length) {
         length = str_len - start;
     }
     
-    char* substr = (char*)malloc(length + 1);
+    char* substr = (char*)vizero_safe_malloc(length + 1);
     if (!substr) return NULL;
     
     strncpy(substr, str + start, length);
@@ -82,7 +82,7 @@ char** vizero_string_split(const char* str, const char* delimiter, size_t* count
     /* Count tokens first */
     char* temp_copy = vizero_string_duplicate(str);
     if (!temp_copy) {
-        free(str_copy);
+        vizero_safe_free(str_copy);
         return NULL;
     }
     
@@ -92,17 +92,17 @@ char** vizero_string_split(const char* str, const char* delimiter, size_t* count
         token_count++;
         token = strtok(NULL, delimiter);
     }
-    free(temp_copy);
+    vizero_safe_free(temp_copy);
     
     if (token_count == 0) {
-        free(str_copy);
+        vizero_safe_free(str_copy);
         return NULL;
     }
     
     /* Allocate array for tokens */
-    char** tokens = (char**)malloc(token_count * sizeof(char*));
+    char** tokens = (char**)vizero_safe_malloc(token_count * sizeof(char*));
     if (!tokens) {
-        free(str_copy);
+        vizero_safe_free(str_copy);
         return NULL;
     }
     
@@ -114,17 +114,17 @@ char** vizero_string_split(const char* str, const char* delimiter, size_t* count
         if (!tokens[i]) {
             /* Cleanup on failure */
             for (size_t j = 0; j < i; j++) {
-                free(tokens[j]);
+                vizero_safe_free(tokens[j]);
             }
-            free(tokens);
-            free(str_copy);
+            vizero_safe_free(tokens);
+            vizero_safe_free(str_copy);
             return NULL;
         }
         i++;
         token = strtok(NULL, delimiter);
     }
     
-    free(str_copy);
+    vizero_safe_free(str_copy);
     *count = token_count;
     return tokens;
 }
@@ -133,9 +133,9 @@ void vizero_string_array_free(char** array, size_t count) {
     if (!array) return;
     
     for (size_t i = 0; i < count; i++) {
-        free(array[i]);
+        vizero_safe_free(array[i]);
     }
-    free(array);
+    vizero_safe_free(array);
 }
 
 char* vizero_string_join(char** array, size_t count, const char* separator) {
@@ -155,7 +155,7 @@ char* vizero_string_join(char** array, size_t count, const char* separator) {
         }
     }
     
-    char* result = (char*)malloc(total_len + 1);
+    char* result = (char*)vizero_safe_malloc(total_len + 1);
     if (!result) return NULL;
     
     result[0] = '\0';
@@ -190,7 +190,7 @@ char* vizero_string_trim(const char* str) {
     /* Calculate length */
     size_t len = end - start + 1;
     
-    char* trimmed = (char*)malloc(len + 1);
+    char* trimmed = (char*)vizero_safe_malloc(len + 1);
     if (!trimmed) return NULL;
     
     strncpy(trimmed, start, len);
@@ -226,7 +226,7 @@ char* vizero_string_trim_right(const char* str) {
     /* Calculate length */
     size_t trimmed_len = end - str + 1;
     
-    char* trimmed = (char*)malloc(trimmed_len + 1);
+    char* trimmed = (char*)vizero_safe_malloc(trimmed_len + 1);
     if (!trimmed) return NULL;
     
     strncpy(trimmed, str, trimmed_len);
