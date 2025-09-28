@@ -45,7 +45,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 
 # Build
 echo "Building..."
-make -j$(nproc)
+make -j 2
 
 echo "Build completed successfully!"
 echo "Executable: vizero"

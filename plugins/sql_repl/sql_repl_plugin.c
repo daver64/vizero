@@ -42,6 +42,7 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -113,11 +114,9 @@ static sql_repl_state_t g_sql_state = {0};
 
 /* Forward declarations */
 static void sql_log_message(const char* message);
-static void sql_set_active_buffer(const char* buffer_name);
 static int sql_connect_database(const char* connection_string);
 static void sql_disconnect_database(void);
 static int sql_execute_query(const char* query, char** result, size_t* result_size);
-static int sql_handle_command(vizero_editor_t* editor, const char* command);
 static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
 static void sql_display_result(const char* result);
 static void sql_display_error(const char* error);
@@ -150,12 +149,7 @@ static void sql_log_message(const char* message) {
     printf("%s\n", log_entry);
 }
 
-static void sql_set_active_buffer(const char* buffer_name) {
-    if (!g_sql_state.editor || !buffer_name) return;
-    
-    strncpy(g_sql_state.buffer_name, buffer_name, sizeof(g_sql_state.buffer_name) - 1);
-    g_sql_state.buffer_name[sizeof(g_sql_state.buffer_name) - 1] = '\0';
-}
+
 
 /* Database connection parsing */
 static int parse_connection_string(const char* conn_str, db_type_t* db_type, 
@@ -193,15 +187,13 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
     if (!url_part) return -1;
     
     /* Extract user:pass@host:port/database */
-    char temp_url[512];
-    strncpy(temp_url, url_part, sizeof(temp_url) - 1);
-    temp_url[sizeof(temp_url) - 1] = '\0';
+    char temp_url[1024];
+    snprintf(temp_url, sizeof(temp_url), "%s", url_part);
     
     /* Find database name */
     char* db_part = strrchr(temp_url, '/');
     if (db_part) {
-        strncpy(database, db_part + 1, 255);
-        database[255] = '\0';
+        snprintf(database, 256, "%s", db_part + 1);
         *db_part = '\0'; /* Cut off database part */
     }
     
@@ -215,10 +207,10 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
         char* pass_part = strchr(temp_url, ':');
         if (pass_part) {
             *pass_part = '\0';
-            strncpy(username, temp_url, 255);
-            strncpy(password, pass_part + 1, 255);
+            snprintf(username, 256, "%s", temp_url);
+            snprintf(password, 256, "%s", pass_part + 1);
         } else {
-            strncpy(username, temp_url, 255);
+            snprintf(username, 256, "%s", temp_url);
             password[0] = '\0';
         }
         
@@ -228,9 +220,9 @@ static int parse_connection_string(const char* conn_str, db_type_t* db_type,
             *port_part = '\0';
             *port = atoi(port_part + 1);
         }
-        strncpy(host, auth_part, 255);
+        snprintf(host, 256, "%s", auth_part);
     } else {
-        strncpy(host, temp_url, 255);
+        snprintf(host, 256, "%s", temp_url);
         username[0] = '\0';
         password[0] = '\0';
     }
@@ -285,8 +277,8 @@ static int mysql_execute_query(const char* query, char** result, size_t* result_
     if (!res) {
         /* Query didn't return a result set (INSERT, UPDATE, DELETE, etc.) */
         char status_msg[256];
-        snprintf(status_msg, sizeof(status_msg), "Query OK, %llu rows affected", 
-                mysql_affected_rows(g_sql_state.mysql_handle));
+        snprintf(status_msg, sizeof(status_msg), "Query OK, %" PRIu64 " rows affected", 
+                (uint64_t)mysql_affected_rows(g_sql_state.mysql_handle));
         
         *result = strdup(status_msg);
         *result_size = strlen(status_msg);
@@ -477,8 +469,8 @@ static int sql_connect_database(const char* connection_string) {
         return -1;
     }
     
-    strncpy(g_sql_state.connection_string, connection_string, 
-            sizeof(g_sql_state.connection_string) - 1);
+    snprintf(g_sql_state.connection_string, sizeof(g_sql_state.connection_string), 
+            "%s", connection_string);
     
     /* Connect based on database type */
     int result = -1;
@@ -503,7 +495,7 @@ static int sql_connect_database(const char* connection_string) {
         g_sql_state.connected = true;
         g_sql_state.in_transaction = false;
         
-        char status_msg[512];
+        char status_msg[1024];
         snprintf(status_msg, sizeof(status_msg), "Connected to %s:%d/%s as %s",
                 g_sql_state.host, g_sql_state.port, g_sql_state.database, g_sql_state.username);
         sql_display_result(status_msg);
@@ -573,8 +565,7 @@ static int sql_execute_query(const char* query, char** result, size_t* result_si
     /* Check for transaction state changes */
     if (ret == 0) {
         char query_upper[256];
-        strncpy(query_upper, query, sizeof(query_upper) - 1);
-        query_upper[sizeof(query_upper) - 1] = '\0';
+        snprintf(query_upper, sizeof(query_upper), "%s", query);
         
         /* Convert to uppercase for comparison */
         for (char* p = query_upper; *p; p++) {
@@ -630,6 +621,7 @@ static void sql_display_error(const char* error) {
 
 /* Individual command handlers */
 static int sql_cmd_connect(vizero_editor_t* editor, const char* args) {
+    (void)editor; /* Unused parameter */
     if (!args || strlen(args) == 0) {
         sql_display_error("Usage: :sql-connect mysql://user:pass@host:port/db or postgresql://user:pass@host:port/db");
         return 1;
@@ -925,8 +917,7 @@ static int sql_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t 
     /* Check if line ends with semicolon (SQL statement terminator) */
     size_t line_len = strlen(line_text);
     char trimmed_line[1024];
-    strncpy(trimmed_line, line_text, sizeof(trimmed_line) - 1);
-    trimmed_line[sizeof(trimmed_line) - 1] = '\0';
+    snprintf(trimmed_line, sizeof(trimmed_line), "%s", line_text);
     
     /* Trim trailing whitespace */
     while (line_len > 0 && isspace(trimmed_line[line_len - 1])) {
@@ -958,7 +949,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
     "Vizero Development Team",                           /* author */
     "Interactive SQL REPL with multi-database support", /* description */
     VIZERO_PLUGIN_TYPE_GENERIC                          /* type */
-);
+)
 
 VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_t* editor, const vizero_editor_api_t* api) {
     if (!plugin || !editor || !api) return -1;
