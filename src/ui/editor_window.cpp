@@ -761,8 +761,10 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 }
             }
             
-            vizero_text_info_t info = { (float)text_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
-            vizero_renderer_draw_text(renderer, visual, &info);
+            {
+                vizero_text_info_t info = { (float)text_x, (float)(content_y + (visual_map[v].visual_row - window->scroll_y) * 16), {1.0f, 1.0f, 1.0f, 1.0f}, NULL };
+                vizero_renderer_draw_text(renderer, visual, &info);
+            }
             
             skip_normal_text_render:;
         }
