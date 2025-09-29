@@ -10,7 +10,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <time.h>
+#include <ctype.h>
 #include <curl/curl.h>
+
+/* Forward declarations */
+static int handle_llm_test_command(vizero_editor_t* editor, const char* args);
+static int handle_claude_chat_command(vizero_editor_t* editor, const char* args);
+static int handle_claude_ask_command(vizero_editor_t* editor, const char* args);
+static int handle_claude_clear_command(vizero_editor_t* editor, const char* args);
+static int claude_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
+static int create_claude_buffer(vizero_editor_t* editor);
+static void append_to_claude_buffer(const char* text);
+static void display_claude_response(const char* response);
+static void claude_add_prompt(void);
+static char* escape_json_string(const char* str);
 
 /* Windows doesn't have asprintf, so we implement it */
 #ifdef _WIN32
@@ -56,6 +70,12 @@ typedef struct {
     
     /* HTTP client state */
     CURL* curl_handle;
+    
+    /* Chat buffer state */
+    vizero_buffer_t* claude_buffer;
+    bool in_claude_mode;
+    char* conversation_history;
+    size_t history_length;
     
     /* Plugin status */
     bool initialized;
@@ -150,6 +170,41 @@ static int load_llm_config(void) {
     return 0;
 }
 
+/* Escape a string for safe inclusion in JSON */
+static char* escape_json_string(const char* str) {
+    if (!str) return NULL;
+    
+    size_t len = strlen(str);
+    /* Worst case: every character needs escaping (2x expansion) plus null terminator */
+    char* escaped = vizero_safe_malloc(len * 2 + 1);
+    if (!escaped) return NULL;
+    
+    char* dst = escaped;
+    for (const char* src = str; *src; src++) {
+        switch (*src) {
+            case '"':  *dst++ = '\\'; *dst++ = '"'; break;
+            case '\\': *dst++ = '\\'; *dst++ = '\\'; break;
+            case '/':  *dst++ = '\\'; *dst++ = '/'; break;
+            case '\b': *dst++ = '\\'; *dst++ = 'b'; break;
+            case '\f': *dst++ = '\\'; *dst++ = 'f'; break;
+            case '\n': *dst++ = '\\'; *dst++ = 'n'; break;
+            case '\r': *dst++ = '\\'; *dst++ = 'r'; break;
+            case '\t': *dst++ = '\\'; *dst++ = 't'; break;
+            default:
+                if ((unsigned char)*src < 32) {
+                    /* Escape other control characters as \uXXXX */
+                    sprintf(dst, "\\u%04x", (unsigned char)*src);
+                    dst += 6;
+                } else {
+                    *dst++ = *src;
+                }
+                break;
+        }
+    }
+    *dst = '\0';
+    return escaped;
+}
+
 /* Send HTTP request to LLM API */
 static int send_llm_request(const char* prompt, const char* system_prompt, http_response_t* response) {
     if (!g_llm_state || !g_llm_state->curl_handle || !prompt || !response) {
@@ -164,7 +219,16 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
     char* json_payload;
     int json_len;
     
-    if (system_prompt) {
+    /* Escape the strings for JSON */
+    char* escaped_prompt = escape_json_string(prompt);
+    char* escaped_system = system_prompt ? escape_json_string(system_prompt) : NULL;
+    
+    if (!escaped_prompt) {
+        printf("[Claude LLM] Failed to escape prompt string\n");
+        return -1;
+    }
+    
+    if (escaped_system) {
         json_len = asprintf(&json_payload,
             "{"
             "\"model\":\"%s\","
@@ -175,7 +239,7 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
                 "{\"role\":\"user\",\"content\":\"%s\"}"
             "]"
             "}",
-            g_llm_state->model_name, system_prompt, prompt);
+            g_llm_state->model_name, escaped_system, escaped_prompt);
     } else {
         json_len = asprintf(&json_payload,
             "{"
@@ -186,8 +250,12 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
                 "{\"role\":\"user\",\"content\":\"%s\"}"
             "]"
             "}",
-            g_llm_state->model_name, prompt);
+            g_llm_state->model_name, escaped_prompt);
     }
+    
+    /* Clean up escaped strings */
+    vizero_safe_free(escaped_prompt);
+    if (escaped_system) vizero_safe_free(escaped_system);
     
     if (json_len < 0 || !json_payload) {
         return -1;
@@ -354,12 +422,378 @@ static int handle_llm_test_command(vizero_editor_t* editor, const char* args) {
     return -1;
 }
 
+/* Create or switch to Claude chat buffer */
+static int create_claude_buffer(vizero_editor_t* editor) {
+    if (!g_llm_state || !g_llm_state->api) {
+        return -1;
+    }
+    
+    /* Create dedicated Claude buffer using enew with name parameter */
+    if (g_llm_state->api->execute_command) {
+        int enew_result = g_llm_state->api->execute_command(editor, "enew *claude-haiku*");
+        if (enew_result == 0) {
+            /* Try to find the Claude buffer */
+            vizero_buffer_t* claude_buffer_found = NULL;
+            
+            for (int buf_num = 1; buf_num <= 10; buf_num++) {
+                char cmd[32];
+                snprintf(cmd, sizeof(cmd), "b%d", buf_num);
+                
+                int switch_result = g_llm_state->api->execute_command(editor, cmd);
+                if (switch_result == 0) {
+                    if (g_llm_state->api->get_current_buffer && g_llm_state->api->get_buffer_filename) {
+                        vizero_buffer_t* current = g_llm_state->api->get_current_buffer(editor);
+                        const char* filename = g_llm_state->api->get_buffer_filename(current);
+                        
+                        if (filename && strcmp(filename, "*claude-haiku*") == 0) {
+                            claude_buffer_found = current;
+                            printf("[Claude LLM] Found Claude buffer at buffer %d!\n", buf_num);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (claude_buffer_found) {
+                g_llm_state->claude_buffer = claude_buffer_found;
+                g_llm_state->in_claude_mode = true;
+                
+                /* Mark as scratch buffer */
+                if (g_llm_state->api->set_buffer_scratch) {
+                    g_llm_state->api->set_buffer_scratch(g_llm_state->claude_buffer, 1);
+                }
+                
+                /* Add welcome message if buffer is empty */
+                if (g_llm_state->api->get_buffer_line_count) {
+                    int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+                    if (line_count <= 1) {
+                        append_to_claude_buffer("=== Claude Haiku Chat ===\n");
+                        append_to_claude_buffer("Type your questions after the 'You> ' prompt and press Enter to send.\n");
+                        append_to_claude_buffer("Use :claude-clear to clear history.\n\n");
+                        
+                        /* Add the first prompt */
+                        claude_add_prompt();
+                    }
+                }
+                
+                return 0;
+            }
+        }
+    }
+    
+    return -1;
+}
+
+/* Append text to Claude buffer */
+static void append_to_claude_buffer(const char* text) {
+    if (!g_llm_state || !g_llm_state->claude_buffer || !g_llm_state->api) {
+        return;
+    }
+    
+    /* Get buffer line count to append at the end */
+    if (g_llm_state->api->get_buffer_line_count && g_llm_state->api->insert_text_multiline) {
+        int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+        
+        /* Position at the end of the last line */
+        vizero_position_t pos;
+        pos.line = line_count > 0 ? line_count - 1 : 0;
+        pos.column = 0;
+        
+        /* If there are existing lines, get the length of the last line */
+        if (line_count > 0 && g_llm_state->api->get_buffer_line_length) {
+            pos.column = g_llm_state->api->get_buffer_line_length(g_llm_state->claude_buffer, pos.line);
+        }
+        
+        g_llm_state->api->insert_text_multiline(g_llm_state->claude_buffer, pos, text);
+    }
+}
+
+/* Display Claude response in the chat buffer */
+static void display_claude_response(const char* response) {
+    if (!response || !g_llm_state || !g_llm_state->claude_buffer) {
+        return;
+    }
+    
+    char timestamp[64];
+    time_t now = time(NULL);
+    struct tm* tm_info = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm_info);
+    
+    char* formatted_response = vizero_safe_malloc(strlen(response) + 256);
+    if (formatted_response) {
+        snprintf(formatted_response, strlen(response) + 256, 
+                "[%s] Claude: %s\n\n", timestamp, response);
+        append_to_claude_buffer(formatted_response);
+        vizero_safe_free(formatted_response);
+    }
+}
+
+/* Handle :claude-chat command */
+static int handle_claude_chat_command(vizero_editor_t* editor, const char* args) {
+    (void)args; /* Unused */
+    
+    if (!g_llm_state || !g_llm_state->initialized) {
+        if (g_llm_state->api && g_llm_state->api->set_status_message) {
+            g_llm_state->api->set_status_message(editor, "Claude plugin not initialized");
+        }
+        return -1;
+    }
+    
+    int result = create_claude_buffer(editor);
+    if (result == 0) {
+        if (g_llm_state->api && g_llm_state->api->set_status_message) {
+            g_llm_state->api->set_status_message(editor, "Claude chat ready - type your questions!");
+        }
+    } else {
+        if (g_llm_state->api && g_llm_state->api->set_status_message) {
+            g_llm_state->api->set_status_message(editor, "Failed to create Claude chat buffer");
+        }
+    }
+    
+    return result;
+}
+
+/* Handle :claude-ask command */
+static int handle_claude_ask_command(vizero_editor_t* editor, const char* args) {
+    if (!g_llm_state || !g_llm_state->initialized) {
+        if (g_llm_state->api && g_llm_state->api->set_status_message) {
+            g_llm_state->api->set_status_message(editor, "Claude plugin not initialized");
+        }
+        return -1;
+    }
+    
+    if (!args || strlen(args) == 0) {
+        if (g_llm_state->api && g_llm_state->api->set_status_message) {
+            g_llm_state->api->set_status_message(editor, "Usage: :claude-ask <your question>");
+        }
+        return -1;
+    }
+    
+    /* Create chat buffer if it doesn't exist */
+    if (!g_llm_state->claude_buffer) {
+        create_claude_buffer(editor);
+    }
+    
+    /* Display the question in the chat buffer */
+    char timestamp[64];
+    time_t now = time(NULL);
+    struct tm* tm_info = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm_info);
+    
+    char* question_text = vizero_safe_malloc(strlen(args) + 128);
+    if (question_text) {
+        snprintf(question_text, strlen(args) + 128, "[%s] You: %s\n", timestamp, args);
+        append_to_claude_buffer(question_text);
+        vizero_safe_free(question_text);
+    }
+    
+    /* Send request to Claude */
+    http_response_t response = {0};
+    int result = send_llm_request(args, "You are a helpful programming assistant.", &response);
+    
+    if (result == 0 && response.data) {
+        char* content = extract_llm_content(response.data);
+        if (content) {
+            display_claude_response(content);
+            vizero_safe_free(content);
+        } else {
+            append_to_claude_buffer("[Error] Failed to parse Claude response\n\n");
+        }
+        vizero_safe_free(response.data);
+    } else {
+        append_to_claude_buffer("[Error] Failed to get response from Claude\n\n");
+    }
+    
+    /* Add prompt for next question and position cursor */
+    claude_add_prompt();
+    
+    return 0;
+}
+
+/* Handle :claude-clear command */
+static int handle_claude_clear_command(vizero_editor_t* editor, const char* args) {
+    (void)args; /* Unused */
+    
+    if (!g_llm_state) {
+        return -1;
+    }
+    
+    /* Clear conversation history */
+    if (g_llm_state->conversation_history) {
+        vizero_safe_free(g_llm_state->conversation_history);
+        g_llm_state->conversation_history = NULL;
+        g_llm_state->history_length = 0;
+    }
+    
+    /* Clear chat buffer if it exists */
+    if (g_llm_state->claude_buffer && g_llm_state->api && g_llm_state->api->delete_text) {
+        /* Delete all content by creating a range from start to end */
+        if (g_llm_state->api->get_buffer_line_count) {
+            int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+            if (line_count > 0) {
+                vizero_range_t all_range;
+                all_range.start.line = 0;
+                all_range.start.column = 0;
+                all_range.end.line = line_count - 1;
+                
+                if (g_llm_state->api->get_buffer_line_length) {
+                    all_range.end.column = g_llm_state->api->get_buffer_line_length(g_llm_state->claude_buffer, all_range.end.line);
+                } else {
+                    all_range.end.column = 1000; /* Fallback - large number */
+                }
+                
+                g_llm_state->api->delete_text(g_llm_state->claude_buffer, all_range);
+            }
+        }
+        
+        append_to_claude_buffer("=== Claude Haiku Chat ===\n");
+        append_to_claude_buffer("Conversation history cleared.\n\n");
+        claude_add_prompt();
+    }
+    
+    if (g_llm_state->api && g_llm_state->api->set_status_message) {
+        g_llm_state->api->set_status_message(editor, "Claude conversation history cleared");
+    }
+    
+    return 0;
+}
+
+/* Add Claude prompt to the chat buffer */
+static void claude_add_prompt(void) {
+    if (!g_llm_state || !g_llm_state->api || !g_llm_state->editor) return;
+    
+    /* Use Claude buffer if available, otherwise use current buffer */
+    vizero_buffer_t* target_buffer = g_llm_state->claude_buffer ? 
+                                    g_llm_state->claude_buffer : 
+                                    g_llm_state->api->get_current_buffer(g_llm_state->editor);
+    if (!target_buffer) return;
+    
+    vizero_cursor_t* cursor = g_llm_state->api->get_current_cursor(g_llm_state->editor);
+    if (!cursor) return;
+    
+    /* Get the end of the buffer to append prompt there */
+    size_t line_count = g_llm_state->api->get_buffer_line_count(target_buffer);
+    vizero_position_t end_pos;
+    
+    if (line_count > 0) {
+        /* Move to end of last line */
+        end_pos.line = line_count - 1;
+        const char* last_line = g_llm_state->api->get_buffer_line(target_buffer, end_pos.line);
+        end_pos.column = last_line ? strlen(last_line) : 0;
+    } else {
+        /* Empty buffer */
+        end_pos.line = 0;
+        end_pos.column = 0;
+    }
+    
+    /* Add Claude prompt */
+    const char* prompt = "You> ";
+    
+    /* Insert prompt */
+    if (g_llm_state->api->insert_text) {
+        g_llm_state->api->insert_text(target_buffer, end_pos, prompt);
+    }
+    
+    /* Move cursor to the end after prompt insertion */
+    vizero_buffer_t* current_buffer = g_llm_state->api->get_current_buffer(g_llm_state->editor);
+    if (current_buffer == target_buffer) {
+        vizero_cursor_t* current_cursor = g_llm_state->api->get_current_cursor(g_llm_state->editor);
+        if (current_cursor) {
+            size_t new_line_count = g_llm_state->api->get_buffer_line_count(target_buffer);
+            if (new_line_count > 0) {
+                vizero_position_t new_end_pos;
+                new_end_pos.line = new_line_count - 1;
+                const char* new_last_line = g_llm_state->api->get_buffer_line(target_buffer, new_end_pos.line);
+                new_end_pos.column = new_last_line ? strlen(new_last_line) : 0;
+                g_llm_state->api->set_cursor_position(current_cursor, new_end_pos);
+            }
+        }
+    }
+}
+
+/* Handle Enter key for interactive Claude chat */
+static int claude_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
+    (void)modifiers; /* Unused */
+    
+    /* Only handle Enter key */
+    if (key != 13 && key != 10) return 0; /* Not Enter key */
+    
+    /* Only handle if we're in Claude mode with initialized plugin */
+    if (!g_llm_state || !g_llm_state->initialized || !g_llm_state->in_claude_mode) return 0;
+    
+    /* Get current cursor and buffer */
+    vizero_cursor_t* cursor = g_llm_state->api->get_current_cursor(editor);
+    vizero_buffer_t* buffer = g_llm_state->api->get_current_buffer(editor);
+    if (!cursor || !buffer || buffer != g_llm_state->claude_buffer) return 0;
+    
+    vizero_position_t pos = g_llm_state->api->get_cursor_position(cursor);
+    const char* line_text = g_llm_state->api->get_buffer_line(buffer, pos.line);
+    
+    if (!line_text || strlen(line_text) == 0) {
+        return 0; /* Let normal handling proceed for empty lines */
+    }
+    
+    /* Check if line starts with "You> " prompt */
+    const char* question_start = line_text;
+    if (strncmp(question_start, "You> ", 5) == 0) {
+        question_start += 5;
+    }
+    
+    /* Skip any remaining leading whitespace */
+    while (*question_start && isspace(*question_start)) question_start++;
+    if (*question_start == '\0') {
+        return 0; /* Empty question, let normal handling proceed */
+    }
+    
+    /* Send the question to Claude */
+    http_response_t response = {0};
+    int result = send_llm_request(question_start, "You are a helpful programming assistant.", &response);
+    
+    if (result == 0 && response.data) {
+        char* content = extract_llm_content(response.data);
+        if (content) {
+            /* Add newline and display Claude's response */
+            append_to_claude_buffer("\n");
+            display_claude_response(content);
+            vizero_safe_free(content);
+        } else {
+            append_to_claude_buffer("\n[Error] Failed to parse Claude response\n\n");
+        }
+        vizero_safe_free(response.data);
+    } else {
+        append_to_claude_buffer("\n[Error] Failed to get response from Claude\n\n");
+    }
+    
+    /* Add prompt for next question */
+    claude_add_prompt();
+    
+    return 1; /* We handled the Enter key */
+}
+
 /* Plugin commands */
 static vizero_plugin_command_t llm_commands[] = {
     {
         .command = "llm-test",
         .description = "Test LLM connection and functionality",
         .handler = handle_llm_test_command,
+        .user_data = NULL
+    },
+    {
+        .command = "claude-chat",
+        .description = "Open Claude chat buffer for interactive conversation",
+        .handler = handle_claude_chat_command,
+        .user_data = NULL
+    },
+    {
+        .command = "claude-ask",
+        .description = "Ask Claude a question: :claude-ask <question>",
+        .handler = handle_claude_ask_command,
+        .user_data = NULL
+    },
+    {
+        .command = "claude-clear",
+        .description = "Clear Claude conversation history",
+        .handler = handle_claude_clear_command,
         .user_data = NULL
     }
 };
@@ -432,6 +866,7 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     /* Set up plugin callbacks */
     plugin->callbacks.commands = llm_commands;
     plugin->callbacks.command_count = sizeof(llm_commands) / sizeof(llm_commands[0]);
+    plugin->callbacks.on_key_input = claude_handle_enter_key;
     
     g_llm_state->initialized = true;
     
@@ -456,6 +891,9 @@ VIZERO_PLUGIN_API void vizero_plugin_cleanup(vizero_plugin_t* plugin) {
         vizero_safe_free(g_llm_state->api_token);
         vizero_safe_free(g_llm_state->endpoint_url);
         vizero_safe_free(g_llm_state->model_name);
+        
+        /* Free chat state */
+        vizero_safe_free(g_llm_state->conversation_history);
         
         /* Free state structure */
         vizero_safe_free(g_llm_state);
