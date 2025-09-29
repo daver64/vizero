@@ -131,6 +131,22 @@
       "description": "clangd Language Server for C/C++ IntelliSense",
       "priority": 2,
       "capabilities": ["completion", "hover", "goto_definition", "diagnostics"]
+    },
+    "claude_llm": {
+      "type": "generic",
+      "load_on_demand": false,
+      "dll_path": "claude_llm.dll",
+      "description": "Claude LLM integration for AI-powered code assistance",
+      "always_load": true,
+      "version": "1.0.0",
+      "features": [
+        "claude_sonnet",
+        "api_integration", 
+        "code_assistance",
+        "file_based_config"
+      ],
+      "requires": ["libcurl"],
+      "optional": ["claude-key.txt", "claude_api_key.txt"]
     }
   }
 }

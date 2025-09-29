@@ -202,7 +202,6 @@ static struct {
 
 /* Reset static variables to prevent state persistence across plugin reloads */
 static void irc_reset_static_state(void) {
-    printf("[IRC] Resetting static state variables to prevent stale state from previous sessions\n");
     g_static_state.was_in_irc_buffer_previously = false;
     g_static_state.was_in_irc_buffer_last_time = false;
 }
@@ -411,7 +410,6 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
             return -1;
         }
         /* Connection in progress, continue */
-        VIZERO_INFO("[IRC] Connection in progress...");
 #else
         if (errno != EINPROGRESS) {
             VIZERO_ERR("[IRC] Connect failed with error: %s", strerror(errno));
@@ -420,7 +418,6 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
             return -1;
         }
         /* Connection in progress, continue */
-        VIZERO_INFO("[IRC] Connection in progress...");
 #endif
     } else {
         VIZERO_INFO("[IRC] Connected immediately");
@@ -457,7 +454,6 @@ static int irc_connect(const char* server, int port, const char* nick, const cha
     /* Send registration only if connected immediately */
     if (conn->connected) {
         char buffer[512];
-    VIZERO_INFO("[IRC] Registering with server...");
         
         snprintf(buffer, sizeof(buffer), "NICK %s", nick);
         irc_send_raw(buffer);
@@ -888,13 +884,12 @@ static void irc_process_incoming(void) {
                 int error = 0;
                 socklen_t len = sizeof(error);
                 if (getsockopt(conn->socket, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == 0 && error == 0) {
-                    VIZERO_INFO("[IRC] Connection established!");
+                    // Connection established - register with server
                     conn->connecting = false;
                     conn->connected = true;
                     
                     /* Send registration */
                     char buffer[512];
-                    VIZERO_INFO("[IRC] Registering with server...");
                     snprintf(buffer, sizeof(buffer), "NICK %s\r\n", conn->nickname);
                     send(conn->socket, buffer, (int)strlen(buffer), 0);
                     snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", conn->username, conn->realname);
@@ -1567,7 +1562,6 @@ static int irc_cmd_connect(vizero_editor_t* editor, const char* args) {
     }
     
     /* Try to force normal mode before starting IRC */
-    printf("[IRC] Attempting to set normal mode before starting IRC...\n");
     
     /* Store editor reference for later use */
     g_irc_state->editor = editor;
@@ -1612,11 +1606,9 @@ static int irc_cmd_connect(vizero_editor_t* editor, const char* args) {
         
         /* Create dedicated IRC buffer using enew with name parameter */
         if (g_irc_state && g_irc_state->api && g_irc_state->api->execute_command) {
-            printf("[IRC] Creating dedicated IRC buffer...\n");
             /* Create new buffer with explicit name */
             int enew_result = g_irc_state->api->execute_command(editor, "enew *IRC*");
             if (enew_result == 0) {
-                printf("[IRC] enew command succeeded, now trying to find IRC buffer...\n");
                 
                 /* Try switching with buffer number instead - check buffers 1, 2, 3 */
                 vizero_buffer_t* irc_buffer_found = NULL;
@@ -2502,10 +2494,8 @@ static int irc_on_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modi
         }
         
         /* For all other keys when IRC is active and in full-window mode, consume them for IRC input */
-        printf("[IRC] IRC active - processing key %d for IRC input\n", key);
         
         /* Handle other IRC-specific keys - regular text input for chat */
-        printf("[IRC] In IRC buffer - processing key %d for IRC input\n", key);
     
     /* === IRC KEY PROCESSING (only runs when in an IRC buffer) === */
     

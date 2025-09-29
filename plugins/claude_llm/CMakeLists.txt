@@ -1,12 +1,12 @@
-# GitHub LLM Plugin CMakeLists.txt
+# Claude LLM Plugin CMakeLists.txt
 
 # Only build if CURL is available
 if(CURL_FOUND)
     # Create the plugin
-    add_library(github_llm SHARED github_llm_plugin.c)
+    add_library(claude_llm SHARED github_llm_plugin.c)
     
     # Set plugin properties
-    set_target_properties(github_llm PROPERTIES
+    set_target_properties(claude_llm PROPERTIES
         PREFIX ""
         SUFFIX ${PLUGIN_EXT}
         LIBRARY_OUTPUT_DIRECTORY ${PLUGIN_OUTPUT_DIRECTORY}
@@ -22,13 +22,13 @@ if(CURL_FOUND)
     )
     
     # Include directories
-    target_include_directories(github_llm PRIVATE
+    target_include_directories(claude_llm PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CURL_INCLUDE_DIRS}
     )
     
     # Link libraries
-    target_link_libraries(github_llm
+    target_link_libraries(claude_llm
         vizero_core
         ${CURL_LIBRARIES}
     )
@@ -37,7 +37,7 @@ if(CURL_FOUND)
     if(WIN32)
         # Copy CURL DLL to plugin directory for runtime
         if(CURL_DLL)
-            add_custom_command(TARGET github_llm POST_BUILD
+            add_custom_command(TARGET claude_llm POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${CURL_DLL}"
                     "${PLUGIN_OUTPUT_DIRECTORY}/"
@@ -46,13 +46,13 @@ if(CURL_FOUND)
         endif()
         
         # Add Windows-specific definitions
-        target_compile_definitions(github_llm PRIVATE
+        target_compile_definitions(claude_llm PRIVATE
             VIZERO_PLUGIN_EXPORT
             CURL_STATICLIB=1
         )
         
         # Link Windows libraries that curl might need
-        target_link_libraries(github_llm
+        target_link_libraries(claude_llm
             ws2_32
             wldap32
             crypt32
@@ -60,20 +60,20 @@ if(CURL_FOUND)
         )
     else()
         # Unix-specific settings
-        target_compile_definitions(github_llm PRIVATE
+        target_compile_definitions(claude_llm PRIVATE
             VIZERO_PLUGIN_EXPORT
         )
     endif()
     
     # Compiler-specific settings
     if(MSVC)
-        target_compile_options(github_llm PRIVATE /W4)
+        target_compile_options(claude_llm PRIVATE /W4)
     else()
-        target_compile_options(github_llm PRIVATE -Wall -Wextra -pedantic)
+        target_compile_options(claude_llm PRIVATE -Wall -Wextra -pedantic)
     endif()
     
-    message(STATUS "GitHub LLM plugin: Enabled with CURL support")
+    message(STATUS "Claude LLM plugin: Enabled with CURL support")
     
 else()
-    message(WARNING "GitHub LLM plugin: Disabled - CURL not found")
+    message(WARNING "Claude LLM plugin: Disabled - CURL not found")
 endif()

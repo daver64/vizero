@@ -18,6 +18,8 @@ quicklisp.lisp
 *.vcxproj.user
 *.sln.docstates
 
+claude-key.txt
+
 # Visual Studio Code
 .vscode/
 #clangd

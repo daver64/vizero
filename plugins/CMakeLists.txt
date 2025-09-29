@@ -104,4 +104,4 @@ add_subdirectory(sql_repl)
 add_subdirectory(clangd)
 
 # GitHub LLM plugin
-add_subdirectory(github_llm)
+add_subdirectory(claude_llm)

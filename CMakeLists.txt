@@ -232,20 +232,42 @@ if(WIN32)
         
         set(CURL_INCLUDE_DIRS ${CURL_ROOT_DIR}/include)
         
-        # Find the curl library (try different names)
+        # Find the curl library (try different names for debug/release/MinGW)
         find_library(CURL_LIBRARIES
-            NAMES curl libcurl curl_static libcurl_static libcurl-d_imp libcurl_imp
+            NAMES 
+                libcurl.dll.a        # MinGW import library
+                libcurl.a            # MinGW static library
+                libcurl_imp          # MSVC Release import library
+                libcurl-d_imp        # MSVC Debug import library  
+                curl                 # Generic static library
+                libcurl              # Alternative name
+                curl_static          # Static release
+                libcurl_static       # Static alternative
             PATHS ${CURL_ROOT_DIR}/lib
             NO_DEFAULT_PATH
         )
+        
+        # If we found MinGW libraries, we need special handling
+        if(CURL_LIBRARIES)
+            get_filename_component(CURL_LIB_NAME ${CURL_LIBRARIES} NAME)
+            if(CURL_LIB_NAME MATCHES "\\.a$")
+                message(STATUS "Found MinGW CURL library: ${CURL_LIBRARIES}")
+                # For MinGW libraries with MSVC, we need to link differently
+                set(CURL_LIBRARIES ${CURL_LIBRARIES})
+            endif()
+        endif()
         
         if(CURL_LIBRARIES)
             message(STATUS "Found CURL library: ${CURL_LIBRARIES}")
             set(CURL_FOUND TRUE)
             
-            # Look for the DLL
+            # Look for the DLL (try different names for debug/release/MinGW)
             find_file(CURL_DLL
-                NAMES curl.dll libcurl.dll libcurl-d.dll
+                NAMES 
+                    libcurl-x64.dll      # MinGW 64-bit DLL
+                    libcurl.dll          # Standard release DLL
+                    libcurl-d.dll        # Debug DLL
+                    curl.dll             # Alternative name
                 PATHS ${CURL_ROOT_DIR}/bin
                 NO_DEFAULT_PATH
             )

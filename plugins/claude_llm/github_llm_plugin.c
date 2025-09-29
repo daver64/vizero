@@ -89,14 +89,26 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb, http_res
     return realsize;
 }
 
-/* Load configuration from environment variables and settings */
+/* Load configuration from claude-key.txt file only */
 static int load_llm_config(void) {
     if (!g_llm_state) return -1;
     
-    /* Try to get API token from environment */
-    const char* token = getenv("GITHUB_TOKEN");
-    if (!token) {
-        token = getenv("OPENAI_API_KEY"); /* Fallback for OpenAI-compatible APIs */
+    /* Load API token from claude-key.txt file only */
+    const char* token = NULL;
+    FILE* key_file = fopen("claude-key.txt", "r");
+    if (key_file) {
+        static char file_token[512];
+        if (fgets(file_token, sizeof(file_token), key_file)) {
+            /* Remove newline if present */
+            char* newline = strchr(file_token, '\n');
+            if (newline) *newline = '\0';
+            /* Remove carriage return if present */
+            char* cr = strchr(file_token, '\r');
+            if (cr) *cr = '\0';
+            token = file_token;
+            printf("[Claude LLM] Found API key in claude-key.txt\n");
+        }
+        fclose(key_file);
     }
     
     if (token) {
@@ -105,7 +117,8 @@ static int load_llm_config(void) {
             return -1;
         }
     } else {
-        printf("[GitHub LLM] Warning: No API token found. Set GITHUB_TOKEN or OPENAI_API_KEY environment variable.\n");
+        printf("[Claude LLM] Error: No API token found in claude-key.txt\n");
+        printf("  Please create claude-key.txt file with your Anthropic API key\n");
         return -1;
     }
     
@@ -123,7 +136,7 @@ static int load_llm_config(void) {
     /* Set default model */
     const char* model = getenv("LLM_MODEL");
     if (!model) {
-        model = "claude-3-5-sonnet-20241022"; /* Default to latest Claude Sonnet */
+        model = "claude-3-haiku-20240307"; /* Claude 3 Haiku model */
     }
     
     g_llm_state->model_name = vizero_safe_strdup(model);
@@ -186,6 +199,15 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
     curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_WRITEDATA, response);
     
+    /* Enable HTTPS/SSL support */
+    curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_TIMEOUT, 30L);
+    
+    /* Add debug info */
+    curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_VERBOSE, 1L);
+    
     /* Set headers for Claude API */
     struct curl_slist* headers = NULL;
     char auth_header[512];
@@ -204,7 +226,8 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
     free(json_payload);
     
     if (res != CURLE_OK) {
-        printf("[Claude LLM] Request failed: %s\n", curl_easy_strerror(res));
+        printf("[Claude LLM] Request failed: %s (Error code: %d)\n", curl_easy_strerror(res), res);
+        printf("[Claude LLM] URL was: %s\n", g_llm_state->endpoint_url);
         if (response->data) {
             vizero_safe_free(response->data);
             response->data = NULL;
@@ -263,34 +286,72 @@ static int handle_llm_test_command(vizero_editor_t* editor, const char* args) {
         }
         return -1;
     }
+
+    /* Try different Claude model names to find one that works */
+    const char* models_to_try[] = {
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-sonnet-20240620",
+        "claude-3-5-sonnet",
+        "claude-3-opus-20240229",
+        "claude-3-sonnet-20240229",
+        "claude-3-haiku-20240307",
+        "claude-instant-1.2",
+        "claude-2.1",
+        "claude-2.0",
+        NULL
+    };
     
-    /* Simple test request */
-    http_response_t response = {0};
-    int result = send_llm_request("Hello, respond with 'LLM is working!'", 
-                                  "You are a helpful assistant.", &response);
+    /* Save original model */
+    char* original_model = g_llm_state->model_name ? vizero_safe_strdup(g_llm_state->model_name) : NULL;
     
-    if (result == 0 && response.data) {
-        char* content = extract_llm_content(response.data);
-        if (content) {
-            char status_msg[256];
-            snprintf(status_msg, sizeof(status_msg), "LLM Response: %.200s", content);
-            if (g_llm_state->api && g_llm_state->api->set_status_message) {
-                g_llm_state->api->set_status_message(editor, status_msg);
-            }
-            vizero_safe_free(content);
-        } else {
-            if (g_llm_state->api && g_llm_state->api->set_status_message) {
-                g_llm_state->api->set_status_message(editor, "Failed to parse LLM response");
-            }
+    for (int i = 0; models_to_try[i]; i++) {
+        printf("[Claude LLM] Trying model: %s\n", models_to_try[i]);
+        
+        /* Update model for this test */
+        if (g_llm_state->model_name) {
+            vizero_safe_free(g_llm_state->model_name);
         }
-        vizero_safe_free(response.data);
-    } else {
-        if (g_llm_state->api && g_llm_state->api->set_status_message) {
-            g_llm_state->api->set_status_message(editor, "LLM request failed");
+        g_llm_state->model_name = vizero_safe_strdup(models_to_try[i]);
+        
+        /* Simple test request */
+        http_response_t response = {0};
+        int result = send_llm_request("Hello, respond with 'LLM is working!'", 
+                                      "You are a helpful assistant.", &response);
+        
+        if (result == 0 && response.data) {
+            char* content = extract_llm_content(response.data);
+            if (content) {
+                char status_msg[256];
+                snprintf(status_msg, sizeof(status_msg), "SUCCESS with %s: %.150s", models_to_try[i], content);
+                if (g_llm_state->api && g_llm_state->api->set_status_message) {
+                    g_llm_state->api->set_status_message(editor, status_msg);
+                }
+                printf("[Claude LLM] SUCCESS! Working model: %s\n", models_to_try[i]);
+                vizero_safe_free(content);
+                vizero_safe_free(response.data);
+                
+                /* Keep the working model */
+                if (original_model) vizero_safe_free(original_model);
+                return 0;
+            }
+            vizero_safe_free(response.data);
         }
+        
+        printf("[Claude LLM] Model %s failed, trying next...\n", models_to_try[i]);
     }
     
-    return 0;
+    /* Restore original model if all failed */
+    if (g_llm_state->model_name) {
+        vizero_safe_free(g_llm_state->model_name);
+    }
+    g_llm_state->model_name = original_model;
+    
+    if (g_llm_state->api && g_llm_state->api->set_status_message) {
+        g_llm_state->api->set_status_message(editor, "All Claude models failed - check API key or account");
+    }
+    printf("[Claude LLM] All models failed. Check your API key and account access.\n");
+    
+    return -1;
 }
 
 /* Plugin commands */
@@ -323,12 +384,30 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     
     /* Initialize curl globally (should be done once per process) */
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
-        printf("[GitHub LLM] Failed to initialize curl globally\n");
+        printf("[Claude LLM] Failed to initialize curl globally\n");
         vizero_safe_free(g_llm_state);
         g_llm_state = NULL;
         return -1;
     }
     g_llm_state->curl_global_init_done = true;
+    
+    /* Check if HTTPS is supported */
+    curl_version_info_data* curl_info = curl_version_info(CURLVERSION_NOW);
+    bool https_supported = false;
+    for (int i = 0; curl_info->protocols[i]; i++) {
+        if (strcmp(curl_info->protocols[i], "https") == 0) {
+            https_supported = true;
+            break;
+        }
+    }
+    
+    if (!https_supported) {
+        printf("[Claude LLM] WARNING: HTTPS not supported by this CURL build!\n");
+        printf("[Claude LLM] SSL version: %s\n", curl_info->ssl_version ? curl_info->ssl_version : "none");
+        printf("[Claude LLM] Cannot connect to Claude API without HTTPS support.\n");
+        printf("[Claude LLM] Please install CURL with SSL/TLS support.\n");
+        return -1;
+    }
     
     /* Create curl handle */
     g_llm_state->curl_handle = curl_easy_init();
