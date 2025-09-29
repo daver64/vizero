@@ -1,6 +1,7 @@
 /* Simple code folding implementation */
 #include "vizero/code_folding.h"
 #include "vizero/buffer.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -9,21 +10,23 @@
 vizero_code_folding_t* vizero_code_folding_create(vizero_buffer_t* buffer) {
     if (!buffer) return NULL;
     
-    vizero_code_folding_t* folding = calloc(1, sizeof(vizero_code_folding_t));
+    vizero_code_folding_t* folding = (vizero_code_folding_t*)vizero_safe_malloc(sizeof(vizero_code_folding_t));
     if (!folding) return NULL;
     
+    memset(folding, 0, sizeof(vizero_code_folding_t));
     folding->buffer = buffer;
     folding->fold_capacity = 50;
-    folding->folds = calloc(folding->fold_capacity, sizeof(vizero_code_fold_t));
+    folding->folds = (vizero_code_fold_t*)vizero_safe_malloc(folding->fold_capacity * sizeof(vizero_code_fold_t));
     
     folding->auto_fold_enabled = false;
     folding->show_fold_markers = true;
     folding->min_fold_lines = 3;
     
     if (!folding->folds) {
-        free(folding);
+        vizero_safe_free(folding);
         return NULL;
     }
+    memset(folding->folds, 0, folding->fold_capacity * sizeof(vizero_code_fold_t));
     
     return folding;
 }
@@ -31,8 +34,8 @@ vizero_code_folding_t* vizero_code_folding_create(vizero_buffer_t* buffer) {
 void vizero_code_folding_destroy(vizero_code_folding_t* folding) {
     if (!folding) return;
     
-    free(folding->folds);
-    free(folding);
+    vizero_safe_free(folding->folds);
+    vizero_safe_free(folding);
 }
 
 int vizero_code_folding_fold_range(vizero_code_folding_t* folding, size_t start_line, size_t end_line) {
@@ -196,7 +199,7 @@ int vizero_code_folding_add_fold(vizero_code_folding_t* folding, size_t start_li
     /* Check if we need to expand the folds array */
     if (folding->fold_count >= folding->fold_capacity) {
         size_t new_capacity = folding->fold_capacity == 0 ? 16 : folding->fold_capacity * 2;
-        vizero_code_fold_t* new_folds = (vizero_code_fold_t*)realloc(folding->folds, new_capacity * sizeof(vizero_code_fold_t));
+        vizero_code_fold_t* new_folds = (vizero_code_fold_t*)vizero_safe_realloc(folding->folds, new_capacity * sizeof(vizero_code_fold_t));
         if (!new_folds) return -1;
         
         folding->folds = new_folds;

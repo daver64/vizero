@@ -51,14 +51,15 @@ static void vizero_editor_update_buffer_mru(vizero_editor_state_t* state, size_t
 static size_t vizero_editor_get_previous_buffer(vizero_editor_state_t* state, size_t avoid_buffer_index);
 
 vizero_editor_state_t* vizero_editor_state_create(void) {
-    vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
+    vizero_editor_state_t* state = (vizero_editor_state_t*)vizero_safe_malloc(sizeof(vizero_editor_state_t));
     if (state) {
+        memset(state, 0, sizeof(vizero_editor_state_t));
         state->mode = VIZERO_MODE_NORMAL;
         
         /* Initialize window manager */
         state->window_manager = vizero_window_manager_create();
         if (!state->window_manager) {
-            free(state);
+            vizero_safe_free(state);
             return NULL;
         }
         
@@ -171,7 +172,10 @@ vizero_editor_state_t* vizero_editor_state_create(void) {
 }
 
 vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_t* settings) {
-    vizero_editor_state_t* state = (vizero_editor_state_t*)calloc(1, sizeof(vizero_editor_state_t));
+    vizero_editor_state_t* state = (vizero_editor_state_t*)vizero_safe_malloc(sizeof(vizero_editor_state_t));
+    if (state) {
+        memset(state, 0, sizeof(vizero_editor_state_t));
+    }
     if (state) {
         state->mode = VIZERO_MODE_NORMAL;
         
@@ -1010,7 +1014,7 @@ void vizero_editor_show_popup(vizero_editor_state_t* state, const char* content,
     }
     
     /* Set new popup */
-    state->popup_content = strdup(content);
+    state->popup_content = vizero_safe_strdup(content);
     state->popup_visible = 1;
     state->popup_start_time = SDL_GetTicks();
     state->popup_duration_ms = duration_ms;
@@ -1715,7 +1719,7 @@ static int vizero_editor_compile_file(vizero_editor_state_t* state, const char* 
     
 
     
-    state->last_compile_output = strdup(full_result);
+    state->last_compile_output = vizero_safe_strdup(full_result);
     
 
     
@@ -1739,7 +1743,7 @@ static int vizero_parse_line_range(vizero_editor_state_t* state, const char* ran
     size_t line_count = vizero_buffer_get_line_count(buffer);
     size_t current_line = vizero_cursor_get_line(cursor) + 1; /* Convert to 1-based */
     
-    char* range_copy = strdup(range_str);
+    char* range_copy = vizero_safe_strdup(range_str);
     char* comma = strchr(range_copy, ',');
     if (!comma) {
         free(range_copy);
@@ -1793,7 +1797,7 @@ static int vizero_execute_line_range_command(vizero_editor_state_t* state, const
     if (!state || !command) return -1;
     
     /* Find the command part (after range) */
-    char* cmd_copy = strdup(command);
+    char* cmd_copy = vizero_safe_strdup(command);
     char* cmd_part = NULL;
     
     /* Find the command at the end of the string */

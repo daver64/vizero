@@ -1,16 +1,20 @@
 /* Line operations implementation */
 #include "vizero/line.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
 vizero_line_t* vizero_line_create(const char* text) {
-    vizero_line_t* line = (vizero_line_t*)calloc(1, sizeof(vizero_line_t));
+    vizero_line_t* line = (vizero_line_t*)vizero_safe_malloc(sizeof(vizero_line_t));
+    if (line) {
+        memset(line, 0, sizeof(vizero_line_t));
+    }
     if (!line) return NULL;
     
     if (text) {
         line->length = strlen(text);
         line->capacity = line->length + 1;
-        line->text = (char*)malloc(line->capacity);
+        line->text = (char*)vizero_safe_malloc(line->capacity);
         if (line->text) {
             strcpy(line->text, text);
         } else {
@@ -20,7 +24,7 @@ vizero_line_t* vizero_line_create(const char* text) {
     } else {
         line->length = 0;
         line->capacity = 1;
-        line->text = (char*)malloc(1);
+        line->text = (char*)vizero_safe_malloc(1);
         if (line->text) {
             line->text[0] = '\0';
         } else {
@@ -35,8 +39,8 @@ vizero_line_t* vizero_line_create(const char* text) {
 
 void vizero_line_destroy(vizero_line_t* line) {
     if (line) {
-        free(line->text);
-        free(line);
+        vizero_safe_free(line->text);
+        vizero_safe_free(line);
     }
 }
 

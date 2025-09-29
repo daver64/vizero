@@ -1,4 +1,5 @@
 #include "vizero/json_parser.h"
+#include "vizero/memory_utils.h"
 #include "third_party/json.hpp"
 #include <cstring>
 #include <cstdlib>
@@ -42,7 +43,7 @@ char* vizero_json_get_string(vizero_json_t* json_obj, const char* field_name) {
         const json& j = *json_obj->data;
         if (j.contains(field_name) && j[field_name].is_string()) {
             std::string str = j[field_name].get<std::string>();
-            char* result = static_cast<char*>(malloc(str.length() + 1));
+            char* result = static_cast<char*>(vizero_safe_malloc(str.length() + 1));
             if (result) {
                 strcpy(result, str.c_str());
             }

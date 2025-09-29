@@ -1,6 +1,7 @@
 /* Complete cursor implementation */
 #include "vizero/cursor.h"
 #include "vizero/buffer.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -12,12 +13,15 @@ struct vizero_cursor_t {
 };
 
 vizero_cursor_t* vizero_cursor_create(vizero_buffer_t* buffer) {
-    vizero_cursor_t* cursor = (vizero_cursor_t*)calloc(1, sizeof(vizero_cursor_t));
+    vizero_cursor_t* cursor = (vizero_cursor_t*)vizero_safe_malloc(sizeof(vizero_cursor_t));
+    if (cursor) {
+        memset(cursor, 0, sizeof(vizero_cursor_t));
+    }
     if (cursor) cursor->buffer = buffer;
     return cursor;
 }
 
-void vizero_cursor_destroy(vizero_cursor_t* cursor) { free(cursor); }
+void vizero_cursor_destroy(vizero_cursor_t* cursor) { vizero_safe_free(cursor); }
 size_t vizero_cursor_get_line(vizero_cursor_t* cursor) { return cursor ? cursor->line : 0; }
 size_t vizero_cursor_get_column(vizero_cursor_t* cursor) { return cursor ? cursor->column : 0; }
 vizero_position_t vizero_cursor_get_position(vizero_cursor_t* cursor) { 

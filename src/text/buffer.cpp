@@ -596,7 +596,7 @@ vizero_result_t vizero_buffer_delete_char(vizero_buffer_t* buffer, size_t line, 
     buffer_push_undo(buffer, UNDO_OP_MODIFY_LINE, line, current_line, NULL, 0);
     
     /* Allocate new line with one less character */
-    char* new_line = (char*)malloc(line_len);
+    char* new_line = (char*)vizero_safe_malloc(line_len);
     if (!new_line) return VIZERO_ERROR_MEMORY;
     
     /* Copy before deletion point */
@@ -629,7 +629,7 @@ int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_
         
         /* Create new line without the deleted range */
         size_t new_len = line_len - (end_col - start_col);
-        char* new_line = (char*)malloc(new_len + 1);
+        char* new_line = (char*)vizero_safe_malloc(new_len + 1);
         if (!new_line) return -1;
         
         /* Copy part before deletion */
@@ -655,7 +655,7 @@ int vizero_buffer_delete_range(vizero_buffer_t* buffer, size_t start_line, size_
     
     if (start_col > start_line_len || end_col > end_line_len) return -1;
     
-    char* new_line = (char*)malloc(start_col + (end_line_len - end_col) + 1);
+    char* new_line = (char*)vizero_safe_malloc(start_col + (end_line_len - end_col) + 1);
     if (!new_line) return -1;
     
     /* Copy start of first line */
@@ -748,7 +748,7 @@ int vizero_buffer_split_line(vizero_buffer_t* buffer, size_t line_num, size_t co
     buffer_push_undo(buffer, UNDO_OP_JOIN_LINES, line_num, current_line, NULL, col);
     
     /* Create first part (up to split point) */
-    char* first_part = (char*)malloc(col + 1);
+    char* first_part = (char*)vizero_safe_malloc(col + 1);
     if (!first_part) return -1;
     strncpy(first_part, current_line, col);
     first_part[col] = '\0';

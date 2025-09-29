@@ -1,5 +1,6 @@
 /* Complete file utilities implementation */
 #include "vizero/file_utils.h"
+#include "vizero/memory_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -43,7 +44,7 @@ char* vizero_file_read_all(const char* filename, size_t* size) {
     }
     
     /* Allocate buffer */
-    char* buffer = (char*)malloc(file_size + 1);
+    char* buffer = (char*)vizero_safe_malloc(file_size + 1);
     if (!buffer) {
         fclose(file);
         if (size) *size = 0;
