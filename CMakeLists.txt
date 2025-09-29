@@ -223,6 +223,56 @@ endif()
 # OpenGL
 find_package(OpenGL REQUIRED)
 
+# CURL Configuration
+if(WIN32)
+    # Windows CURL configuration
+    if(DEFINED ENV{CURL_ROOT})
+        set(CURL_ROOT_DIR $ENV{CURL_ROOT})
+        message(STATUS "CURL_ROOT: ${CURL_ROOT_DIR}")
+        
+        set(CURL_INCLUDE_DIRS ${CURL_ROOT_DIR}/include)
+        
+        # Find the curl library (try different names)
+        find_library(CURL_LIBRARIES
+            NAMES curl libcurl curl_static libcurl_static libcurl-d_imp libcurl_imp
+            PATHS ${CURL_ROOT_DIR}/lib
+            NO_DEFAULT_PATH
+        )
+        
+        if(CURL_LIBRARIES)
+            message(STATUS "Found CURL library: ${CURL_LIBRARIES}")
+            set(CURL_FOUND TRUE)
+            
+            # Look for the DLL
+            find_file(CURL_DLL
+                NAMES curl.dll libcurl.dll libcurl-d.dll
+                PATHS ${CURL_ROOT_DIR}/bin
+                NO_DEFAULT_PATH
+            )
+            
+            if(CURL_DLL)
+                message(STATUS "Found CURL DLL: ${CURL_DLL}")
+            endif()
+        else()
+            message(WARNING "Could not find CURL library in ${CURL_ROOT_DIR}/lib")
+            set(CURL_FOUND FALSE)
+        endif()
+    else()
+        message(STATUS "CURL_ROOT environment variable not set - CURL support disabled")
+        set(CURL_FOUND FALSE)
+    endif()
+else()
+    # Unix CURL configuration - use pkg-config
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(CURL libcurl)
+        if(CURL_FOUND)
+            message(STATUS "Found CURL via pkg-config")
+        endif()
+    else()
+        find_package(CURL)
+    endif()
+endif()
+
 # Platform-specific libraries
 if(WIN32)
     set(PLATFORM_LIBS)
