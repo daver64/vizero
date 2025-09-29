@@ -822,6 +822,56 @@ void vizero_buffer_get_stats(vizero_buffer_t* buffer, vizero_buffer_stats_t* sta
 
 /** @} */ // end of buffer_statistics group
 
+/**
+ * @defgroup buffer_callbacks Buffer Change Callbacks
+ * @brief Functions for registering callbacks for buffer modifications
+ * @{
+ */
+
+/**
+ * @brief Buffer change callback function types
+ */
+typedef void (*vizero_buffer_lines_inserted_callback_t)(void* user_data, size_t line, size_t count);
+typedef void (*vizero_buffer_lines_deleted_callback_t)(void* user_data, size_t line, size_t count);
+typedef void (*vizero_buffer_text_changed_callback_t)(void* user_data, size_t line, size_t start_col, size_t end_col);
+typedef void (*vizero_buffer_cleared_callback_t)(void* user_data);
+
+/**
+ * @brief Buffer callback structure
+ */
+typedef struct {
+    vizero_buffer_lines_inserted_callback_t on_lines_inserted;
+    vizero_buffer_lines_deleted_callback_t on_lines_deleted;
+    vizero_buffer_text_changed_callback_t on_text_changed;
+    vizero_buffer_cleared_callback_t on_buffer_cleared;
+    void* user_data;
+} vizero_buffer_callbacks_t;
+
+/**
+ * @brief Register callbacks for buffer change notifications
+ * 
+ * @param buffer Buffer to register callbacks with (must not be NULL)
+ * @param callbacks Callback structure (must not be NULL)
+ * @return Registration ID for later unregistration, or -1 on error
+ */
+int vizero_buffer_register_callbacks(vizero_buffer_t* buffer, const vizero_buffer_callbacks_t* callbacks);
+
+/**
+ * @brief Unregister buffer change callbacks
+ * 
+ * @param buffer Buffer to unregister from (must not be NULL)
+ * @param registration_id ID returned from vizero_buffer_register_callbacks
+ * @return 0 on success, -1 on error
+ */
+int vizero_buffer_unregister_callbacks(vizero_buffer_t* buffer, int registration_id);
+
+/* Internal notification functions - used by buffer implementation */
+void notify_lines_inserted(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
+void notify_lines_deleted(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
+void notify_lines_changed(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
+
+/** @} */ // end of buffer_callbacks group
+
 /** @} */ // end of buffer_api group
 
 #ifdef __cplusplus

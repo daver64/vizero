@@ -414,3 +414,108 @@ void vizero_code_folding_set_fold_imports(vizero_code_folding_t* folding, bool e
         }
     }
 }
+
+/* Buffer change notification integration */
+
+static int g_folding_callback_registration = -1;
+
+void vizero_code_folding_register_with_buffer(vizero_code_folding_t* folding, vizero_buffer_t* buffer) {
+    if (!folding || !buffer) return;
+    
+    vizero_buffer_callbacks_t callbacks = {
+        .on_lines_inserted = (vizero_buffer_lines_inserted_callback_t)vizero_code_folding_on_lines_inserted,
+        .on_lines_deleted = (vizero_buffer_lines_deleted_callback_t)vizero_code_folding_on_lines_deleted,
+        .on_text_changed = (vizero_buffer_text_changed_callback_t)vizero_code_folding_on_text_changed,
+        .on_buffer_cleared = (vizero_buffer_cleared_callback_t)vizero_code_folding_on_buffer_cleared,
+        .user_data = folding
+    };
+    
+    g_folding_callback_registration = vizero_buffer_register_callbacks(buffer, &callbacks);
+}
+
+void vizero_code_folding_unregister_from_buffer(vizero_code_folding_t* folding, vizero_buffer_t* buffer) {
+    if (!folding || !buffer || g_folding_callback_registration == -1) return;
+    
+    vizero_buffer_unregister_callbacks(buffer, g_folding_callback_registration);
+    g_folding_callback_registration = -1;
+}
+
+/* Buffer change notification handlers */
+
+void vizero_code_folding_on_lines_inserted(vizero_code_folding_t* folding, size_t line, size_t count) {
+    if (!folding) return;
+    
+    /* Adjust all folds that start after the insertion point */
+    for (size_t i = 0; i < folding->fold_count; i++) {
+        if (folding->folds[i].start_line >= line) {
+            folding->folds[i].start_line += count;
+            folding->folds[i].end_line += count;
+        } else if (folding->folds[i].end_line >= line) {
+            /* Fold encompasses the insertion point - extend the fold */
+            folding->folds[i].end_line += count;
+        }
+    }
+    
+    /* Re-analyze if auto-folding is enabled */
+    if (folding->auto_fold_enabled) {
+        vizero_code_folding_analyze_buffer(folding);
+    }
+}
+
+void vizero_code_folding_on_lines_deleted(vizero_code_folding_t* folding, size_t line, size_t count) {
+    if (!folding) return;
+    
+    /* Remove or adjust folds affected by deletion */
+    for (size_t i = 0; i < folding->fold_count; ) {
+        vizero_code_fold_t* fold = &folding->folds[i];
+        
+        if (fold->start_line >= line + count) {
+            /* Fold is after deletion - shift up */
+            fold->start_line -= count;
+            fold->end_line -= count;
+            i++;
+        } else if (fold->end_line < line) {
+            /* Fold is before deletion - no change */
+            i++;
+        } else {
+            /* Fold is affected by deletion - remove it */
+            /* Shift remaining folds down */
+            for (size_t j = i; j < folding->fold_count - 1; j++) {
+                folding->folds[j] = folding->folds[j + 1];
+            }
+            folding->fold_count--;
+            /* Don't increment i - check the fold that shifted into this position */
+        }
+    }
+    
+    /* Re-analyze if auto-folding is enabled */
+    if (folding->auto_fold_enabled) {
+        vizero_code_folding_analyze_buffer(folding);
+    }
+}
+
+void vizero_code_folding_on_text_changed(vizero_code_folding_t* folding, size_t line, size_t start_col, size_t end_col) {
+    if (!folding) return;
+    
+    /* Check if any folds are affected by this text change */
+    bool needs_reanalysis = false;
+    
+    for (size_t i = 0; i < folding->fold_count; i++) {
+        if (line >= folding->folds[i].start_line && line <= folding->folds[i].end_line) {
+            needs_reanalysis = true;
+            break;
+        }
+    }
+    
+    /* Re-analyze if necessary and auto-folding is enabled */
+    if (needs_reanalysis && folding->auto_fold_enabled) {
+        vizero_code_folding_analyze_buffer(folding);
+    }
+}
+
+void vizero_code_folding_on_buffer_cleared(vizero_code_folding_t* folding) {
+    if (!folding) return;
+    
+    /* Clear all folds */
+    folding->fold_count = 0;
+}

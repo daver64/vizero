@@ -24,6 +24,29 @@
 #include <ctype.h>
 #include <vector>
 #include <string>
+
+/* Helper function to register code folding callbacks with a buffer */
+static void code_folding_lines_inserted_wrapper(void* user_data, size_t line, size_t count) {
+    vizero_code_folding_on_lines_inserted((vizero_code_folding_t*)user_data, line, count);
+}
+
+static void code_folding_lines_deleted_wrapper(void* user_data, size_t line, size_t count) {
+    vizero_code_folding_on_lines_deleted((vizero_code_folding_t*)user_data, line, count);
+}
+
+static void register_code_folding_callbacks(vizero_buffer_t* buffer, vizero_code_folding_t* code_folding) {
+    if (!buffer || !code_folding) return;
+    
+    vizero_buffer_callbacks_t callbacks = {0};
+    callbacks.user_data = code_folding;
+    callbacks.on_lines_inserted = code_folding_lines_inserted_wrapper;
+    callbacks.on_lines_deleted = code_folding_lines_deleted_wrapper;
+    
+    int callback_id = vizero_buffer_register_callbacks(buffer, &callbacks);
+    if (callback_id < 0) {
+        fprintf(stderr, "Warning: Failed to register code folding buffer callbacks\n");
+    }
+}
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -288,6 +311,9 @@ vizero_editor_state_t* vizero_editor_state_create_with_settings(vizero_settings_
             state->code_folding = vizero_code_folding_create(state->buffers[0]);
             if (!state->code_folding) {
                 fprintf(stderr, "Warning: Failed to initialize code folding\n");
+            } else {
+                /* Register code folding callbacks for buffer change notifications */
+                register_code_folding_callbacks(state->buffers[0], state->code_folding);
             }
             if (vizero_editor_create_window_for_buffer(state, state->buffers[0], 100, 100) != 0) {
                 /* Cleanup on failure */
@@ -523,6 +549,11 @@ int vizero_editor_open_buffer(vizero_editor_state_t* state, const char* filename
             state->buffers[0] = buffer;
             state->cursors[0] = cursor;
             state->current_buffer_index = 0;
+            
+            /* Register code folding callbacks for the new buffer */
+            if (state->code_folding) {
+                register_code_folding_callbacks(buffer, state->code_folding);
+            }
             
             /* With new architecture: windows already point to buffer index 0, 
                and we've updated state->buffers[0] and state->cursors[0] above,
@@ -933,6 +964,11 @@ int vizero_editor_create_new_buffer(vizero_editor_state_t* state, const char* na
     state->cursors[state->buffer_count] = cursor;
     state->current_buffer_index = state->buffer_count;
     state->buffer_count++;
+    
+    /* Register code folding callbacks for the new buffer */
+    if (state->code_folding) {
+        register_code_folding_callbacks(buffer, state->code_folding);
+    }
     
     /* Update MRU tracking for the new buffer */
     vizero_editor_update_buffer_mru(state, state->current_buffer_index);

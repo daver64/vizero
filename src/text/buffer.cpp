@@ -709,6 +709,10 @@ vizero_result_t vizero_buffer_insert_line(vizero_buffer_t* buffer, size_t line_n
     
     buffer->line_count++;
     buffer->modified = 1;
+    
+    /* Notify callbacks of line insertion */
+    notify_lines_inserted(buffer, line_num, 1);
+    
     return VIZERO_SUCCESS;
 }
 
@@ -732,6 +736,10 @@ vizero_result_t vizero_buffer_delete_line(vizero_buffer_t* buffer, size_t line_n
     
     buffer->line_count--;
     buffer->modified = 1;
+    
+    /* Notify callbacks of line deletion */
+    notify_lines_deleted(buffer, line_num, 1);
+    
     return VIZERO_SUCCESS;
 }
 
@@ -1266,4 +1274,78 @@ int vizero_buffer_check_file_changed(vizero_buffer_t* buffer) {
 
 void vizero_buffer_set_last_disk_mtime(vizero_buffer_t* buffer, uint64_t mtime) {
     if (buffer) buffer->last_disk_mtime = mtime;
+}
+
+/* Buffer callback system implementation */
+
+#define MAX_BUFFER_CALLBACKS 8
+
+typedef struct {
+    vizero_buffer_callbacks_t callbacks;
+    int active;
+} buffer_callback_entry_t;
+
+static buffer_callback_entry_t g_buffer_callbacks[MAX_BUFFER_CALLBACKS];
+static int g_next_callback_id = 1;
+
+int vizero_buffer_register_callbacks(vizero_buffer_t* buffer, const vizero_buffer_callbacks_t* callbacks) {
+    if (!buffer || !callbacks) return -1;
+    
+    /* Find an empty slot */
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (!g_buffer_callbacks[i].active) {
+            g_buffer_callbacks[i].callbacks = *callbacks;
+            g_buffer_callbacks[i].active = 1;
+            return g_next_callback_id++;
+        }
+    }
+    
+    return -1; /* No slots available */
+}
+
+int vizero_buffer_unregister_callbacks(vizero_buffer_t* buffer, int registration_id) {
+    if (!buffer || registration_id <= 0) return -1;
+    
+    /* Find and deactivate the callback */
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (g_buffer_callbacks[i].active) {
+            g_buffer_callbacks[i].active = 0;
+            return 0;
+        }
+    }
+    
+    return -1;
+}
+
+/* Helper function to notify all registered callbacks */
+static void notify_lines_inserted(vizero_buffer_t* buffer, size_t line, size_t count) {
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_lines_inserted) {
+            g_buffer_callbacks[i].callbacks.on_lines_inserted(g_buffer_callbacks[i].callbacks.user_data, line, count);
+        }
+    }
+}
+
+static void notify_lines_deleted(vizero_buffer_t* buffer, size_t line, size_t count) {
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_lines_deleted) {
+            g_buffer_callbacks[i].callbacks.on_lines_deleted(g_buffer_callbacks[i].callbacks.user_data, line, count);
+        }
+    }
+}
+
+static void notify_text_changed(vizero_buffer_t* buffer, size_t line, size_t start_col, size_t end_col) {
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_text_changed) {
+            g_buffer_callbacks[i].callbacks.on_text_changed(g_buffer_callbacks[i].callbacks.user_data, line, start_col, end_col);
+        }
+    }
+}
+
+static void notify_buffer_cleared(vizero_buffer_t* buffer) {
+    for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
+        if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_buffer_cleared) {
+            g_buffer_callbacks[i].callbacks.on_buffer_cleared(g_buffer_callbacks[i].callbacks.user_data);
+        }
+    }
 }

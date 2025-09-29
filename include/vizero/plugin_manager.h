@@ -122,6 +122,13 @@ int vizero_plugin_manager_check_completion_results(
 int vizero_plugin_manager_wants_full_window(vizero_plugin_manager_t* manager);
 int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, vizero_renderer_t* renderer, int width, int height);
 
+/* Code folding integration */
+int vizero_plugin_manager_analyze_folds(vizero_plugin_manager_t* manager, const char* content, size_t content_length,
+                                        vizero_syntax_token_t* tokens, size_t token_count,
+                                        vizero_code_fold_t* folds, size_t max_folds, size_t* fold_count);
+int vizero_plugin_manager_should_fold_range(vizero_plugin_manager_t* manager, const char* content, size_t start_line, size_t end_line);
+int vizero_plugin_manager_get_fold_rules(vizero_plugin_manager_t* manager, vizero_language_fold_rule_t* rules, size_t max_rules, size_t* rule_count);
+
 #ifdef __cplusplus
 }
 #endif

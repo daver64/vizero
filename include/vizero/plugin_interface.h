@@ -20,6 +20,7 @@
 #define VIZERO_PLUGIN_INTERFACE_H
 
 #include "vizero/version.h"
+#include "vizero/code_folding.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -341,6 +342,39 @@ typedef struct {
 } vizero_syntax_token_t;
 
 /** @} */ // end of syntax_highlighting group
+
+/**
+ * @defgroup code_folding Code Folding Support
+ * @brief Structures and definitions for code folding plugins
+ * @{
+ */
+
+/**
+ * @brief Language-specific fold rule definition
+ * 
+ * Defines patterns that should be automatically folded for a specific
+ * language. Used by plugins to provide language-aware folding.
+ * 
+ * @since 1.0.0
+ */
+typedef struct {
+    /** @brief Type of fold this rule creates */
+    vizero_fold_type_t type;
+    
+    /** @brief Pattern to match at start of fold (e.g., "{", "function") */
+    const char* start_pattern;
+    
+    /** @brief Pattern to match at end of fold (e.g., "}", "end") */
+    const char* end_pattern;
+    
+    /** @brief Whether to fold only the inner content (exclude start/end lines) */
+    bool fold_inner_only;
+    
+    /** @brief Minimum number of lines required to create a fold */
+    size_t min_lines;
+} vizero_language_fold_rule_t;
+
+/** @} */ // end of code_folding group
 
 /**
  * @defgroup lsp_integration Language Server Protocol Integration
@@ -911,6 +945,25 @@ typedef struct {
     int (*wants_full_window)(vizero_editor_t* editor);
     
     /** @} */ // end of ui_callbacks group
+    
+    /**
+     * @defgroup folding_callbacks Code Folding Integration
+     * @brief Callbacks for plugins that provide custom folding logic
+     * @{
+     */
+    
+    /** @brief Analyze buffer content for foldable regions */
+    int (*analyze_folds)(const char* content, size_t content_length,
+                        vizero_syntax_token_t* tokens, size_t token_count,
+                        vizero_code_fold_t* folds, size_t max_folds, size_t* fold_count);
+    
+    /** @brief Check if a specific range should be foldable */
+    int (*should_fold_range)(const char* content, size_t start_line, size_t end_line);
+    
+    /** @brief Get language-specific fold rules */
+    int (*get_fold_rules)(vizero_language_fold_rule_t* rules, size_t max_rules, size_t* rule_count);
+    
+    /** @} */ // end of folding_callbacks group
 } vizero_plugin_callbacks_t;
 
 /** @} */ // end of plugin_callbacks group

@@ -12,6 +12,16 @@ extern "C" {
 typedef struct vizero_buffer_t vizero_buffer_t;
 typedef struct vizero_editor_state_t vizero_editor_state_t;
 
+/* Buffer change notification callbacks for code folding */
+typedef struct vizero_code_folding_t vizero_code_folding_t;
+
+typedef struct {
+    void (*on_lines_inserted)(vizero_code_folding_t* folding, size_t line, size_t count);
+    void (*on_lines_deleted)(vizero_code_folding_t* folding, size_t line, size_t count);
+    void (*on_text_changed)(vizero_code_folding_t* folding, size_t line, size_t start_col, size_t end_col);
+    void (*on_buffer_cleared)(vizero_code_folding_t* folding);
+} vizero_folding_callbacks_t;
+
 /* Fold types */
 typedef enum {
     VIZERO_FOLD_MANUAL,         /* Manually created fold */
@@ -94,6 +104,16 @@ void vizero_code_folding_set_fold_functions(vizero_code_folding_t* folding, bool
 void vizero_code_folding_set_fold_classes(vizero_code_folding_t* folding, bool enabled);
 void vizero_code_folding_set_fold_comments(vizero_code_folding_t* folding, bool enabled);
 void vizero_code_folding_set_fold_imports(vizero_code_folding_t* folding, bool enabled);
+
+/* Buffer change notification integration */
+void vizero_code_folding_register_with_buffer(vizero_code_folding_t* folding, vizero_buffer_t* buffer);
+void vizero_code_folding_unregister_from_buffer(vizero_code_folding_t* folding, vizero_buffer_t* buffer);
+
+/* Buffer change notification handlers (called by buffer) */
+void vizero_code_folding_on_lines_inserted(vizero_code_folding_t* folding, size_t line, size_t count);
+void vizero_code_folding_on_lines_deleted(vizero_code_folding_t* folding, size_t line, size_t count);
+void vizero_code_folding_on_text_changed(vizero_code_folding_t* folding, size_t line, size_t start_col, size_t end_col);
+void vizero_code_folding_on_buffer_cleared(vizero_code_folding_t* folding);
 
 #ifdef __cplusplus
 }

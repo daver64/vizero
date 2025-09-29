@@ -1026,5 +1026,77 @@ int vizero_plugin_manager_render_full_window(vizero_plugin_manager_t* manager, v
 }
 
 
+/* Code folding plugin integration */
 
+int vizero_plugin_manager_analyze_folds(vizero_plugin_manager_t* manager, const char* content, size_t content_length,
+                                        vizero_syntax_token_t* tokens, size_t token_count,
+                                        vizero_code_fold_t* folds, size_t max_folds, size_t* fold_count) {
+    if (!manager || !content || !folds || !fold_count) {
+        return -1;
+    }
+    
+    *fold_count = 0;
+    
+    /* Find plugins that can analyze folds */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.analyze_folds) {
+            size_t plugin_fold_count = 0;
+            int result = plugin->callbacks.analyze_folds(content, content_length, tokens, token_count,
+                                                        folds + *fold_count, max_folds - *fold_count, &plugin_fold_count);
+            if (result == 0) {
+                *fold_count += plugin_fold_count;
+                if (*fold_count >= max_folds) {
+                    break; /* No more space for folds */
+                }
+            }
+        }
+    }
+    
+    return *fold_count > 0 ? 0 : -1;
+}
+
+int vizero_plugin_manager_should_fold_range(vizero_plugin_manager_t* manager, const char* content, size_t start_line, size_t end_line) {
+    if (!manager || !content) {
+        return 0;
+    }
+    
+    /* Check with all plugins that can determine foldability */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.should_fold_range) {
+            int result = plugin->callbacks.should_fold_range(content, start_line, end_line);
+            if (result > 0) {
+                return 1; /* At least one plugin says it should be folded */
+            }
+        }
+    }
+    
+    return 0;
+}
+
+int vizero_plugin_manager_get_fold_rules(vizero_plugin_manager_t* manager, vizero_language_fold_rule_t* rules, size_t max_rules, size_t* rule_count) {
+    if (!manager || !rules || !rule_count) {
+        return -1;
+    }
+    
+    *rule_count = 0;
+    
+    /* Collect fold rules from all plugins */
+    for (size_t i = 0; i < manager->plugin_count; i++) {
+        vizero_plugin_t* plugin = manager->plugins[i];
+        if (plugin && plugin->callbacks.get_fold_rules) {
+            size_t plugin_rule_count = 0;
+            int result = plugin->callbacks.get_fold_rules(rules + *rule_count, max_rules - *rule_count, &plugin_rule_count);
+            if (result == 0) {
+                *rule_count += plugin_rule_count;
+                if (*rule_count >= max_rules) {
+                    break; /* No more space for rules */
+                }
+            }
+        }
+    }
+    
+    return *rule_count > 0 ? 0 : -1;
+}
 
