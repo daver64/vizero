@@ -856,6 +856,8 @@ typedef struct {
  */
 int vizero_buffer_register_callbacks(vizero_buffer_t* buffer, const vizero_buffer_callbacks_t* callbacks);
 
+
+
 /**
  * @brief Unregister buffer change callbacks
  * 
@@ -866,8 +868,6 @@ int vizero_buffer_register_callbacks(vizero_buffer_t* buffer, const vizero_buffe
 int vizero_buffer_unregister_callbacks(vizero_buffer_t* buffer, int registration_id);
 
 /* Internal notification functions - used by buffer implementation */
-void notify_lines_inserted(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
-void notify_lines_deleted(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
 void notify_lines_changed(vizero_buffer_t* buffer, size_t start_line, size_t line_count);
 
 /** @} */ // end of buffer_callbacks group

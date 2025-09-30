@@ -13,6 +13,10 @@
 #define strdup _strdup
 #endif
 
+/* Forward declarations for static helper functions */
+static void notify_lines_inserted(vizero_buffer_t* buffer, size_t line, size_t count);
+static void notify_lines_deleted(vizero_buffer_t* buffer, size_t line, size_t count);
+
 /* Undo/Redo operation types */
 typedef enum {
     UNDO_OP_INSERT_LINE,
