@@ -277,11 +277,44 @@ if(WIN32)
             endif()
         else()
             message(WARNING "Could not find CURL library in ${CURL_ROOT_DIR}/lib")
-            set(CURL_FOUND FALSE)
+            message(STATUS "Trying find_package(CURL) as fallback...")
+            # Try standard CMake find_package as fallback (for vcpkg installs)
+            find_package(CURL)
+            if(CURL_FOUND)
+                message(STATUS "Found CURL via find_package")
+            else()
+                message(STATUS "CURL not found via find_package either")
+                # Last resort: check if we have CURL DLLs in plugins directory
+                message(STATUS "Checking for CURL DLLs in plugins directory...")
+                find_file(CURL_DLL_PLUGINS
+                    NAMES libcurl.dll libcurl-d.dll
+                    PATHS ${CMAKE_SOURCE_DIR}/plugins
+                    NO_DEFAULT_PATH
+                )
+                if(CURL_DLL_PLUGINS)
+                    message(STATUS "Found CURL DLL in plugins: ${CURL_DLL_PLUGINS}")
+                    # Create a minimal CURL configuration using the existing DLL
+                    set(CURL_FOUND TRUE)
+                    set(CURL_DLL ${CURL_DLL_PLUGINS})
+                    set(CURL_INCLUDE_DIRS "")  # Will need to download headers separately
+                    set(CURL_LIBRARIES "")     # Will link dynamically at runtime
+                    message(STATUS "Using existing CURL DLL - note: headers may be missing")
+                else()
+                    message(STATUS "CURL support disabled - no libraries found")
+                    set(CURL_FOUND FALSE)
+                endif()
+            endif()
         endif()
     else()
-        message(STATUS "CURL_ROOT environment variable not set - CURL support disabled")
-        set(CURL_FOUND FALSE)
+        message(STATUS "CURL_ROOT environment variable not set - trying find_package(CURL)")
+        # Try standard CMake find_package as fallback (for vcpkg installs)
+        find_package(CURL)
+        if(CURL_FOUND)
+            message(STATUS "Found CURL via find_package")
+        else()
+            message(STATUS "CURL not found via find_package either - CURL support disabled")
+            set(CURL_FOUND FALSE)
+        endif()
     endif()
 else()
     # Unix CURL configuration - use pkg-config
