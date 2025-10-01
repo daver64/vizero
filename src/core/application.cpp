@@ -832,17 +832,42 @@ int vizero_application_run(vizero_application_t *app)
 
         /* Process input events */
         int input_requires_render = vizero_input_manager_process_events(app->input);
-
+        
+        /* Track additional events that require rendering */
+        int lsp_requires_render = 0;
+        int file_changes_require_render = 0;
+        int animations_require_render = 0;
+        
+        /* Check for cursor blink animation (status bar command mode) */
+        static uint32_t last_blink_state = 0;
+        uint32_t current_ticks = SDL_GetTicks();
+        uint32_t current_blink_state = (current_ticks / 500) % 2; /* Matches status bar blink timing */
+        if (current_blink_state != last_blink_state) {
+            last_blink_state = current_blink_state;
+            /* Check if we're in command mode (where cursor blink is visible) */
+            if (app->editor && vizero_editor_get_mode(app->editor) == VIZERO_MODE_COMMAND) {
+                animations_require_render = 1; /* Cursor blink animation requires rendering */
+            }
+        }
+        
+        /* Check for popup timeout animations */
+        if (app->editor && vizero_editor_is_popup_visible(app->editor)) {
+            uint32_t popup_duration = vizero_editor_get_popup_duration(app->editor);
+            if (popup_duration > 0) {
+                /* Popup has a timeout - we need to check if it should disappear */
+                animations_require_render = 1; /* Popup timeout requires periodic rendering */
+            }
+        }
+        
         /* TODO: In the future, we could optimize by only rendering when needed:
-         * if (!input_requires_render && !lsp_requires_render && !file_changes && !animations) {
+         * if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render) {
          *     SDL_Delay(16);
          *     continue;
          * }
          */
         
-        /* Simple optimization: skip rendering if no input requires it */
-        /* TODO: Add tracking for lsp_updates, file_changes, animations */
-        if (!input_requires_render) {
+        /* Advanced optimization: skip rendering if nothing requires it */
+        if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render) {
             SDL_Delay(16); // Sleep and skip rendering this frame
             static bool first_frame=true;
             if(first_frame) {
@@ -851,12 +876,10 @@ int vizero_application_run(vizero_application_t *app)
             } else {
                 continue;
             }
-        }
-        
-        /* Process LSP messages from plugins */
+        }        /* Process LSP messages from plugins */
         if (app->plugin_manager)
         {
-            vizero_plugin_manager_process_lsp_messages(app->plugin_manager);
+            lsp_requires_render = vizero_plugin_manager_process_lsp_messages(app->plugin_manager);
         }
 
         /* Diagnostic updates are now event-driven only (on text changes, file save, etc.) */
@@ -1139,6 +1162,7 @@ int vizero_application_run(vizero_application_t *app)
                         uint64_t last_mtime = vizero_buffer_get_last_disk_mtime(buf);
                         if (disk_mtime && disk_mtime != last_mtime)
                         {
+                            file_changes_require_render = 1; /* File change detected */
                             if (!vizero_buffer_is_modified(buf))
                             {
                                 /* Safe reload: only if buffer is clean */

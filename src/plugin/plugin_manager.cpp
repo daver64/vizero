@@ -788,10 +788,12 @@ void vizero_plugin_manager_show_diagnostic_popup(
 }
 
 /* Process LSP messages in background (non-blocking) */
-void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager) {
+int vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager) {
     if (!manager) {
-        return;
+        return 0;
     }
+    
+    int lsp_updates_occurred = 0;
     
     /* Process LSP messages for all plugins that have LSP clients */
     for (size_t i = 0; i < manager->plugin_count; i++) {
@@ -804,11 +806,16 @@ void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager
                 process_lsp_messages_func_t process_func = 
                     (process_lsp_messages_func_t)PLUGIN_GET_PROC(plugin->dll_handle, "clangd_process_lsp_messages");
                 if (process_func) {
-                    process_func();
+                    int plugin_result = process_func();
+                    if (plugin_result > 0) {
+                        lsp_updates_occurred = 1; /* LSP plugin reported visual updates */
+                    }
                 }
             }
         }
     }
+    
+    return lsp_updates_occurred;
 }
 
 /* Check for pending LSP completion results */

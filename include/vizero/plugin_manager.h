@@ -111,7 +111,8 @@ void vizero_plugin_manager_show_diagnostic_popup(
     vizero_buffer_t* buffer);
 
 /* Process LSP messages for all plugins (non-blocking) */
-void vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager);
+/* Returns 1 if LSP updates require re-rendering, 0 otherwise */
+int vizero_plugin_manager_process_lsp_messages(vizero_plugin_manager_t* manager);
 
 /* Check for pending LSP completion results */
 int vizero_plugin_manager_check_completion_results(
