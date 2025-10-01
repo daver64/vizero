@@ -1,7 +1,7 @@
 # Vizero Editor Manual
 
 
-**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring hardware-accelerated rendering, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, advanced editing features including multiple cursors and block selection, intelligent code folding and indentation, command palette, and comprehensive plugin architecture. **Version 0.0.5** represents the completion of Phase 4: Advanced Features & Polish.
+**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring **Claude LLM integration for AI-powered development**, event-driven rendering with 90% CPU reduction, hardware-accelerated graphics, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, advanced editing features including multiple cursors and block selection, intelligent code folding and indentation, command palette, and comprehensive plugin architecture. **Version 0.0.5** represents the completion of Phase 4: Advanced Features & Polish with Claude AI integration and performance optimization.
 
 ---
 
@@ -10,28 +10,29 @@
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Editor Modes](#editor-modes)
-3. [Basic Navigation](#basic-navigation)
-4. [Text Editing](#text-editing)
-5. [Search and Replace](#search-and-replace)
-6. [Selection and Clipboard](#selection-and-clipboard)
-7. [Multiple Cursors](#multiple-cursors)
-8. [Block Selection](#block-selection)
-9. [Code Folding](#code-folding)
-10. [Smart Indentation](#smart-indentation)
-11. [Command Palette](#command-palette)
-12. [Undo System](#undo-system)
-13. [Buffer Management](#buffer-management)
-14. [File Operations](#file-operations)
-15. [Window Management](#window-management)
-16. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
-17. [IRC Client Integration](#irc-client-integration)
-18. [SQL REPL Integration](#sql-repl-integration)
-19. [Compiler Integration](#compiler-integration)
-20. [Settings and Configuration](#settings-and-configuration)
-21. [Advanced Features](#advanced-features)
-22. [Working Directory](#working-directory)
-23. [Keyboard Reference](#keyboard-reference)
+2. [Claude LLM Integration](#claude-llm-integration)
+3. [Editor Modes](#editor-modes)
+4. [Basic Navigation](#basic-navigation)
+5. [Text Editing](#text-editing)
+6. [Search and Replace](#search-and-replace)
+7. [Selection and Clipboard](#selection-and-clipboard)
+8. [Multiple Cursors](#multiple-cursors)
+9. [Block Selection](#block-selection)
+10. [Code Folding](#code-folding)
+11. [Smart Indentation](#smart-indentation)
+12. [Command Palette](#command-palette)
+13. [Undo System](#undo-system)
+14. [Buffer Management](#buffer-management)
+15. [File Operations](#file-operations)
+16. [Window Management](#window-management)
+17. [Language Server Protocol (LSP)](#language-server-protocol-lsp)
+18. [IRC Client Integration](#irc-client-integration)
+19. [SQL REPL Integration](#sql-repl-integration)
+20. [Compiler Integration](#compiler-integration)
+21. [Settings and Configuration](#settings-and-configuration)
+22. [Advanced Features](#advanced-features)
+23. [Working Directory](#working-directory)
+24. [Keyboard Reference](#keyboard-reference)
 ## Working Directory
 
 ### Changing the Working Directory
@@ -64,6 +65,53 @@ On success, a status message will confirm the new directory. On failure, an erro
 3. Press `Esc` to return to **Normal Mode**
 4. Press `:` to enter **Command Mode** for file operations
 5. Use `:w` to save, `:q` to quit
+
+---
+
+## Claude LLM Integration
+
+### Overview
+Vizero features built-in integration with Claude Haiku for AI-powered development assistance. This allows you to leverage AI for code review, debugging, explanation, and interactive programming help directly within your editor.
+
+### Setup
+1. Obtain a Claude API key from Anthropic
+2. Create a file named `claude-key.txt` in the same directory as your `vizero.exe`
+3. Place your API key in this file (one line, no extra whitespace)
+4. The file should contain only your API key: `sk-ant-api03-...`
+
+### Commands
+
+#### `:claude-chat <prompt>`
+Interactive AI chat for general coding assistance and conversations.
+
+**Examples:**
+```
+:claude-chat How do I implement a binary search tree in C?
+:claude-chat Explain the difference between malloc and calloc
+:claude-chat What are best practices for error handling in C++?
+```
+
+#### `:claude-ask <prompt>`
+Ask specific questions about your current code or project.
+
+**Examples:**
+```
+:claude-ask What could be causing this segmentation fault?
+:claude-ask How can I optimize this function for better performance?
+:claude-ask Is this code thread-safe?
+```
+
+### Usage Tips
+- Use `:claude-chat` for general programming discussions and learning
+- Use `:claude-ask` when you need specific help with the code you're currently working on
+- The AI has knowledge of C, C++, Python, JavaScript, and many other programming languages
+- Responses appear in a popup window that can be scrolled with Up/Down arrows
+- Press `Esc` to close AI response popups
+
+### Security
+- Your API key is stored locally in the `claude-key.txt` file
+- API calls are made directly to Anthropic's servers using HTTPS
+- No local data is cached or stored beyond the current session
 
 ---
 

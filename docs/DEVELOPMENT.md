@@ -1,6 +1,17 @@
-# Vizero Development Guide# Vizero Development Guide
+# Vizero Development Guide
 
+## October 2025: Claude LLM Integration & Performance Revolution
 
+### AI-Powered Development
+- **Claude LLM Integration**: Direct integration with Claude Haiku for AI-powered coding assistance within the editor
+- **Interactive AI Commands**: `:claude-chat` and `:claude-ask` commands for real-time AI help with code
+- **Secure API Handling**: Local API key storage with secure HTTPS communication to Anthropic servers
+
+### Performance Optimization Revolution
+- **Event-Driven Rendering**: Intelligent rendering system reducing idle CPU usage by 90% (30% → 3% on Linux)
+- **Smart Update Detection**: Tracks input events, LSP updates, file changes, and animations to render only when necessary
+- **Full-Screen Plugin Support**: Optimized 20 FPS updates for IRC/REPL plugins while maintaining ultra-low idle usage
+- **Responsive Performance**: Immediate 60 FPS response during user interaction, near-zero CPU when idle
 
 ## September 2025: Phase 4 Advanced Features & Polish (Version 0.0.5)
 
