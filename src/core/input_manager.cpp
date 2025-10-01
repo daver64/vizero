@@ -48,8 +48,11 @@ void vizero_input_manager_destroy(vizero_input_manager_t* input) {
     vizero_safe_free(input);
 }
 
-void vizero_input_manager_process_events(vizero_input_manager_t* input) {
-    if (!input) return;
+int vizero_input_manager_process_events(vizero_input_manager_t* input) {
+    if (!input) return 0;
+    
+    /* Track whether any events require re-rendering */
+    int needs_render = 0;
     
     /* Reset mode change flag at start of frame */
     input->mode_changed_this_frame = 0;
@@ -91,6 +94,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         /* Show completion dropdown */
                         vizero_editor_show_completion(editor, completion_result->items, 
                                                     completion_result->item_count, trigger_pos);
+                        needs_render = 1;  /* Completion UI requires rendering */
                     }
                 } else {
                     /* No completion items available */
@@ -112,6 +116,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     if (editor && vizero_editor_has_unsaved_buffers(editor)) {
                         /* Show quit confirmation dialog */
                         vizero_editor_show_quit_confirmation(editor);
+                        needs_render = 1;  /* Popup requires rendering */
                     } else {
                         /* No unsaved buffers, quit immediately */
                         vizero_application_quit(input->app);
@@ -122,6 +127,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 /* Handle window events */
                 if (input->app && event.window.event == SDL_WINDOWEVENT_RESIZED) {
                     vizero_application_on_window_resize(input->app, event.window.data1, event.window.data2);
+                    needs_render = 1;  /* Window resize requires rendering */
                 }
                 break;
             case SDL_KEYDOWN:
@@ -132,6 +138,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                     if (editor) {
                         /* Hide welcome message on any key press */
                         vizero_application_on_user_input(input->app);
+                        needs_render = 1;  /* Key input requires rendering */
                         
                         /* Check for quit confirmation handling first */
                         if (editor->quit_confirmation_active) {
@@ -919,6 +926,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                                 if (vizero_buffer_insert_char(buffer, line, col, *c) == 0) {
                                     /* Move cursor forward after successful insertion */
                                     vizero_cursor_move_right(cursor);
+                                    needs_render = 1;  /* Text insertion requires rendering */
                                   //  text_changed = true;
                                 }
                             }
@@ -936,6 +944,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         
                         for (const char* c = text; *c; c++) {
                             vizero_editor_append_to_command(editor, *c);
+                            needs_render = 1;  /* Command input requires rendering */
                         }
                     } else if (editor && vizero_editor_get_mode(editor) == VIZERO_MODE_NORMAL) {
                         /* In normal mode, handle vi commands */
@@ -970,6 +979,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         vizero_plugin_manager_t* plugin_manager = vizero_application_get_plugin_manager(input->app);
                         if (plugin_manager && vizero_plugin_manager_on_mouse_click(plugin_manager, (vizero_editor_t*)editor, 
                                                                                    event.button.x, event.button.y, event.button.button)) {
+                            needs_render = 1;  /* Plugin mouse handling may require rendering */
                             break; /* Plugin consumed the mouse click */
                         }
                         
@@ -980,6 +990,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                             if (clicked_window) {
                                 /* Set focus to clicked window */
                                 vizero_window_manager_set_focus(window_manager, clicked_window->window_id);
+                                needs_render = 1;  /* Window focus change requires rendering */
                                 
                                 /* Handle different mouse buttons */
                                 if (event.button.button == SDL_BUTTON_LEFT) {
@@ -1043,6 +1054,7 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                         
                         /* Open the dropped file (will open in the now-focused window) */
                         if (vizero_editor_open_buffer(editor, event.drop.file) == 0) {
+                            needs_render = 1;  /* File opening requires rendering */
                             /* Show success message with timeout */
                             char msg[512];
                             const char* filename = strrchr(event.drop.file, '/');
@@ -1068,6 +1080,8 @@ void vizero_input_manager_process_events(vizero_input_manager_t* input) {
                 break;
         }
     }
+    
+    return needs_render;
 }
 
 int vizero_input_manager_is_key_pressed(vizero_input_manager_t* input, uint32_t key) {

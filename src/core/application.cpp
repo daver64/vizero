@@ -22,44 +22,46 @@
 #include <string.h>
 #include <time.h>
 
-
-struct vizero_application_t {
-    vizero_window_t* window;
-    vizero_renderer_t* renderer;
-    vizero_input_manager_t* input;
-    vizero_editor_state_t* editor;
-    vizero_plugin_manager_t* plugin_manager;
-    vizero_theme_manager_t* theme_manager;
-    void* session_manager; /* vizero_session_manager_t* - void* to avoid circular dependency */
-    vizero_status_bar_t* status_bar;
+struct vizero_application_t
+{
+    vizero_window_t *window;
+    vizero_renderer_t *renderer;
+    vizero_input_manager_t *input;
+    vizero_editor_state_t *editor;
+    vizero_plugin_manager_t *plugin_manager;
+    vizero_theme_manager_t *theme_manager;
+    void *session_manager; /* vizero_session_manager_t* - void* to avoid circular dependency */
+    vizero_status_bar_t *status_bar;
     int should_quit;
     vizero_app_config_t config;
-    
+
     /* Scrolling state */
     int scroll_x;
     int scroll_y;
-    
+
     /* File change polling state */
     uint32_t last_poll_time;
     uint32_t poll_interval_ms;
-    
+
     /* Welcome message state */
     int show_welcome;
-    
+
     /* Logo display */
-    vizero_image_t* logo_image;
-    
+    vizero_image_t *logo_image;
+
     /* Temporary settings during initialization */
-    vizero_settings_t* settings;
+    vizero_settings_t *settings;
 };
 /* Forward declaration for syntax line rendering - currently unused */
 
-vizero_application_t* vizero_application_create(const vizero_app_config_t* config) {
-    vizero_application_t* app = (vizero_application_t*)calloc(1, sizeof(vizero_application_t));
-    if (!app) {
+vizero_application_t *vizero_application_create(const vizero_app_config_t *config)
+{
+    vizero_application_t *app = (vizero_application_t *)calloc(1, sizeof(vizero_application_t));
+    if (!app)
+    {
         return NULL;
     }
-    
+
     /* Copy config */
     app->config = *config;
     app->should_quit = 0;
@@ -67,117 +69,132 @@ vizero_application_t* vizero_application_create(const vizero_app_config_t* confi
     app->scroll_y = 0;
     app->last_poll_time = 0;
     app->poll_interval_ms = 1000; /* Poll every 1 second */
-    app->show_welcome = 1; /* Show welcome message initially */
+    app->show_welcome = 1;        /* Show welcome message initially */
     app->logo_image = NULL;
-    
+
     return app;
 }
 
-void vizero_application_destroy(vizero_application_t* app) {
-    if (!app) {
+void vizero_application_destroy(vizero_application_t *app)
+{
+    if (!app)
+    {
         return;
     }
-    
+
     /* Clean up logo image */
-    if (app->logo_image) {
+    if (app->logo_image)
+    {
         vizero_image_destroy(app->logo_image);
     }
-    
+
     free(app);
 }
 
-int vizero_application_initialize(vizero_application_t* app) {
-    if (!app) {
+int vizero_application_initialize(vizero_application_t *app)
+{
+    if (!app)
+    {
         return -1;
     }
-    
+
     /* Initialize SDL */
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0)
+    {
         fprintf(stderr, "Failed to initialize SDL: %s\n", SDL_GetError());
         return -1;
     }
-    
+
     /* Enable drag and drop events */
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
-    
+
     /* Set OpenGL attributes */
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    
+
     /* Load settings early to get window position */
-    vizero_settings_t* settings = vizero_settings_create();
-    if (settings) {
+    vizero_settings_t *settings = vizero_settings_create();
+    if (settings)
+    {
         vizero_settings_load_from_file(settings);
     }
-    
+
     /* Get saved window state */
     int saved_x, saved_y, saved_width, saved_height, saved_maximized;
     vizero_settings_load_window_state(settings, &saved_x, &saved_y, &saved_width, &saved_height, &saved_maximized);
-    
+
     /* Use saved dimensions if available, otherwise use config defaults */
     int window_width = (saved_width > 0) ? saved_width : app->config.width;
     int window_height = (saved_height > 0) ? saved_height : app->config.height;
-    
+
     /* Create window with saved position */
-    app->window = vizero_window_create_with_position(app->config.title, 
-                                                    saved_x, saved_y,
-                                                    window_width, window_height,
-                                                    app->config.fullscreen);
-    if (!app->window) {
-        if (settings) vizero_settings_destroy(settings);
+    app->window = vizero_window_create_with_position(app->config.title,
+                                                     saved_x, saved_y,
+                                                     window_width, window_height,
+                                                     app->config.fullscreen);
+    if (!app->window)
+    {
+        if (settings)
+            vizero_settings_destroy(settings);
         SDL_Quit();
         return -1;
     }
-    
+
     /* Restore maximized state if needed */
-    if (saved_maximized && !app->config.fullscreen) {
+    if (saved_maximized && !app->config.fullscreen)
+    {
         SDL_MaximizeWindow(vizero_window_get_sdl_window(app->window));
     }
-    
+
     /* Store settings pointer for later use */
     app->settings = settings;
-    
+
     /* Initialize GLEW */
-    if (glewInit() != GLEW_OK) {
+    if (glewInit() != GLEW_OK)
+    {
         fprintf(stderr, "Failed to initialize GLEW\n");
         vizero_window_destroy(app->window);
         SDL_Quit();
         return -1;
     }
-    
+
     /* Create renderer */
     app->renderer = vizero_renderer_create(app->window);
-    if (!app->renderer) {
+    if (!app->renderer)
+    {
         vizero_window_destroy(app->window);
         SDL_Quit();
         return -1;
     }
-    
+
     /* Create input manager */
     app->input = vizero_input_manager_create(app);
-    if (!app->input) {
+    if (!app->input)
+    {
         vizero_renderer_destroy(app->renderer);
         vizero_window_destroy(app->window);
         SDL_Quit();
         return -1;
     }
-    
+
     /* Create editor state with pre-loaded settings */
     app->editor = vizero_editor_state_create_with_settings(app->settings);
-    if (!app->editor) {
+    if (!app->editor)
+    {
         vizero_input_manager_destroy(app->input);
         vizero_renderer_destroy(app->renderer);
         vizero_window_destroy(app->window);
         SDL_Quit();
         return -1;
     }
-    
+
     /* Create status bar */
     vizero_window_get_size(app->window, &window_width, &window_height);
     app->status_bar = vizero_status_bar_create(window_width, 20); /* 20 pixel height */
-    if (!app->status_bar) {
+    if (!app->status_bar)
+    {
         vizero_editor_state_destroy(app->editor);
         vizero_input_manager_destroy(app->input);
         vizero_renderer_destroy(app->renderer);
@@ -185,7 +202,7 @@ int vizero_application_initialize(vizero_application_t* app) {
         SDL_Quit();
         return -1;
     }
-    
+
     /* Setup default status bar panels */
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_FILENAME, VIZERO_ALIGN_LEFT, 100);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_MODE, VIZERO_ALIGN_LEFT, 80);
@@ -193,10 +210,11 @@ int vizero_application_initialize(vizero_application_t* app) {
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_BUFFER_INFO, VIZERO_ALIGN_CENTER, 60);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_CURSOR_POSITION, VIZERO_ALIGN_RIGHT, 80);
     vizero_status_bar_add_panel(app->status_bar, VIZERO_PANEL_TIME_DATE, VIZERO_ALIGN_RIGHT, 120);
-    
+
     /* Create plugin manager */
-    app->plugin_manager = vizero_plugin_manager_create((vizero_editor_t*)app->editor);
-    if (!app->plugin_manager) {
+    app->plugin_manager = vizero_plugin_manager_create((vizero_editor_t *)app->editor);
+    if (!app->plugin_manager)
+    {
         vizero_status_bar_destroy(app->status_bar);
         vizero_editor_state_destroy(app->editor);
         vizero_input_manager_destroy(app->input);
@@ -205,15 +223,16 @@ int vizero_application_initialize(vizero_application_t* app) {
         SDL_Quit();
         return -1;
     }
-    
+
     /* Plugin rendering no longer needs SDL renderer initialization */
-    
+
     /* Set up editor-plugin manager connection */
     vizero_editor_set_plugin_manager(app->editor, app->plugin_manager);
-    
+
     /* Create theme manager */
     app->theme_manager = vizero_theme_manager_create();
-    if (!app->theme_manager) {
+    if (!app->theme_manager)
+    {
         vizero_plugin_manager_destroy(app->plugin_manager);
         vizero_status_bar_destroy(app->status_bar);
         vizero_editor_state_destroy(app->editor);
@@ -223,35 +242,41 @@ int vizero_application_initialize(vizero_application_t* app) {
         SDL_Quit();
         return -1;
     }
-    
+
     /* Load built-in themes */
     vizero_theme_manager_load_builtin_themes(app->theme_manager);
-    
+
     /* Set up editor-theme manager connection */
-    vizero_editor_set_theme_manager(app->editor, (void*)app->theme_manager);
-    
+    vizero_editor_set_theme_manager(app->editor, (void *)app->theme_manager);
+
     /* Load logo image */
-    char* logo_path = vizero_get_resource_path("images/logo.bmp");
-    if (logo_path) {
+    char *logo_path = vizero_get_resource_path("images/logo.bmp");
+    if (logo_path)
+    {
         app->logo_image = vizero_image_load(logo_path);
-        if (!app->logo_image) {
+        if (!app->logo_image)
+        {
             printf("Warning: Could not load logo image from %s\n", logo_path);
         }
         free(logo_path);
-    } else {
+    }
+    else
+    {
         app->logo_image = NULL;
         printf("Warning: Could not determine logo image path\n");
     }
-    
+
     /* Load default theme from settings or apply "Default" theme */
-    const char* saved_theme = vizero_settings_get_string(app->settings, "theme");
-    if (!saved_theme || vizero_theme_manager_set_current_theme(app->theme_manager, saved_theme) != 0) {
+    const char *saved_theme = vizero_settings_get_string(app->settings, "theme");
+    if (!saved_theme || vizero_theme_manager_set_current_theme(app->theme_manager, saved_theme) != 0)
+    {
         vizero_theme_manager_set_current_theme(app->theme_manager, "Default");
     }
-    
+
     /* Create session manager */
-    app->session_manager = (void*)vizero_session_manager_create();
-    if (!app->session_manager) {
+    app->session_manager = (void *)vizero_session_manager_create();
+    if (!app->session_manager)
+    {
         vizero_theme_manager_destroy(app->theme_manager);
         vizero_plugin_manager_destroy(app->plugin_manager);
         vizero_status_bar_destroy(app->status_bar);
@@ -262,138 +287,159 @@ int vizero_application_initialize(vizero_application_t* app) {
         SDL_Quit();
         return -1;
     }
-    
+
     /* Set up editor-session manager connection */
     vizero_editor_set_session_manager(app->editor, app->session_manager);
-    
+
     /* Load plugin manifest and always-load plugins */
-    if (app->config.plugin_dir) {
+    if (app->config.plugin_dir)
+    {
         char manifest_path[1024];
 #ifdef _WIN32
         snprintf(manifest_path, sizeof(manifest_path), "%s\\manifest.json", app->config.plugin_dir);
 #else
         snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", app->config.plugin_dir);
 #endif
-        
-        if (vizero_plugin_manager_load_manifest(app->plugin_manager, manifest_path) == 0) {
+
+        if (vizero_plugin_manager_load_manifest(app->plugin_manager, manifest_path) == 0)
+        {
             int always_loaded = vizero_plugin_manager_ensure_always_loaded(app->plugin_manager);
             printf("Loaded %d always-load plugins from %s\n", always_loaded, app->config.plugin_dir);
-        } else {
+        }
+        else
+        {
             printf("Warning: Could not load plugin manifest from %s, falling back to directory scan\n", manifest_path);
             int loaded = vizero_plugin_manager_scan_directory(app->plugin_manager, app->config.plugin_dir);
             printf("Loaded %d plugins from %s\n", loaded, app->config.plugin_dir);
         }
     }
-    
+
     printf("Vizero initialized successfully\n");
     return 0;
 }
 
-void vizero_application_shutdown(vizero_application_t* app) {
-    if (!app) {
+void vizero_application_shutdown(vizero_application_t *app)
+{
+    if (!app)
+    {
         return;
     }
-    
+
     /* Save window position before destroying anything */
-    if (app->window && app->settings) {
+    if (app->window && app->settings)
+    {
         int x, y, width, height;
         vizero_window_get_position(app->window, &x, &y);
         vizero_window_get_size(app->window, &width, &height);
-        
+
         /* Check if window is maximized */
-        SDL_Window* sdl_window = vizero_window_get_sdl_window(app->window);
+        SDL_Window *sdl_window = vizero_window_get_sdl_window(app->window);
         int maximized = (SDL_GetWindowFlags(sdl_window) & SDL_WINDOW_MAXIMIZED) != 0;
-        
+
         /* Save window state to settings */
         vizero_settings_save_window_state(app->settings, x, y, width, height, maximized);
         vizero_settings_save_to_file(app->settings);
     }
-    
-    if (app->plugin_manager) {
+
+    if (app->plugin_manager)
+    {
         vizero_plugin_manager_destroy(app->plugin_manager);
         app->plugin_manager = NULL;
     }
-    
-    if (app->theme_manager) {
+
+    if (app->theme_manager)
+    {
         vizero_theme_manager_destroy(app->theme_manager);
         app->theme_manager = NULL;
     }
-    
-    if (app->session_manager) {
-        vizero_session_manager_destroy((vizero_session_manager_t*)app->session_manager);
+
+    if (app->session_manager)
+    {
+        vizero_session_manager_destroy((vizero_session_manager_t *)app->session_manager);
         app->session_manager = NULL;
     }
-    
-    if (app->status_bar) {
+
+    if (app->status_bar)
+    {
         vizero_status_bar_destroy(app->status_bar);
         app->status_bar = NULL;
     }
-    
-    if (app->input) {
+
+    if (app->input)
+    {
         vizero_input_manager_destroy(app->input);
         app->input = NULL;
     }
-    
-    if (app->renderer) {
+
+    if (app->renderer)
+    {
         vizero_renderer_destroy(app->renderer);
         app->renderer = NULL;
     }
-    
-    if (app->window) {
+
+    if (app->window)
+    {
         vizero_window_destroy(app->window);
         app->window = NULL;
     }
-    
+
     /* Destroy editor AFTER saving window state, since editor will destroy settings */
-    if (app->editor) {
+    if (app->editor)
+    {
         vizero_editor_state_destroy(app->editor);
         app->editor = NULL;
     }
-    
+
     /* Settings are destroyed by editor state, so just clear our reference */
     app->settings = NULL;
-    
+
     SDL_Quit();
 }
 
 /* Helper function to render a single editor window */
-static void render_editor_window(vizero_application_t* app, vizero_editor_window_t* window, 
-                                vizero_buffer_t* buffer, vizero_cursor_t* cursor) {
-    if (!app || !window || !buffer || !cursor) return;
+static void render_editor_window(vizero_application_t *app, vizero_editor_window_t *window,
+                                 vizero_buffer_t *buffer, vizero_cursor_t *cursor)
+{
+    if (!app || !window || !buffer || !cursor)
+        return;
     // Use the word wrap/content rendering from ui/editor_window.cpp
     vizero_editor_window_render_content(window, app->editor, app->renderer);
 }
 
-
-
 /* Helper function to draw window borders */
-static void draw_window_borders(vizero_application_t* app, vizero_editor_window_t** windows, size_t count) {
-    if (!app || !windows || count < 2) return;
-    
+static void draw_window_borders(vizero_application_t *app, vizero_editor_window_t **windows, size_t count)
+{
+    if (!app || !windows || count < 2)
+        return;
+
     vizero_colour_t border_colour = {0.5f, 0.5f, 0.5f, 1.0f};
-    
-    for (size_t i = 0; i < count; i++) {
-        vizero_editor_window_t* window = windows[i];
-        if (!window) continue;
-        
+
+    for (size_t i = 0; i < count; i++)
+    {
+        vizero_editor_window_t *window = windows[i];
+        if (!window)
+            continue;
+
         /* Draw window border */
-        vizero_renderer_draw_rect(app->renderer, 
-                                (float)window->x, (float)window->y, 
-                                (float)window->width, (float)window->height, 
-                                border_colour);
+        vizero_renderer_draw_rect(app->renderer,
+                                  (float)window->x, (float)window->y,
+                                  (float)window->width, (float)window->height,
+                                  border_colour);
     }
 }
 
 /* Helper function for fallback single window rendering */
-static void render_single_window_fallback(vizero_application_t* app, int window_width, int window_height) {
+static void render_single_window_fallback(vizero_application_t *app, int window_width, int window_height)
+{
     /* Get current buffer and cursor for fallback */
-    vizero_buffer_t* current_buffer = vizero_editor_get_current_buffer(app->editor);
-    vizero_cursor_t* current_cursor = vizero_editor_get_current_cursor(app->editor);
-    
-    if (!current_buffer || !current_cursor) {
+    vizero_buffer_t *current_buffer = vizero_editor_get_current_buffer(app->editor);
+    vizero_cursor_t *current_cursor = vizero_editor_get_current_cursor(app->editor);
+
+    if (!current_buffer || !current_cursor)
+    {
         return; /* Nothing to render */
     }
-    
+
     /* Create a temporary window structure for rendering */
     vizero_editor_window_t temp_window;
     memset(&temp_window, 0, sizeof(temp_window));
@@ -404,151 +450,213 @@ static void render_single_window_fallback(vizero_application_t* app, int window_
     temp_window.is_focused = 1;
     temp_window.scroll_x = app->scroll_x;
     temp_window.scroll_y = app->scroll_y;
-    
+
     /* Render using the temporary window */
     render_editor_window(app, &temp_window, current_buffer, current_cursor);
-    
+
     /* Update app scroll values from temporary window */
     app->scroll_x = temp_window.scroll_x;
     app->scroll_y = temp_window.scroll_y;
 }
 
-static void render_completion_dropdown(vizero_application_t* app, int window_width, int window_height) {
-    if (!app || !app->editor) return;
-    
+static void render_completion_dropdown(vizero_application_t *app, int window_width, int window_height)
+{
+    if (!app || !app->editor)
+        return;
+
     /* Get completion state */
-    vizero_editor_state_t* editor = app->editor;
-    
+    vizero_editor_state_t *editor = app->editor;
+
     /* Position dropdown near cursor using proper window coordinates */
-    vizero_cursor_t* cursor = vizero_editor_get_current_cursor(editor);
-    if (!cursor) return;
-    
+    vizero_cursor_t *cursor = vizero_editor_get_current_cursor(editor);
+    if (!cursor)
+        return;
+
     size_t cursor_line = vizero_cursor_get_line(cursor);
     size_t cursor_col = vizero_cursor_get_column(cursor);
-    
+
     /* Get focused editor window to calculate proper positioning */
-    vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(editor);
-    if (!window_manager) return;
-    vizero_editor_window_t* window = vizero_window_manager_get_focused_window(window_manager);
-    if (!window) return;
-    
+    vizero_window_manager_t *window_manager = vizero_editor_get_window_manager(editor);
+    if (!window_manager)
+        return;
+    vizero_editor_window_t *window = vizero_window_manager_get_focused_window(window_manager);
+    if (!window)
+        return;
+
     /* Get content area coordinates */
     int content_x, content_y, content_width, content_height;
-    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, &content_width, &content_height) != 0) {
+    if (vizero_editor_window_get_content_area(window, &content_x, &content_y, &content_width, &content_height) != 0)
+    {
         return;
     }
-    
+
     /* Calculate dropdown position using same formula as editor text */
     int scroll_y = window->scroll_y;
-    int dropdown_x = content_x + (int)(cursor_col * 8); /* 8px per char */
+    int dropdown_x = content_x + (int)(cursor_col * 8);                    /* 8px per char */
     int dropdown_y = content_y + (int)((cursor_line - scroll_y + 1) * 16); /* Position below cursor line */
-    
+
     /* Get completion items first to calculate width */
-    vizero_completion_item_t* completion_items = vizero_editor_get_completion_items(editor);
+    vizero_completion_item_t *completion_items = vizero_editor_get_completion_items(editor);
     size_t completion_count = vizero_editor_get_completion_count(editor);
-    
-    if (!completion_items || completion_count == 0) return;
-    
+
+    if (!completion_items || completion_count == 0)
+        return;
+
     /* Calculate dynamic width based on content */
     const int char_width = 8; /* Approximate character width in pixels */
     const int padding = 10;
     const int max_width = window_width - 100; /* Leave margin from screen edges */
-    int dropdown_width = 200; /* Default minimum */
-    
+    int dropdown_width = 200;                 /* Default minimum */
+
     /* Find the longest completion item */
-    for (size_t i = 0; i < completion_count; i++) {
-        const char* label = completion_items[i].label ? completion_items[i].label : "";
-        const char* detail = completion_items[i].detail ? completion_items[i].detail : "";
-        
+    for (size_t i = 0; i < completion_count; i++)
+    {
+        const char *label = completion_items[i].label ? completion_items[i].label : "";
+        const char *detail = completion_items[i].detail ? completion_items[i].detail : "";
+
         /* Calculate display text width (label + detail) */
         int label_len = (int)strlen(label);
         int detail_len = (int)strlen(detail);
         int total_len = label_len + detail_len + 3; /* +3 for spacing/formatting */
-        
+
         int item_width = total_len * char_width + padding * 2;
-        if (item_width > dropdown_width) dropdown_width = item_width;
+        if (item_width > dropdown_width)
+            dropdown_width = item_width;
     }
-    
+
     /* Cap width to screen size */
-    if (dropdown_width > max_width) dropdown_width = max_width;
-    
+    if (dropdown_width > max_width)
+        dropdown_width = max_width;
+
     /* Calculate height */
     const int max_visible_items = 10;
     const int item_height = 18;
     int dropdown_height = max_visible_items * item_height + 10; /* +10 for padding */
-    
-    if (dropdown_x + dropdown_width > window_width) {
+
+    if (dropdown_x + dropdown_width > window_width)
+    {
         dropdown_x = window_width - dropdown_width - 10;
     }
-    if (dropdown_y + dropdown_height > window_height - 50) { /* Leave space for status bar */
+    if (dropdown_y + dropdown_height > window_height - 50)
+    { /* Leave space for status bar */
         dropdown_y = (int)(cursor_line * 16 - dropdown_height);
-        if (dropdown_y < 10) dropdown_y = 10;
+        if (dropdown_y < 10)
+            dropdown_y = 10;
     }
-    
+
     /* Draw dropdown background */
     vizero_colour_t bg_colour = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
-    vizero_renderer_fill_rect(app->renderer, (float)dropdown_x, (float)dropdown_y, 
-                             (float)dropdown_width, (float)dropdown_height, bg_colour);
-    
+    vizero_renderer_fill_rect(app->renderer, (float)dropdown_x, (float)dropdown_y,
+                              (float)dropdown_width, (float)dropdown_height, bg_colour);
+
     /* Draw dropdown border */
     vizero_colour_t border_colour = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
     vizero_renderer_draw_rect(app->renderer, (float)dropdown_x, (float)dropdown_y,
-                             (float)dropdown_width, (float)dropdown_height, border_colour);
-    
+                              (float)dropdown_width, (float)dropdown_height, border_colour);
+
     /* Get selected index */
     size_t selected_index = vizero_editor_get_completion_selected_index(editor);
-    
+
     /* Draw completion items */
     int start_item = 0;
     int visible_items = (int)completion_count;
-    if (visible_items > max_visible_items) {
+    if (visible_items > max_visible_items)
+    {
         visible_items = max_visible_items;
         /* Center selected item in view */
         start_item = (int)selected_index - max_visible_items / 2;
-        if (start_item < 0) start_item = 0;
-        if (start_item + visible_items > (int)completion_count) {
+        if (start_item < 0)
+            start_item = 0;
+        if (start_item + visible_items > (int)completion_count)
+        {
             start_item = (int)completion_count - visible_items;
         }
     }
-    
-    for (int i = 0; i < visible_items; i++) {
+
+    for (int i = 0; i < visible_items; i++)
+    {
         int item_index = start_item + i;
-        if (item_index >= (int)completion_count) break;
-        
-        vizero_completion_item_t* item = &completion_items[item_index];
-        if (!item->label) continue;
-        
+        if (item_index >= (int)completion_count)
+            break;
+
+        vizero_completion_item_t *item = &completion_items[item_index];
+        if (!item->label)
+            continue;
+
         float item_y = (float)(dropdown_y + 5 + i * item_height);
-        
+
         /* Draw selection highlight */
-        if (item_index == (int)selected_index) {
+        if (item_index == (int)selected_index)
+        {
             vizero_colour_t selection_colour = {0.3f, 0.3f, 0.5f, 0.8f}; /* Blue highlight */
             vizero_renderer_fill_rect(app->renderer, (float)(dropdown_x + 2), item_y - 1,
-                                     (float)(dropdown_width - 4), (float)item_height, selection_colour);
+                                      (float)(dropdown_width - 4), (float)item_height, selection_colour);
         }
-        
+
         /* Draw completion kind icon */
         vizero_colour_t icon_colour = {0.8f, 0.8f, 0.8f, 1.0f}; /* Light gray */
-        const char* icon = "F"; /* Default to Function */
-        switch (item->kind) {
-            case VIZERO_COMPLETION_TEXT: icon = "T"; icon_colour.r = 0.7f; icon_colour.g = 1.0f; icon_colour.b = 0.7f; break; /* Text - light green */
-            case VIZERO_COMPLETION_METHOD: icon = "M"; icon_colour.r = 1.0f; icon_colour.g = 0.8f; icon_colour.b = 0.4f; break; /* Method - orange */
-            case VIZERO_COMPLETION_FUNCTION: icon = "F"; icon_colour.r = 0.8f; icon_colour.g = 0.8f; icon_colour.b = 1.0f; break; /* Function - light blue */
-            case VIZERO_COMPLETION_VARIABLE: icon = "V"; icon_colour.r = 1.0f; icon_colour.g = 1.0f; icon_colour.b = 0.8f; break; /* Variable - light yellow */
-            case VIZERO_COMPLETION_CLASS: icon = "C"; icon_colour.r = 1.0f; icon_colour.g = 0.9f; icon_colour.b = 0.7f; break; /* Class - light orange */
-            case VIZERO_COMPLETION_KEYWORD: icon = "K"; icon_colour.r = 0.9f; icon_colour.g = 0.7f; icon_colour.b = 1.0f; break; /* Keyword - light purple */
-            case VIZERO_COMPLETION_CONSTRUCTOR: icon = "C"; icon_colour.r = 0.8f; icon_colour.g = 1.0f; icon_colour.b = 0.8f; break; /* Constructor - light green */
-            case VIZERO_COMPLETION_FIELD: icon = "F"; icon_colour.r = 1.0f; icon_colour.g = 1.0f; icon_colour.b = 0.6f; break; /* Field - yellow */
-            default: break;
+        const char *icon = "F";                                 /* Default to Function */
+        switch (item->kind)
+        {
+        case VIZERO_COMPLETION_TEXT:
+            icon = "T";
+            icon_colour.r = 0.7f;
+            icon_colour.g = 1.0f;
+            icon_colour.b = 0.7f;
+            break; /* Text - light green */
+        case VIZERO_COMPLETION_METHOD:
+            icon = "M";
+            icon_colour.r = 1.0f;
+            icon_colour.g = 0.8f;
+            icon_colour.b = 0.4f;
+            break; /* Method - orange */
+        case VIZERO_COMPLETION_FUNCTION:
+            icon = "F";
+            icon_colour.r = 0.8f;
+            icon_colour.g = 0.8f;
+            icon_colour.b = 1.0f;
+            break; /* Function - light blue */
+        case VIZERO_COMPLETION_VARIABLE:
+            icon = "V";
+            icon_colour.r = 1.0f;
+            icon_colour.g = 1.0f;
+            icon_colour.b = 0.8f;
+            break; /* Variable - light yellow */
+        case VIZERO_COMPLETION_CLASS:
+            icon = "C";
+            icon_colour.r = 1.0f;
+            icon_colour.g = 0.9f;
+            icon_colour.b = 0.7f;
+            break; /* Class - light orange */
+        case VIZERO_COMPLETION_KEYWORD:
+            icon = "K";
+            icon_colour.r = 0.9f;
+            icon_colour.g = 0.7f;
+            icon_colour.b = 1.0f;
+            break; /* Keyword - light purple */
+        case VIZERO_COMPLETION_CONSTRUCTOR:
+            icon = "C";
+            icon_colour.r = 0.8f;
+            icon_colour.g = 1.0f;
+            icon_colour.b = 0.8f;
+            break; /* Constructor - light green */
+        case VIZERO_COMPLETION_FIELD:
+            icon = "F";
+            icon_colour.r = 1.0f;
+            icon_colour.g = 1.0f;
+            icon_colour.b = 0.6f;
+            break; /* Field - yellow */
+        default:
+            break;
         }
-        
+
         vizero_text_info_t icon_info;
         icon_info.x = (float)(dropdown_x + 8);
         icon_info.y = item_y + 2;
         icon_info.colour = icon_colour;
         icon_info.font = NULL;
         vizero_renderer_draw_text(app->renderer, icon, &icon_info);
-        
+
         /* Draw completion label */
         vizero_colour_t text_colour = {1.0f, 1.0f, 1.0f, 1.0f}; /* White text */
         vizero_text_info_t text_info;
@@ -557,35 +665,40 @@ static void render_completion_dropdown(vizero_application_t* app, int window_wid
         text_info.colour = text_colour;
         text_info.font = NULL;
         vizero_renderer_draw_text(app->renderer, item->label, &text_info);
-        
+
         /* Draw detail if available and fits */
-        if (item->detail && strlen(item->detail) > 0) {
+        if (item->detail && strlen(item->detail) > 0)
+        {
             vizero_colour_t detail_colour = {0.7f, 0.7f, 0.8f, 1.0f}; /* Light gray */
             vizero_text_info_t detail_info;
             detail_info.x = (float)(dropdown_x + 25 + strlen(item->label) * 8 + 10);
             detail_info.y = item_y + 2;
             detail_info.colour = detail_colour;
             detail_info.font = NULL;
-            
+
             /* Truncate detail if too long */
             char detail_buf[64];
             size_t detail_len = strlen(item->detail);
-            if (detail_len > 40) {
+            if (detail_len > 40)
+            {
                 memcpy(detail_buf, item->detail, 37);
                 strcpy(detail_buf + 37, "...");
-            } else {
+            }
+            else
+            {
                 strcpy(detail_buf, item->detail);
             }
             vizero_renderer_draw_text(app->renderer, detail_buf, &detail_info);
         }
     }
-    
+
     /* Draw scroll indicator if needed */
-    if ((int)completion_count > max_visible_items) {
+    if ((int)completion_count > max_visible_items)
+    {
         char scroll_info[32];
-        snprintf(scroll_info, sizeof(scroll_info), "%zu/%zu", 
-                selected_index + 1, completion_count);
-        
+        snprintf(scroll_info, sizeof(scroll_info), "%zu/%zu",
+                 selected_index + 1, completion_count);
+
         vizero_colour_t scroll_colour = {0.6f, 0.6f, 0.7f, 1.0f};
         vizero_text_info_t scroll_text_info;
         scroll_text_info.x = (float)(dropdown_x + dropdown_width - 50);
@@ -596,82 +709,99 @@ static void render_completion_dropdown(vizero_application_t* app, int window_wid
     }
 }
 
-static void render_hover_popup(vizero_application_t* app, int window_width, int window_height) {
-    if (!app || !app->editor) return;
-    
+static void render_hover_popup(vizero_application_t *app, int window_width, int window_height)
+{
+    if (!app || !app->editor)
+        return;
+
     /* Get hover state */
-    vizero_editor_state_t* editor = app->editor;
-    const char* hover_text = vizero_editor_get_hover_text(editor);
-    if (!hover_text) return;
-    
+    vizero_editor_state_t *editor = app->editor;
+    const char *hover_text = vizero_editor_get_hover_text(editor);
+    if (!hover_text)
+        return;
+
     /* Get hover screen position */
     int hover_x, hover_y;
     vizero_editor_get_hover_screen_position(editor, &hover_x, &hover_y);
-    
+
     /* Calculate popup dimensions based on content */
     size_t text_len = strlen(hover_text);
     int lines = 1;
-    for (size_t i = 0; i < text_len; i++) {
-        if (hover_text[i] == '\n') lines++;
+    for (size_t i = 0; i < text_len; i++)
+    {
+        if (hover_text[i] == '\n')
+            lines++;
     }
-    
+
     const int char_width = 8;
     const int char_height = 16;
     const int padding = 8;
     const int max_width = 400;
-    
+
     /* Estimate width (simple approach - use max line width) */
     int popup_width = 200; /* Default minimum */
-    const char* line_start = hover_text;
-    for (int line = 0; line < lines; line++) {
-        const char* line_end = strchr(line_start, '\n');
-        if (!line_end) line_end = hover_text + text_len;
-        
+    const char *line_start = hover_text;
+    for (int line = 0; line < lines; line++)
+    {
+        const char *line_end = strchr(line_start, '\n');
+        if (!line_end)
+            line_end = hover_text + text_len;
+
         int line_width = (int)(line_end - line_start) * char_width + padding * 2;
-        if (line_width > popup_width) popup_width = line_width;
-        
-        if (*line_end == '\n') line_start = line_end + 1;
-        else break;
+        if (line_width > popup_width)
+            popup_width = line_width;
+
+        if (*line_end == '\n')
+            line_start = line_end + 1;
+        else
+            break;
     }
-    
-    if (popup_width > max_width) popup_width = max_width;
+
+    if (popup_width > max_width)
+        popup_width = max_width;
     int popup_height = lines * char_height + padding * 2;
-    
+
     /* Adjust position to keep popup on screen */
-    if (hover_x + popup_width > window_width) {
+    if (hover_x + popup_width > window_width)
+    {
         hover_x = window_width - popup_width - 10;
     }
-    if (hover_y + popup_height > window_height - 30) { /* Leave space for status bar */
+    if (hover_y + popup_height > window_height - 30)
+    {                                          /* Leave space for status bar */
         hover_y = hover_y - popup_height - 20; /* Show above cursor */
-        if (hover_y < 10) hover_y = 10;
+        if (hover_y < 10)
+            hover_y = 10;
     }
-    
+
     /* Draw popup background - same colors as completion popup */
     vizero_colour_t bg_colour = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
-    vizero_renderer_fill_rect(app->renderer, (float)hover_x, (float)hover_y, 
-                             (float)popup_width, (float)popup_height, bg_colour);
-    
+    vizero_renderer_fill_rect(app->renderer, (float)hover_x, (float)hover_y,
+                              (float)popup_width, (float)popup_height, bg_colour);
+
     /* Draw popup border - same colors as completion popup */
     vizero_colour_t border_colour = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
     vizero_renderer_draw_rect(app->renderer, (float)hover_x, (float)hover_y,
-                             (float)popup_width, (float)popup_height, border_colour);
-    
+                              (float)popup_width, (float)popup_height, border_colour);
+
     /* Draw hover text line by line */
     vizero_colour_t text_colour = {1.0f, 1.0f, 1.0f, 1.0f}; /* White text */
-    const char* current_line = hover_text;
-    
-    for (int line = 0; line < lines; line++) {
-        const char* line_end = strchr(current_line, '\n');
-        if (!line_end) line_end = hover_text + text_len;
-        
+    const char *current_line = hover_text;
+
+    for (int line = 0; line < lines; line++)
+    {
+        const char *line_end = strchr(current_line, '\n');
+        if (!line_end)
+            line_end = hover_text + text_len;
+
         /* Copy line to buffer for rendering */
         int line_len = (int)(line_end - current_line);
         char line_buf[512];
-        if (line_len >= (int)sizeof(line_buf)) line_len = (int)sizeof(line_buf) - 1;
-        
+        if (line_len >= (int)sizeof(line_buf))
+            line_len = (int)sizeof(line_buf) - 1;
+
         memcpy(line_buf, current_line, line_len);
         line_buf[line_len] = '\0';
-        
+
         /* Draw the line */
         vizero_text_info_t text_info;
         text_info.x = (float)(hover_x + padding);
@@ -679,125 +809,163 @@ static void render_hover_popup(vizero_application_t* app, int window_width, int 
         text_info.colour = text_colour;
         text_info.font = NULL;
         vizero_renderer_draw_text(app->renderer, line_buf, &text_info);
-        
+
         /* Move to next line */
-        if (*line_end == '\n') current_line = line_end + 1;
-        else break;
+        if (*line_end == '\n')
+            current_line = line_end + 1;
+        else
+            break;
     }
 }
 
-int vizero_application_run(vizero_application_t* app) {
-    if (!app) {
+int vizero_application_run(vizero_application_t *app)
+{
+    if (!app)
+    {
         return -1;
     }
     printf("Starting main loop...\n");
 
     // Main render loop
-    while (!app->should_quit && !vizero_window_should_close(app->window) && !vizero_editor_should_quit(app->editor)) {
+    while (!app->should_quit && !vizero_window_should_close(app->window) && !vizero_editor_should_quit(app->editor))
+    {
 
         /* Process input events */
-        vizero_input_manager_process_events(app->input);
+        int input_requires_render = vizero_input_manager_process_events(app->input);
+
+        /* TODO: In the future, we could optimize by only rendering when needed:
+         * if (!input_requires_render && !lsp_requires_render && !file_changes && !animations) {
+         *     SDL_Delay(16);
+         *     continue;
+         * }
+         */
         
-        /* Process LSP messages from plugins */
-        if (app->plugin_manager) {
-            vizero_plugin_manager_process_lsp_messages(app->plugin_manager);
+        /* Simple optimization: skip rendering if no input requires it */
+        /* TODO: Add tracking for lsp_updates, file_changes, animations */
+        if (!input_requires_render) {
+            SDL_Delay(16); // Sleep and skip rendering this frame
+            continue;
         }
         
+        /* Process LSP messages from plugins */
+        if (app->plugin_manager)
+        {
+            vizero_plugin_manager_process_lsp_messages(app->plugin_manager);
+        }
+
         /* Diagnostic updates are now event-driven only (on text changes, file save, etc.) */
         /* No automatic periodic updates to prevent crashes and improve performance */
-        
+
         /* Clear screen with theme background colour */
         vizero_colour_t clear_colour = {0.1f, 0.1f, 0.2f, 1.0f}; /* Default fallback */
-        if (app->theme_manager) {
-            const vizero_colour_theme_t* current_theme = vizero_theme_manager_get_current_theme(app->theme_manager);
-            if (current_theme) {
+        if (app->theme_manager)
+        {
+            const vizero_colour_theme_t *current_theme = vizero_theme_manager_get_current_theme(app->theme_manager);
+            if (current_theme)
+            {
                 clear_colour = current_theme->background;
             }
         }
         vizero_renderer_clear(app->renderer, clear_colour);
-        
+
         /* Get window dimensions */
         int window_width, window_height;
         vizero_window_get_size(app->window, &window_width, &window_height);
-        
+
         /* Update window manager layout */
-        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(app->editor);
-        if (window_manager) {
+        vizero_window_manager_t *window_manager = vizero_editor_get_window_manager(app->editor);
+        if (window_manager)
+        {
             vizero_window_manager_update_layout(window_manager, window_width, window_height);
-            
+
             /* Get all visible windows for rendering */
-            vizero_editor_window_t** visible_windows = NULL;
+            vizero_editor_window_t **visible_windows = NULL;
             size_t visible_count = 0;
-            
+
             int get_windows_result = vizero_window_manager_get_visible_windows(window_manager, &visible_windows, &visible_count);
-            
-            if (get_windows_result == 0) {
+
+            if (get_windows_result == 0)
+            {
                 /* Render each visible window */
-                for (size_t i = 0; i < visible_count; i++) {
-                    vizero_editor_window_t* window = visible_windows[i];
-                    if (!window) continue;
-                    
+                for (size_t i = 0; i < visible_count; i++)
+                {
+                    vizero_editor_window_t *window = visible_windows[i];
+                    if (!window)
+                        continue;
+
                     /* Get window's buffer and cursor via editor state */
-                    vizero_buffer_t* buffer = vizero_editor_window_get_buffer(window, app->editor);
-                    vizero_cursor_t* cursor = vizero_editor_window_get_cursor(window, app->editor);
-                    
-                    if (!buffer || !cursor) continue;
-                    
+                    vizero_buffer_t *buffer = vizero_editor_window_get_buffer(window, app->editor);
+                    vizero_cursor_t *cursor = vizero_editor_window_get_cursor(window, app->editor);
+
+                    if (!buffer || !cursor)
+                        continue;
+
                     /* Render this window */
                     render_editor_window(app, window, buffer, cursor);
                 }
-                
+
                 /* Draw window borders if multiple windows */
-                if (visible_count > 1) {
+                if (visible_count > 1)
+                {
                     draw_window_borders(app, visible_windows, visible_count);
                 }
-                
+
                 /* Free the visible windows array */
-                if (visible_windows) free(visible_windows);
-            } else {
+                if (visible_windows)
+                    free(visible_windows);
+            }
+            else
+            {
                 /* Fallback to single window rendering */
                 render_single_window_fallback(app, window_width, window_height);
             }
-        } else {
+        }
+        else
+        {
             /* Fallback to legacy rendering */
             render_single_window_fallback(app, window_width, window_height);
         }
-        
+
         /* Render logo if showing welcome and no files loaded */
-        if (app->show_welcome && app->logo_image) {
+        if (app->show_welcome && app->logo_image)
+        {
             /* Check if any files are loaded */
             int has_files = 0;
-            if (app->editor) {
-                has_files = (vizero_editor_get_buffer_count(app->editor) > 1 || 
-                           vizero_buffer_get_line_count(vizero_editor_get_current_buffer(app->editor)) > 1 ||
-                           vizero_buffer_is_modified(vizero_editor_get_current_buffer(app->editor)));
+            if (app->editor)
+            {
+                has_files = (vizero_editor_get_buffer_count(app->editor) > 1 ||
+                             vizero_buffer_get_line_count(vizero_editor_get_current_buffer(app->editor)) > 1 ||
+                             vizero_buffer_is_modified(vizero_editor_get_current_buffer(app->editor)));
             }
-            
-            if (!has_files) {
+
+            if (!has_files)
+            {
                 /* Position logo in upper right corner at 128x128 */
                 float logo_width = 128.0f;
                 float logo_height = 128.0f;
-                float logo_x = (float)window_width - logo_width - 20.0f;  /* 20px margin from right edge */
-                float logo_y = 20.0f;  /* 20px margin from top edge */
-                
+                float logo_x = (float)window_width - logo_width - 20.0f; /* 20px margin from right edge */
+                float logo_y = 20.0f;                                    /* 20px margin from top edge */
+
                 /* Render logo */
                 vizero_renderer_draw_image(app->renderer, app->logo_image, logo_x, logo_y, logo_width, logo_height);
             }
         }
-        
+
         /* Update and render status bar */
         vizero_status_bar_update(app->status_bar, app->editor);
         vizero_status_bar_resize(app->status_bar, window_width, 24);
         vizero_colour_t status_bg = {0.2f, 0.2f, 0.3f, 1.0f};
         vizero_colour_t status_text = {1.0f, 1.0f, 1.0f, 1.0f};
         vizero_status_bar_render(app->status_bar, app->renderer, 0, window_height - 24, status_bg, status_text);
-        
+
         /* Render popup if visible */
-        if (vizero_editor_is_popup_visible(app->editor)) {
-            const char* popup_content = vizero_editor_get_popup_content(app->editor);
-            if (popup_content) {
+        if (vizero_editor_is_popup_visible(app->editor))
+        {
+            const char *popup_content = vizero_editor_get_popup_content(app->editor);
+            if (popup_content)
+            {
                 /* Calculate popup dimensions */
-                int popup_width = (int)(window_width * 0.8f);  /* 80% of window width */
+                int popup_width = (int)(window_width * 0.8f);   /* 80% of window width */
                 int popup_height = (int)(window_height * 0.6f); /* 60% of window height */
                 int popup_x = (window_width - popup_width) / 2;
                 int popup_y = (window_height - popup_height) / 2;
@@ -805,12 +973,12 @@ int vizero_application_run(vizero_application_t* app) {
                 /* Draw popup background - same colors as completion popup */
                 vizero_colour_t popup_bg = {0.15f, 0.15f, 0.25f, 0.95f}; /* Dark blue with transparency */
                 vizero_renderer_fill_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
-                                        (float)(popup_width + 20), (float)(popup_height + 20), popup_bg);
+                                          (float)(popup_width + 20), (float)(popup_height + 20), popup_bg);
 
                 /* Draw popup border - same colors as completion popup */
                 vizero_colour_t popup_border = {0.4f, 0.4f, 0.6f, 1.0f}; /* Light blue border */
                 vizero_renderer_draw_rect(app->renderer, (float)(popup_x - 10), (float)(popup_y - 10),
-                                        (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
+                                          (float)(popup_width + 20), (float)(popup_height + 20), popup_border);
 
                 /* Draw popup text with scrolling support and per-line colour */
                 int scroll_offset = vizero_editor_get_popup_scroll_offset(app->editor);
@@ -819,20 +987,23 @@ int vizero_application_run(vizero_application_t* app) {
                 /* Popup debug output removed for cleaner compilation debugging */
 
                 /* Split content into lines first */
-                const char* line_start = popup_content;
+                const char *line_start = popup_content;
                 int current_line = 0;
                 int lines_added = 0;
                 float line_y = (float)popup_y;
-                
-                while (*line_start && lines_added < visible_lines) {
+
+                while (*line_start && lines_added < visible_lines)
+                {
                     /* Find end of current line */
-                    const char* line_end = strchr(line_start, '\n');
+                    const char *line_end = strchr(line_start, '\n');
                     size_t line_len = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
-                    
+
                     /* Only process lines that should be visible (after scroll offset) */
-                    if (current_line >= scroll_offset) {
+                    if (current_line >= scroll_offset)
+                    {
                         /* Increase line buffer size to handle longer compiler messages */
-                        if (line_len > 1023) line_len = 1023;
+                        if (line_len > 1023)
+                            line_len = 1023;
                         char line_buf[1024];
                         memcpy(line_buf, line_start, line_len);
                         line_buf[line_len] = '\0';
@@ -841,18 +1012,42 @@ int vizero_application_run(vizero_application_t* app) {
 
                         /* Use white color for compiler output */
                         vizero_colour_t colour = {1.0f, 1.0f, 1.0f, 1.0f};
-                        
+
                         /* Color coding for specific content types */
-                        if (strstr(line_buf, "error") || strstr(line_buf, "Error") || strstr(line_buf, "ERROR")) {
-                            colour.r = 1.0f; colour.g = 0.4f; colour.b = 0.4f; colour.a = 1.0f; // Red for errors
-                        } else if (strstr(line_buf, "warning") || strstr(line_buf, "Warning") || strstr(line_buf, "WARNING")) {
-                            colour.r = 1.0f; colour.g = 0.8f; colour.b = 0.2f; colour.a = 1.0f; // Yellow for warnings
-                        } else if (strstr(line_buf, "[DIR]")) {
-                            colour.r = 128.0f/255.0f; colour.g = 192.0f/255.0f; colour.b = 255.0f/255.0f; colour.a = 1.0f; // pale blue
-                        } else if (strstr(line_buf, "[EXE]")) {
-                            colour.r = 255.0f/255.0f; colour.g = 128.0f/255.0f; colour.b = 128.0f/255.0f; colour.a = 1.0f; // pale red
-                        } else if (strstr(line_buf, "[FILE]")) {
-                            colour.r = 255.0f/255.0f; colour.g = 255.0f/255.0f; colour.b = 192.0f/255.0f; colour.a = 1.0f; // pale yellow
+                        if (strstr(line_buf, "error") || strstr(line_buf, "Error") || strstr(line_buf, "ERROR"))
+                        {
+                            colour.r = 1.0f;
+                            colour.g = 0.4f;
+                            colour.b = 0.4f;
+                            colour.a = 1.0f; // Red for errors
+                        }
+                        else if (strstr(line_buf, "warning") || strstr(line_buf, "Warning") || strstr(line_buf, "WARNING"))
+                        {
+                            colour.r = 1.0f;
+                            colour.g = 0.8f;
+                            colour.b = 0.2f;
+                            colour.a = 1.0f; // Yellow for warnings
+                        }
+                        else if (strstr(line_buf, "[DIR]"))
+                        {
+                            colour.r = 128.0f / 255.0f;
+                            colour.g = 192.0f / 255.0f;
+                            colour.b = 255.0f / 255.0f;
+                            colour.a = 1.0f; // pale blue
+                        }
+                        else if (strstr(line_buf, "[EXE]"))
+                        {
+                            colour.r = 255.0f / 255.0f;
+                            colour.g = 128.0f / 255.0f;
+                            colour.b = 128.0f / 255.0f;
+                            colour.a = 1.0f; // pale red
+                        }
+                        else if (strstr(line_buf, "[FILE]"))
+                        {
+                            colour.r = 255.0f / 255.0f;
+                            colour.g = 255.0f / 255.0f;
+                            colour.b = 192.0f / 255.0f;
+                            colour.a = 1.0f; // pale yellow
                         }
 
                         vizero_text_info_t popup_text_info;
@@ -865,22 +1060,28 @@ int vizero_application_run(vizero_application_t* app) {
                         lines_added++;
                         line_y += 16.0f;
                     }
-                    
+
                     /* Move to next line */
                     current_line++;
-                    if (line_end) {
+                    if (line_end)
+                    {
                         line_start = line_end + 1;
-                    } else {
+                    }
+                    else
+                    {
                         break;
                     }
                 }
 
                 /* Draw dismiss instruction */
                 uint32_t popup_duration = vizero_editor_get_popup_duration(app->editor);
-                const char* instruction;
-                if (popup_duration > 0) {
+                const char *instruction;
+                if (popup_duration > 0)
+                {
                     instruction = "\n\nPress ESC to close or wait for timeout...";
-                } else {
+                }
+                else
+                {
                     instruction = "\n\nPress ESC to close, or use UP/DOWN arrows to scroll";
                 }
                 vizero_text_info_t popup_text_info;
@@ -894,44 +1095,57 @@ int vizero_application_run(vizero_application_t* app) {
                 vizero_renderer_draw_text(app->renderer, instruction, &popup_text_info);
             }
         }
-        
+
         /* Render completion dropdown if visible */
-        if (vizero_editor_is_completion_visible(app->editor)) {
+        if (vizero_editor_is_completion_visible(app->editor))
+        {
             render_completion_dropdown(app, window_width, window_height);
         }
-        
+
         /* Render hover popup if visible */
-        if (vizero_editor_is_hover_visible(app->editor)) {
+        if (vizero_editor_is_hover_visible(app->editor))
+        {
             render_hover_popup(app, window_width, window_height);
         }
-        
+
         /* File change polling - re-enabled with safety checks */
         uint32_t now = SDL_GetTicks();
-        if (now - app->last_poll_time > app->poll_interval_ms) {
+        if (now - app->last_poll_time > app->poll_interval_ms)
+        {
             app->last_poll_time = now;
-            vizero_editor_state_t* editor = app->editor;
-            if (editor) {
+            vizero_editor_state_t *editor = app->editor;
+            if (editor)
+            {
                 size_t buffer_count = vizero_editor_get_buffer_count(editor);
                 /* Safety check: limit polling to reasonable number of buffers */
-                if (buffer_count > 0 && buffer_count < 1000) {
-                    for (size_t i = 0; i < buffer_count; ++i) {
-                        vizero_buffer_t* buf = vizero_editor_get_buffer(editor, i);
-                        if (!buf) continue;
-                        const char* fname = vizero_buffer_get_filename(buf);
-                        if (!fname || !*fname) continue;
-                        
+                if (buffer_count > 0 && buffer_count < 1000)
+                {
+                    for (size_t i = 0; i < buffer_count; ++i)
+                    {
+                        vizero_buffer_t *buf = vizero_editor_get_buffer(editor, i);
+                        if (!buf)
+                            continue;
+                        const char *fname = vizero_buffer_get_filename(buf);
+                        if (!fname || !*fname)
+                            continue;
+
                         uint64_t disk_mtime = vizero_get_file_mtime(fname);
                         uint64_t last_mtime = vizero_buffer_get_last_disk_mtime(buf);
-                        if (disk_mtime && disk_mtime != last_mtime) {
-                            if (!vizero_buffer_is_modified(buf)) {
+                        if (disk_mtime && disk_mtime != last_mtime)
+                        {
+                            if (!vizero_buffer_is_modified(buf))
+                            {
                                 /* Safe reload: only if buffer is clean */
-                                if (vizero_buffer_load_from_file(buf, fname) == 0) {
+                                if (vizero_buffer_load_from_file(buf, fname) == 0)
+                                {
                                     vizero_buffer_set_last_disk_mtime(buf, disk_mtime);
                                     char msg[256];
                                     snprintf(msg, sizeof(msg), "File reloaded: %s", fname);
                                     vizero_editor_set_status_message_with_timeout(editor, msg, 3000);
                                 }
-                            } else {
+                            }
+                            else
+                            {
                                 /* Buffer is modified, warn user */
                                 char msg[256];
                                 snprintf(msg, sizeof(msg), "File changed on disk: %s (unsaved changes)", fname);
@@ -942,100 +1156,118 @@ int vizero_application_run(vizero_application_t* app) {
                 }
             }
         }
-        
+
         /* Check if any plugin wants full window control */
-        if (app->plugin_manager && vizero_plugin_manager_wants_full_window(app->plugin_manager)) {
+        if (app->plugin_manager && vizero_plugin_manager_wants_full_window(app->plugin_manager))
+        {
             /* Get window dimensions */
             int plugin_window_width, plugin_window_height;
             SDL_GetWindowSize(vizero_window_get_sdl_window(app->window), &plugin_window_width, &plugin_window_height);
-            
+
             /* Clear with black background */
             vizero_colour_t bg_color = {0.0f, 0.0f, 0.0f, 1.0f};
             vizero_renderer_clear(app->renderer, bg_color);
-            
+
             /* Let plugin render using OpenGL */
-            if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, plugin_window_width, plugin_window_height)) {
+            if (!vizero_plugin_manager_render_full_window(app->plugin_manager, app->renderer, plugin_window_width, plugin_window_height))
+            {
                 /* Fallback: show placeholder if plugin rendering fails */
-                vizero_text_info_t text_info ;//= {0};
-                
+                vizero_text_info_t text_info; //= {0};
+
                 text_info.x = 10.0f;
                 text_info.y = 10.0f;
                 vizero_colour_t text_color = {1.0f, 1.0f, 1.0f, 1.0f};
                 text_info.colour = text_color;
                 text_info.font = NULL;
-                
+
                 vizero_renderer_draw_text(app->renderer, "IRC Mode Active - Plugin rendering failed", &text_info);
             }
-            
+
             /* Present frame */
             vizero_renderer_present(app->renderer);
             vizero_window_swap_buffers(app->window);
-        } else {
+        }
+        else
+        {
             /* Normal rendering */
             /* Present frame */
             vizero_renderer_present(app->renderer);
             vizero_window_swap_buffers(app->window);
         }
-        
+
         /* Cap framerate */
         SDL_Delay(32); /* ~60 FPS */
     }
-    
+
     printf("Main loop exited\n");
     return 0;
 }
 
-void vizero_application_quit(vizero_application_t* app) {
-    if (app) {
+void vizero_application_quit(vizero_application_t *app)
+{
+    if (app)
+    {
         app->should_quit = 1;
     }
 }
 
-vizero_window_t* vizero_application_get_window(vizero_application_t* app) {
+vizero_window_t *vizero_application_get_window(vizero_application_t *app)
+{
     return app ? app->window : NULL;
 }
 
-vizero_editor_state_t* vizero_application_get_editor(vizero_application_t* app) {
+vizero_editor_state_t *vizero_application_get_editor(vizero_application_t *app)
+{
     return app ? app->editor : NULL;
 }
 
-vizero_plugin_manager_t* vizero_application_get_plugin_manager(vizero_application_t* app) {
+vizero_plugin_manager_t *vizero_application_get_plugin_manager(vizero_application_t *app)
+{
     return app ? app->plugin_manager : NULL;
 }
 
-void vizero_application_on_window_resize(vizero_application_t* app, int width, int height) {
-    if (!app) {
+void vizero_application_on_window_resize(vizero_application_t *app, int width, int height)
+{
+    if (!app)
+    {
         return;
     }
-    
+
     /* Update viewport */
     glViewport(0, 0, width, height);
-    
+
     /* Update renderer viewport */
-    if (app->renderer) {
+    if (app->renderer)
+    {
         vizero_renderer_update_viewport(app->renderer, width, height);
     }
-    
+
     /* Update editor layout */
-    if (app->editor) {
-        vizero_window_manager_t* window_manager = vizero_editor_get_window_manager(app->editor);
-        if (window_manager) {
+    if (app->editor)
+    {
+        vizero_window_manager_t *window_manager = vizero_editor_get_window_manager(app->editor);
+        if (window_manager)
+        {
             vizero_window_manager_update_layout(window_manager, width, height);
         }
     }
 }
 
-void vizero_application_on_file_drop(vizero_application_t* app, const char* filename) {
-    if (!app || !filename) {
+void vizero_application_on_file_drop(vizero_application_t *app, const char *filename)
+{
+    if (!app || !filename)
+    {
         return;
     }
-    
+
     /* Open dropped file */
     vizero_editor_open_buffer(app->editor, filename);
 }
 
-void vizero_application_on_user_input(vizero_application_t* app) {
-    if (app) {
+void vizero_application_on_user_input(vizero_application_t *app)
+{
+    if (app)
+    {
         app->show_welcome = 0; /* Hide welcome message on any user input */
     }
 }

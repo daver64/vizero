@@ -22,7 +22,8 @@ vizero_input_manager_t* vizero_input_manager_create(vizero_application_t* app);
 void vizero_input_manager_destroy(vizero_input_manager_t* input);
 
 /* Event processing */
-void vizero_input_manager_process_events(vizero_input_manager_t* input);
+/* Returns 1 if any events were processed that require re-rendering, 0 otherwise */
+int vizero_input_manager_process_events(vizero_input_manager_t* input);
 
 /* Key state queries */
 int vizero_input_manager_is_key_pressed(vizero_input_manager_t* input, uint32_t key);
