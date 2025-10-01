@@ -6,6 +6,7 @@
 #include "vizero/plugin_interface.h"
 #include "vizero/json_parser.h"
 #include "vizero/memory_utils.h"
+#include "vizero/settings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -109,13 +110,28 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb, http_res
     return realsize;
 }
 
-/* Load configuration from claude-key.txt file only */
+/* Load configuration from claude-key.txt file in settings directory */
 static int load_llm_config(void) {
     if (!g_llm_state) return -1;
     
-    /* Load API token from claude-key.txt file only */
+    /* Get the config directory path */
+    const char* config_dir = vizero_settings_get_config_directory();
+    if (!config_dir) {
+        printf("[Claude LLM] Error: Could not get settings directory\n");
+        return -1;
+    }
+    
+    /* Build the full path to claude-key.txt in settings directory */
+    char key_file_path[512];
+#ifdef _WIN32
+    snprintf(key_file_path, sizeof(key_file_path), "%s\\claude-key.txt", config_dir);
+#else
+    snprintf(key_file_path, sizeof(key_file_path), "%s/claude-key.txt", config_dir);
+#endif
+    
+    /* Load API token from claude-key.txt file in settings directory */
     const char* token = NULL;
-    FILE* key_file = fopen("claude-key.txt", "r");
+    FILE* key_file = fopen(key_file_path, "r");
     if (key_file) {
         static char file_token[512];
         if (fgets(file_token, sizeof(file_token), key_file)) {
@@ -126,7 +142,7 @@ static int load_llm_config(void) {
             char* cr = strchr(file_token, '\r');
             if (cr) *cr = '\0';
             token = file_token;
-            printf("[Claude LLM] Found API key in claude-key.txt\n");
+            printf("[Claude LLM] Found API key in %s\n", key_file_path);
         }
         fclose(key_file);
     }
@@ -137,8 +153,9 @@ static int load_llm_config(void) {
             return -1;
         }
     } else {
-        printf("[Claude LLM] Error: No API token found in claude-key.txt\n");
-        printf("  Please create claude-key.txt file with your Anthropic API key\n");
+        printf("[Claude LLM] Error: No API token found in %s\n", key_file_path);
+        printf("  Please create claude-key.txt file in your Vizero settings directory\n");
+        printf("  Settings directory: %s\n", config_dir);
         return -1;
     }
     

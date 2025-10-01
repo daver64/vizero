@@ -100,7 +100,7 @@ For more details, see `manual.md` and `docs/DEVELOPMENT.md`.
 - **Claude LLM Integration**: Built-in Claude Haiku integration for code assistance and AI chat
 - **AI Code Chat**: `:claude-chat <prompt>` for interactive coding conversations
 - **AI Code Analysis**: `:claude-ask <prompt>` for specific code questions and analysis
-- **Secure API Integration**: Requires `claude-key.txt` file with API key for secure access
+- **Secure API Integration**: Requires `claude-key.txt` file in settings directory with API key for secure access
 
 ### [*] Complete Vi Editing Experience
 - **Modal Editing**: Normal, Insert, Visual, and Command modes
@@ -172,7 +172,7 @@ cmake --build . --config Release
 ```
 :claude-chat <prompt>     # Interactive AI chat for coding assistance
 :claude-ask <prompt>      # Ask specific questions about code
-# Requires claude-key.txt file with Claude API key in editor directory
+# Requires claude-key.txt file with Claude API key in settings directory
 ```
 
 #### LSP and Code Completion

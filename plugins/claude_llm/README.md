@@ -9,7 +9,9 @@ This plugin integrates Claude Haiku with Vizero for AI-powered code assistance, 
    - Create an API key in your dashboard
 
 2. **Create API Key File**
-   - Create a file named `claude-key.txt` in your Vizero directory (same directory as vizero.exe)
+   - Create a file named `claude-key.txt` in your Vizero settings directory
+   - **Windows**: `%APPDATA%\Vizero\claude-key.txt`
+   - **Linux**: `~/.config/vizero/claude-key.txt`
    - Paste your API key into this file (just the key, nothing else)
    - Save the file
 
@@ -71,7 +73,7 @@ For typical coding usage (100 requests/day):
 ## Security & Privacy
 
 ### Data Handling
-- **API Key Storage**: Stored locally in `claude-key.txt` file only
+- **API Key Storage**: Stored locally in `claude-key.txt` file in settings directory only
 - **No Data Caching**: No conversation history is saved locally
 - **Direct Communication**: API calls go directly to Anthropic servers via HTTPS
 - **Session Only**: AI interactions exist only during current editor session
@@ -86,7 +88,9 @@ For typical coding usage (100 requests/day):
 ### Common Issues
 
 1. **"API key not found"**
-   - Ensure `claude-key.txt` exists in the same directory as `vizero.exe`
+   - Ensure `claude-key.txt` exists in your Vizero settings directory
+   - **Windows**: `%APPDATA%\Vizero\claude-key.txt`
+   - **Linux**: `~/.config/vizero/claude-key.txt`
    - Check that the file contains only your API key with no extra spaces or newlines
 
 2. **"Request failed"** 

@@ -75,7 +75,9 @@ Vizero features built-in integration with Claude Haiku for AI-powered developmen
 
 ### Setup
 1. Obtain a Claude API key from Anthropic
-2. Create a file named `claude-key.txt` in the same directory as your `vizero.exe`
+2. Create a file named `claude-key.txt` in your Vizero settings directory:
+   - **Windows**: `%APPDATA%\Vizero\claude-key.txt`
+   - **Linux**: `~/.config/vizero/claude-key.txt`
 3. Place your API key in this file (one line, no extra whitespace)
 4. The file should contain only your API key: `sk-ant-api03-...`
 
@@ -109,7 +111,7 @@ Ask specific questions about your current code or project.
 - Press `Esc` to close AI response popups
 
 ### Security
-- Your API key is stored locally in the `claude-key.txt` file
+- Your API key is stored locally in the `claude-key.txt` file in your settings directory
 - API calls are made directly to Anthropic's servers using HTTPS
 - No local data is cached or stored beyond the current session
 
