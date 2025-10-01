@@ -859,15 +859,27 @@ int vizero_application_run(vizero_application_t *app)
             }
         }
         
+        /* Check for full-screen plugins that need regular updates (IRC, REPL, etc.) */
+        int fullscreen_plugin_requires_render = 0;
+        if (app->plugin_manager && vizero_plugin_manager_wants_full_window(app->plugin_manager)) {
+            static uint32_t last_fullscreen_render_time = 0;
+            const uint32_t FULLSCREEN_RENDER_INTERVAL = 50; /* 50ms = ~20 FPS for plugins */
+            
+            if (current_ticks - last_fullscreen_render_time >= FULLSCREEN_RENDER_INTERVAL) {
+                last_fullscreen_render_time = current_ticks;
+                fullscreen_plugin_requires_render = 1; /* Regular update for fullscreen plugins */
+            }
+        }
+        
         /* TODO: In the future, we could optimize by only rendering when needed:
-         * if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render) {
+         * if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render && !fullscreen_plugin_requires_render) {
          *     SDL_Delay(16);
          *     continue;
          * }
          */
         
         /* Advanced optimization: skip rendering if nothing requires it */
-        if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render) {
+        if (!input_requires_render && !lsp_requires_render && !file_changes_require_render && !animations_require_render && !fullscreen_plugin_requires_render) {
             SDL_Delay(16); // Sleep and skip rendering this frame
             static bool first_frame=true;
             if(first_frame) {
