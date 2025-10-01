@@ -844,7 +844,13 @@ int vizero_application_run(vizero_application_t *app)
         /* TODO: Add tracking for lsp_updates, file_changes, animations */
         if (!input_requires_render) {
             SDL_Delay(16); // Sleep and skip rendering this frame
-            continue;
+            static bool first_frame=true;
+            if(first_frame) {
+                first_frame=false;
+                // Always render the first frame
+            } else {
+                continue;
+            }
         }
         
         /* Process LSP messages from plugins */
