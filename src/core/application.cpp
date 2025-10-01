@@ -978,7 +978,7 @@ int vizero_application_run(vizero_application_t* app) {
         }
         
         /* Cap framerate */
-        SDL_Delay(16); /* ~60 FPS */
+        SDL_Delay(32); /* ~60 FPS */
     }
     
     printf("Main loop exited\n");
