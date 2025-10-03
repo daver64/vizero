@@ -467,7 +467,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
                 vizero_code_fold_t* fold = &state->code_folding->folds[fold_idx];
                 if (fold->start_line == i && fold->is_folded) {
                     is_fold_start = 1;
-                    fold_line_count = fold->end_line - fold->start_line + 1;
+                    fold_line_count = (int)(fold->end_line - fold->start_line + 1);
                     break;
                 }
             }
@@ -605,7 +605,7 @@ void vizero_editor_window_render_content(vizero_editor_window_t* window, vizero_
             for (size_t fold_idx = 0; fold_idx < state->code_folding->fold_count; fold_idx++) {
                 vizero_code_fold_t* fold = &state->code_folding->folds[fold_idx];
                 if (fold->start_line == i && fold->is_folded) {
-                    int fold_line_count = fold->end_line - fold->start_line + 1;
+                    int fold_line_count = (int)(fold->end_line - fold->start_line + 1);
                     snprintf(visual, sizeof(visual), "%.*s... [%d lines folded]", 
                              (int)(actual_chunk < 20 ? actual_chunk : 20), 
                              line ? line + start : "", 

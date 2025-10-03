@@ -253,6 +253,7 @@ void vizero_file_list_destroy(vizero_file_list_t* list) {
 
 int vizero_project_scan_files(vizero_project_t* project, vizero_file_list_t* files, 
                              const char* pattern, int recursive) {
+    (void)recursive; /* Suppress unused parameter warning - TODO: implement recursive scanning */
     if (!project || !files || !project->root_directory) return -1;
     
     /* Simple implementation: scan for common source files */

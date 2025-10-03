@@ -495,6 +495,8 @@ void vizero_code_folding_on_lines_deleted(vizero_code_folding_t* folding, size_t
 }
 
 void vizero_code_folding_on_text_changed(vizero_code_folding_t* folding, size_t line, size_t start_col, size_t end_col) {
+    (void)start_col; /* Suppress unused parameter warning */
+    (void)end_col;   /* Suppress unused parameter warning */
     if (!folding) return;
     
     /* Check if any folds are affected by this text change */

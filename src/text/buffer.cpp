@@ -1323,6 +1323,7 @@ int vizero_buffer_unregister_callbacks(vizero_buffer_t* buffer, int registration
 
 /* Helper function to notify all registered callbacks */
 static void notify_lines_inserted(vizero_buffer_t* buffer, size_t line, size_t count) {
+    (void)buffer; /* Suppress unused parameter warning */
     for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
         if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_lines_inserted) {
             g_buffer_callbacks[i].callbacks.on_lines_inserted(g_buffer_callbacks[i].callbacks.user_data, line, count);
@@ -1331,6 +1332,7 @@ static void notify_lines_inserted(vizero_buffer_t* buffer, size_t line, size_t c
 }
 
 static void notify_lines_deleted(vizero_buffer_t* buffer, size_t line, size_t count) {
+    (void)buffer; /* Suppress unused parameter warning */
     for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
         if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_lines_deleted) {
             g_buffer_callbacks[i].callbacks.on_lines_deleted(g_buffer_callbacks[i].callbacks.user_data, line, count);
@@ -1338,7 +1340,13 @@ static void notify_lines_deleted(vizero_buffer_t* buffer, size_t line, size_t co
     }
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4505) /* unreferenced function with internal linkage */
+#endif
+
 static void notify_text_changed(vizero_buffer_t* buffer, size_t line, size_t start_col, size_t end_col) {
+    (void)buffer; /* Suppress unused parameter warning */
     for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
         if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_text_changed) {
             g_buffer_callbacks[i].callbacks.on_text_changed(g_buffer_callbacks[i].callbacks.user_data, line, start_col, end_col);
@@ -1347,9 +1355,14 @@ static void notify_text_changed(vizero_buffer_t* buffer, size_t line, size_t sta
 }
 
 static void notify_buffer_cleared(vizero_buffer_t* buffer) {
+    (void)buffer; /* Suppress unused parameter warning */
     for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
         if (g_buffer_callbacks[i].active && g_buffer_callbacks[i].callbacks.on_buffer_cleared) {
             g_buffer_callbacks[i].callbacks.on_buffer_cleared(g_buffer_callbacks[i].callbacks.user_data);
         }
     }
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

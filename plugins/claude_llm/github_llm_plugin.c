@@ -482,7 +482,7 @@ static int create_claude_buffer(vizero_editor_t* editor) {
                 
                 /* Add welcome message if buffer is empty */
                 if (g_llm_state->api->get_buffer_line_count) {
-                    int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+                    size_t line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
                     if (line_count <= 1) {
                         append_to_claude_buffer("=== Claude Haiku Chat ===\n");
                         append_to_claude_buffer("Type your questions after the 'You> ' prompt and press Enter to send.\n");
@@ -509,11 +509,11 @@ static void append_to_claude_buffer(const char* text) {
     
     /* Get buffer line count to append at the end */
     if (g_llm_state->api->get_buffer_line_count && g_llm_state->api->insert_text_multiline) {
-        int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+        size_t line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
         
         /* Position at the end of the last line */
         vizero_position_t pos;
-        pos.line = line_count > 0 ? line_count - 1 : 0;
+        pos.line = line_count > 0 ? (int)(line_count - 1) : 0;
         pos.column = 0;
         
         /* If there are existing lines, get the length of the last line */
@@ -646,12 +646,12 @@ static int handle_claude_clear_command(vizero_editor_t* editor, const char* args
     if (g_llm_state->claude_buffer && g_llm_state->api && g_llm_state->api->delete_text) {
         /* Delete all content by creating a range from start to end */
         if (g_llm_state->api->get_buffer_line_count) {
-            int line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
+            size_t line_count = g_llm_state->api->get_buffer_line_count(g_llm_state->claude_buffer);
             if (line_count > 0) {
                 vizero_range_t all_range;
                 all_range.start.line = 0;
                 all_range.start.column = 0;
-                all_range.end.line = line_count - 1;
+                all_range.end.line = (int)(line_count - 1);
                 
                 if (g_llm_state->api->get_buffer_line_length) {
                     all_range.end.column = g_llm_state->api->get_buffer_line_length(g_llm_state->claude_buffer, all_range.end.line);
