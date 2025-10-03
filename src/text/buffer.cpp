@@ -1345,6 +1345,8 @@ static void notify_lines_deleted(vizero_buffer_t* buffer, size_t line, size_t co
 #pragma warning(disable: 4505) /* unreferenced function with internal linkage */
 #endif
 
+/* Future notification functions - not currently used but kept for API completeness */
+#ifdef VIZERO_ENABLE_ALL_NOTIFICATIONS  /* Future feature */
 static void notify_text_changed(vizero_buffer_t* buffer, size_t line, size_t start_col, size_t end_col) {
     (void)buffer; /* Suppress unused parameter warning */
     for (int i = 0; i < MAX_BUFFER_CALLBACKS; i++) {
@@ -1362,6 +1364,7 @@ static void notify_buffer_cleared(vizero_buffer_t* buffer) {
         }
     }
 }
+#endif /* VIZERO_ENABLE_ALL_NOTIFICATIONS */
 
 #ifdef _MSC_VER
 #pragma warning(pop)

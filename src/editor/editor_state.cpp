@@ -37,10 +37,12 @@ static void code_folding_lines_deleted_wrapper(void* user_data, size_t line, siz
 static void register_code_folding_callbacks(vizero_buffer_t* buffer, vizero_code_folding_t* code_folding) {
     if (!buffer || !code_folding) return;
     
-    vizero_buffer_callbacks_t callbacks = {0};
-    callbacks.user_data = code_folding;
+    vizero_buffer_callbacks_t callbacks;
     callbacks.on_lines_inserted = code_folding_lines_inserted_wrapper;
     callbacks.on_lines_deleted = code_folding_lines_deleted_wrapper;
+    callbacks.on_text_changed = NULL;
+    callbacks.on_buffer_cleared = NULL;
+    callbacks.user_data = code_folding;
     
     int callback_id = vizero_buffer_register_callbacks(buffer, &callbacks);
     if (callback_id < 0) {
@@ -7088,7 +7090,9 @@ int vizero_editor_create_fold_at_cursor(vizero_editor_state_t* state) {
     size_t fold_start = cursor_line;
     int found_opening = 0;
     
-    for (size_t i = cursor_line; i < line_count && i >= 0; i--) {
+    /* Search backwards from cursor line (avoiding underflow) */
+    for (size_t search_offset = 0; search_offset <= cursor_line; search_offset++) {
+        size_t i = cursor_line - search_offset;
         const char* line_text = vizero_buffer_get_line_text(buffer, i);
         if (line_text && strstr(line_text, "{")) {
             fold_start = i;
@@ -7274,7 +7278,7 @@ int vizero_editor_auto_indent_line(vizero_editor_state_t* state) {
     /* If current line starts with }, decrease indent */
     const char* trimmed = line_text;
     while (*trimmed && (*trimmed == ' ' || *trimmed == '\t')) trimmed++;
-    if (*trimmed == '}' && indent_level >= state->tabstop) {
+    if (*trimmed == '}' && indent_level >= (size_t)state->tabstop) {
         indent_level -= state->tabstop;
     }
     

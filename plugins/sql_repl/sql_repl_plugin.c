@@ -925,7 +925,7 @@ static int sql_cmd_describe(vizero_editor_t* editor, const char* args) {
             /* Try simple DESCRIBE first - let MySQL handle the current database context */
             snprintf(query, sizeof(query), "DESCRIBE `%s`", trimmed_table);
             /* Debug: log the query being executed */
-            char debug_msg[256];
+            char debug_msg[600];  /* Increased size to accommodate full query + prefix */
             snprintf(debug_msg, sizeof(debug_msg), "Executing describe query: %s", query);
             sql_log_message(debug_msg);
             break;

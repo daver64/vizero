@@ -66,6 +66,8 @@ static const char* vertex_shader_source =
 "    TexCoord = aTexCoord;\n"
 "}\n";
 
+/* Future batch rendering shaders - not currently used */
+#ifdef VIZERO_ENABLE_BATCH_RENDERING
 /* Batch vertex shader for instanced text rendering */
 static const char* batch_vertex_shader_source = 
 "#version 330 core\n"
@@ -116,6 +118,7 @@ static const char* batch_fragment_shader_source =
 "        FragColour = InstanceColour;\n"
 "    }\n"
 "}\n";
+#endif /* VIZERO_ENABLE_BATCH_RENDERING */
 
 /* Fragment shader for bitmap font rendering */
 static const char* fragment_shader_source = 

@@ -246,7 +246,33 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
     }
     
     if (escaped_system) {
-        json_len = asprintf(&json_payload,
+        /* Calculate required buffer size */
+        json_len = snprintf(NULL, 0,
+            "{"
+            "\"model\":\"%s\","
+            "\"max_tokens\":1024,"
+            "\"temperature\":0.7,"
+            "\"system\":\"%s\","
+            "\"messages\":["
+                "{\"role\":\"user\",\"content\":\"%s\"}"
+            "]"
+            "}",
+            g_llm_state->model_name, escaped_system, escaped_prompt);
+        
+        if (json_len < 0) {
+            vizero_safe_free(escaped_prompt);
+            vizero_safe_free(escaped_system);
+            return -1;
+        }
+        
+        json_payload = malloc(json_len + 1);
+        if (!json_payload) {
+            vizero_safe_free(escaped_prompt);
+            vizero_safe_free(escaped_system);
+            return -1;
+        }
+        
+        snprintf(json_payload, json_len + 1,
             "{"
             "\"model\":\"%s\","
             "\"max_tokens\":1024,"
@@ -258,7 +284,32 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
             "}",
             g_llm_state->model_name, escaped_system, escaped_prompt);
     } else {
-        json_len = asprintf(&json_payload,
+        /* Calculate required buffer size */
+        json_len = snprintf(NULL, 0,
+            "{"
+            "\"model\":\"%s\","
+            "\"max_tokens\":1024,"
+            "\"temperature\":0.7,"
+            "\"messages\":["
+                "{\"role\":\"user\",\"content\":\"%s\"}"
+            "]"
+            "}",
+            g_llm_state->model_name, escaped_prompt);
+        
+        if (json_len < 0) {
+            vizero_safe_free(escaped_prompt);
+            if (escaped_system) vizero_safe_free(escaped_system);
+            return -1;
+        }
+        
+        json_payload = malloc(json_len + 1);
+        if (!json_payload) {
+            vizero_safe_free(escaped_prompt);
+            if (escaped_system) vizero_safe_free(escaped_system);
+            return -1;
+        }
+        
+        snprintf(json_payload, json_len + 1,
             "{"
             "\"model\":\"%s\","
             "\"max_tokens\":1024,"
@@ -273,10 +324,6 @@ static int send_llm_request(const char* prompt, const char* system_prompt, http_
     /* Clean up escaped strings */
     vizero_safe_free(escaped_prompt);
     if (escaped_system) vizero_safe_free(escaped_system);
-    
-    if (json_len < 0 || !json_payload) {
-        return -1;
-    }
     
     /* Set curl options */
     curl_easy_setopt(g_llm_state->curl_handle, CURLOPT_URL, g_llm_state->endpoint_url);
