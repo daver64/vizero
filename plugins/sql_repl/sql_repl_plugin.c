@@ -29,7 +29,7 @@
  * - :sql-describe table_name
  * - :sql-begin, :sql-commit, :sql-rollback
  * 
- * @version 0.0.5
+ * @version 0.0.6
  * @date September 2025
  * @author Vizero Development Team
  */
@@ -1178,10 +1178,12 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     printf("[SQL REPL] Testing database support:\n");
     
 #ifdef HAVE_MYSQL
-    if (mysql_library_init(0, NULL, NULL) == 0) {
+    /* Try MySQL initialization - don't fail plugin if this fails */
+    int mysql_init_result = mysql_library_init(0, NULL, NULL);
+    if (mysql_init_result == 0) {
         printf("[SQL REPL] MySQL/MariaDB support: ENABLED\n");
     } else {
-        printf("[SQL REPL] MySQL/MariaDB support: FAILED to initialize\n");
+        printf("[SQL REPL] MySQL/MariaDB support: FAILED to initialize (error %d) - continuing anyway\n", mysql_init_result);
     }
 #else
     printf("[SQL REPL] MySQL/MariaDB support: NOT COMPILED\n");

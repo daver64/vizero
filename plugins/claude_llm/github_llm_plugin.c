@@ -20,7 +20,8 @@ static int handle_llm_test_command(vizero_editor_t* editor, const char* args);
 static int handle_claude_chat_command(vizero_editor_t* editor, const char* args);
 static int handle_claude_ask_command(vizero_editor_t* editor, const char* args);
 static int handle_claude_clear_command(vizero_editor_t* editor, const char* args);
-static int claude_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
+static int claude_handle_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers);
+static void claude_on_buffer_close(vizero_buffer_t* buffer);
 static int create_claude_buffer(vizero_editor_t* editor);
 static void append_to_claude_buffer(const char* text);
 static void display_claude_response(const char* response);
@@ -775,20 +776,26 @@ static void claude_add_prompt(void) {
     }
 }
 
-/* Handle Enter key for interactive Claude chat */
-static int claude_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
+/* Handle key input for Claude chat mode */
+static int claude_handle_key_input(vizero_editor_t* editor, uint32_t key, uint32_t modifiers) {
     (void)modifiers; /* Unused */
     
-    /* Only handle Enter key */
-    if (key != 13 && key != 10) return 0; /* Not Enter key */
-    
-    /* Only handle if we're in Claude mode with initialized plugin */
+    /* Check if we're in Claude mode - if not, nothing to do */
     if (!g_llm_state || !g_llm_state->initialized || !g_llm_state->in_claude_mode) return 0;
     
     /* Get current cursor and buffer */
     vizero_cursor_t* cursor = g_llm_state->api->get_current_cursor(editor);
     vizero_buffer_t* buffer = g_llm_state->api->get_current_buffer(editor);
-    if (!cursor || !buffer || buffer != g_llm_state->claude_buffer) return 0;
+    if (!cursor || !buffer) return 0;
+    
+    /* Check if we're still in the Claude buffer - if not, reset Claude mode */
+    if (buffer != g_llm_state->claude_buffer) {
+        g_llm_state->in_claude_mode = false;
+        return 0;
+    }
+    
+    /* Only handle Enter key */
+    if (key != 13 && key != 10) return 0; /* Not Enter key */
     
     vizero_position_t pos = g_llm_state->api->get_cursor_position(cursor);
     const char* line_text = g_llm_state->api->get_buffer_line(buffer, pos.line);
@@ -832,6 +839,14 @@ static int claude_handle_enter_key(vizero_editor_t* editor, uint32_t key, uint32
     claude_add_prompt();
     
     return 1; /* We handled the Enter key */
+}
+
+/* Handle buffer close to reset Claude mode */
+static void claude_on_buffer_close(vizero_buffer_t* buffer) {
+    if (g_llm_state && g_llm_state->claude_buffer == buffer) {
+        g_llm_state->in_claude_mode = false;
+        g_llm_state->claude_buffer = NULL;
+    }
 }
 
 /* Plugin commands */
@@ -930,7 +945,8 @@ VIZERO_PLUGIN_API int vizero_plugin_init(vizero_plugin_t* plugin, vizero_editor_
     /* Set up plugin callbacks */
     plugin->callbacks.commands = llm_commands;
     plugin->callbacks.command_count = sizeof(llm_commands) / sizeof(llm_commands[0]);
-    plugin->callbacks.on_key_input = claude_handle_enter_key;
+    plugin->callbacks.on_key_input = claude_handle_key_input;
+    plugin->callbacks.on_buffer_close = claude_on_buffer_close;
     
     g_llm_state->initialized = true;
     

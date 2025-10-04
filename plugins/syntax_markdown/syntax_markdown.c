@@ -51,11 +51,16 @@ static int highlight_markdown(vizero_buffer_t* buffer, size_t start_line, size_t
     for (size_t line = start_line; line < end_line; ++line) {
         const char* text = NULL;
         size_t len = 0;
-        if (editor_api && editor_api->get_buffer_line) {
+        if (editor_api && editor_api->get_buffer_line && editor_api->get_buffer_line_length) {
             text = editor_api->get_buffer_line(buffer, line);
             len = editor_api->get_buffer_line_length(buffer, line);
         }
         if (!text) continue;
+        
+        /* Fallback to strlen if length is 0 */
+        if (len == 0 && text) {
+            len = strlen(text);
+        }
         
         /* Headers - lines starting with # */
         if (text[0] == '#') {

@@ -4,7 +4,7 @@
 Phase 4 represents the completion of Vizero's advanced feature set, transforming it from a functional vi clone into a modern, powerful text editor with sophisticated capabilities. This phase focuses on advanced editing features, UI/UX enhancements, and system maturity.
 
 ## Version Management System
-- **Centralized Versioning**: Implemented unified version system set to 0.0.5 across all components
+- **Centralized Versioning**: Implemented unified version system set to 0.0.6 across all components
 - **Single Source of Truth**: `include/vizero/version.h` provides VIZERO_VERSION_STRING for all modules
 - **Plugin Consistency**: All plugins now use VIZERO_PLUGIN_VERSION from centralized system
 - **Build Integration**: Windows resource files and CMake configurations updated with consistent versioning

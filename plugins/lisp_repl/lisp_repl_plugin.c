@@ -22,7 +22,7 @@
  * - Object inspection and modification capabilities
  * - Remote REPL connections for distributed development
  * 
- * @version 0.0.5
+ * @version 0.0.6
  * @date September 2025
  * @author Vizero Development Team
  * 

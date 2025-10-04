@@ -143,28 +143,32 @@ int vizero_plugin_registry_load_manifest(vizero_plugin_registry_t* registry, con
         /* Parse priority */
         entry->priority = vizero_json_get_int(plugin_obj, "priority", 0);
         
-        /* Initialize arrays - we'll need to enhance json_parser to handle arrays properly */
-        entry->extension_count = 0;
-        entry->repl_pattern_count = 0;
-        
-        /* For now, hardcode some known extensions based on plugin type */
-        if (strcmp(entry->name, "syntax_c") == 0) {
-            entry->extension_count = 3;
-            strcpy(entry->file_extensions[0], ".c");
-            strcpy(entry->file_extensions[1], ".h");
-            strcpy(entry->file_extensions[2], ".cpp");
-        } else if (strcmp(entry->name, "syntax_python") == 0) {
-            entry->extension_count = 1;
-            strcpy(entry->file_extensions[0], ".py");
-        } else if (strcmp(entry->name, "syntax_javascript") == 0) {
-            entry->extension_count = 1;
-            strcpy(entry->file_extensions[0], ".js");
-        } else if (strcmp(entry->name, "clangd") == 0) {
-            entry->extension_count = 3;
-            strcpy(entry->file_extensions[0], ".c");
-            strcpy(entry->file_extensions[1], ".cpp");
-            strcpy(entry->file_extensions[2], ".h");
+        /* Parse file_extensions array from manifest */
+        vizero_json_t* file_extensions_array = vizero_json_get_array(plugin_obj, "file_extensions");
+        if (file_extensions_array) {
+            int array_size = vizero_json_array_size(file_extensions_array);
+            entry->extension_count = 0;
+            
+            for (int j = 0; j < array_size && entry->extension_count < MAX_FILE_EXTENSIONS; j++) {
+                vizero_json_t* ext_elem = vizero_json_array_get(file_extensions_array, j);
+                if (ext_elem) {
+                    char* ext_str = vizero_json_get_string_value(ext_elem);
+                    if (ext_str) {
+                        safe_copy_string(entry->file_extensions[entry->extension_count], ext_str, 
+                                       sizeof(entry->file_extensions[entry->extension_count]));
+                        entry->extension_count++;
+                        free(ext_str);
+                    }
+                    vizero_json_free(ext_elem);
+                }
+            }
+            vizero_json_free(file_extensions_array);
+        } else {
+            entry->extension_count = 0;
         }
+        
+        /* Initialize REPL patterns (could be enhanced to parse from manifest later) */
+        entry->repl_pattern_count = 0;
         
         entry->is_loaded = false;
         entry->plugin_instance = NULL;

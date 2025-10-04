@@ -1,7 +1,7 @@
 # Vizero Editor Manual
 
 
-**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring **Claude LLM integration for AI-powered development**, event-driven rendering with 90% CPU reduction, hardware-accelerated graphics, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, advanced editing features including multiple cursors and block selection, intelligent code folding and indentation, command palette, and comprehensive plugin architecture. **Version 0.0.5** represents the completion of Phase 4: Advanced Features & Polish with Claude AI integration and performance optimization.
+**Vizero** is a modern vi clone built with SDL2 and OpenGL, featuring **Claude LLM integration for AI-powered development**, event-driven rendering with 90% CPU reduction, hardware-accelerated graphics, comprehensive search and replace, robust multi-buffer and multi-window support, integrated compiler tools, advanced editing features including multiple cursors and block selection, intelligent code folding and indentation, command palette, and comprehensive plugin architecture. **Version 0.0.6** represents the completion of Phase 4: Advanced Features & Polish with Claude AI integration and performance optimization.
 
 ---
 
@@ -2014,7 +2014,7 @@ Vizero is a remarkably comprehensive vi clone with an extensive command set that
 - **Session management** - Save and restore workspace sessions for project continuity
 - **Vi compatibility** - Standard navigation, modes, and command structure
 
-### Phase 4: Advanced Features & Polish (Version 0.0.5)
+### Phase 4: Advanced Features & Polish (Version 0.0.6)
 
 **Advanced Editing Capabilities:**
 - **Multiple Cursors** - Edit at multiple positions simultaneously with synchronized operations
@@ -2025,7 +2025,7 @@ Vizero is a remarkably comprehensive vi clone with an extensive command set that
 **Enhanced User Experience:**
 - **Command Palette** - Searchable command interface with fuzzy matching and categorization
 - **Advanced Search** - Regex support, capture groups, interactive replacement, and flexible matching options
-- **Centralized Version Management** - Unified version system (0.0.5) across all components
+- **Centralized Version Management** - Unified version system (0.0.6) across all components
 
 **System Maturity:**
 - **Robust Plugin Architecture** - Enhanced plugin system with version consistency

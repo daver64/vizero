@@ -174,6 +174,28 @@ vizero_json_t* vizero_json_array_get(vizero_json_t* json_obj, int index) {
     return nullptr;
 }
 
+char* vizero_json_get_string_value(vizero_json_t* json_obj) {
+    if (!json_obj || !json_obj->data) {
+        return nullptr;
+    }
+    
+    try {
+        const json& j = *json_obj->data;
+        if (j.is_string()) {
+            std::string str = j.get<std::string>();
+            char* result = static_cast<char*>(vizero_safe_malloc(str.length() + 1));
+            if (result) {
+                strcpy(result, str.c_str());
+            }
+            return result;
+        }
+    } catch (const std::exception&) {
+        // Fall through to return nullptr
+    }
+    
+    return nullptr;
+}
+
 int vizero_json_object_get_keys(vizero_json_t* json_obj, char*** keys, int max_keys) {
     if (!json_obj || !json_obj->data || !keys || max_keys <= 0) {
         return -1;

@@ -8,7 +8,7 @@
  * here to integrate with the Vizero plugin system.
  * 
  * @author Vizero Team
- * @version 0.0.5
+ * @version 0.0.6
  * @date 2025
  * @copyright Licensed under the same terms as Vizero
  * 

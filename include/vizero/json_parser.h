@@ -92,6 +92,13 @@ int vizero_json_array_size(vizero_json_t* json);
 vizero_json_t* vizero_json_array_get(vizero_json_t* json, int index);
 
 /**
+ * Get string value directly from a JSON element (for array elements that are strings)
+ * @param json The JSON handle (must be a string element)
+ * @return Dynamically allocated string (caller must free), or NULL if not a string/error
+ */
+char* vizero_json_get_string_value(vizero_json_t* json);
+
+/**
  * Get all keys from a JSON object
  * @param json The JSON handle (must be an object)
  * @param keys Output array of key names (caller must free each string and the array)

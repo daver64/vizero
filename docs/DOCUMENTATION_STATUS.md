@@ -18,14 +18,14 @@ This document tracks the accuracy of our documentation against the actual implem
 - **✅ IRC Integration Correction**: Plugin works but doesn't provide documented `:connect` command
 - **✅ All Major Documentation Updated**: README, manual, and development docs corrected
 
-### Phase 4: Advanced Features & Polish (Version 0.0.5)
+### Phase 4: Advanced Features & Polish (Version 0.0.6)
 - **✅ Multiple Cursors**: API implemented in `src/editor/editor_state.cpp` with complete function signatures
 - **✅ Block Selection**: Full rectangular selection API with copy/cut/paste operations
 - **✅ Advanced Search**: Enhanced search system with regex, case sensitivity, and whole-word matching
 - **✅ Code Folding**: Complete implementation with brace-matching, visual indicators, and fold-aware cursor navigation
 - **✅ Smart Indentation**: Multi-language indentation system with configurable styles
 - **✅ Command Palette**: Complete command interface API in `include/vizero/command_palette.h`
-- **✅ Version Management**: Centralized version system (0.0.5) across all components
+- **✅ Version Management**: Centralized version system (0.0.6) across all components
 - **✅ Documentation Updated**: All manuals updated to reflect Phase 4 features and commands
 
 ## ✅ Fully Implemented and Documented Correctly
@@ -67,14 +67,14 @@ This document tracks the accuracy of our documentation against the actual implem
 - **Database integration** - SQL REPL plugin with PostgreSQL/MySQL support
 - **REPL systems** - Both LISP and SQL REPL plugins fully operational
 
-### Phase 4: Advanced Features (Version 0.0.5)
+### Phase 4: Advanced Features (Version 0.0.6)
 - **Multiple Cursors API** - Complete implementation with synchronized operations
 - **Block Selection System** - Rectangular text manipulation with proper clipboard integration
 - **Advanced Find/Replace** - Regex support, capture groups, and interactive replacement
 - **Code Folding Infrastructure** - Language-aware folding with visual markers and nesting
 - **Smart Indentation Engine** - Multi-language intelligent formatting with configurable rules
 - **Command Palette Framework** - Searchable command interface with fuzzy matching
-- **Centralized Version Management** - Unified version system (0.0.5) across all components
+- **Centralized Version Management** - Unified version system (0.0.6) across all components
 - **Enhanced Plugin Architecture** - Version consistency and robust error handling
 
 ## ⚠️ Partially Implemented (Documentation Updated)
@@ -372,7 +372,7 @@ C:\Users\daver\source\vizero\docs\html\index.html
 
 ### Documentation Quality Assessment
 
-**Phase 4 Implementation Status (Version 0.0.5):**
+**Phase 4 Implementation Status (Version 0.0.6):**
 - **✅ 95%+ Accuracy**: All documented features have corresponding implementation or clear TODO markers
 - **✅ Comprehensive Coverage**: Over 60 commands documented with complete parameter descriptions  
 - **✅ Advanced Features**: Phase 4 advanced editing features fully documented with usage examples

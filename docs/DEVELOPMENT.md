@@ -13,7 +13,7 @@
 - **Full-Screen Plugin Support**: Optimized 20 FPS updates for IRC/REPL plugins while maintaining ultra-low idle usage
 - **Responsive Performance**: Immediate 60 FPS response during user interaction, near-zero CPU when idle
 
-## September 2025: Phase 4 Advanced Features & Polish (Version 0.0.5)
+## September 2025: Phase 4 Advanced Features & Polish (Version 0.0.6)
 
 ## September 2025: Major Architecture, Features & Bugfixes
 
@@ -67,7 +67,7 @@
 
 - **Command Palette**: Comprehensive command system with fuzzy search, categorization, and extensible command registration. Full API in `include/vizero/command_palette.h`.
 
-- **Centralized Version Management**: Unified version system (0.0.5) with single source of truth in `include/vizero/version.h` for all components and plugins.### Prerequisites
+- **Centralized Version Management**: Unified version system (0.0.6) with single source of truth in `include/vizero/version.h` for all components and plugins.### Prerequisites
 
 - **Enhanced Plugin Architecture**: Improved plugin system with version consistency, robust error handling, and comprehensive API interfaces.
 
@@ -493,7 +493,7 @@ VIZERO_PLUGIN_DEFINE_INFO(
 
     "Plugin Name",### Using Visual Studio Debugger (Windows)
 
-    VIZERO_PLUGIN_VERSION,  // Uses centralized version (0.0.5)1. Open `vizero.sln` in Visual Studio
+    VIZERO_PLUGIN_VERSION,  // Uses centralized version (0.0.6)1. Open `vizero.sln` in Visual Studio
 
     "Author",2. Set vizero as startup project
 
@@ -719,7 +719,7 @@ Failed to load plugin: [plugin_name]
 
 #### Plugin Crashes
 **Symptom**: Editor crashes when using plugin features
-**Solution**: Check plugin error messages, ensure plugin compatibility with version 0.0.5
+**Solution**: Check plugin error messages, ensure plugin compatibility with version 0.0.6
 
 ### Performance Issues
 
@@ -761,5 +761,5 @@ Failed to load plugin: [plugin_name]
 
 ---
 
-*Vizero Development Guide - Version 0.0.5*
+*Vizero Development Guide - Version 0.0.6*
 *Phase 4: Advanced Features & Polish Complete*

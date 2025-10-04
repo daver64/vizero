@@ -8,9 +8,9 @@ extern "C" {
 /* Vizero Core Version - Canonical Source */
 #define VIZERO_VERSION_MAJOR 0
 #define VIZERO_VERSION_MINOR 0
-#define VIZERO_VERSION_PATCH 5
+#define VIZERO_VERSION_PATCH 6
 
-#define VIZERO_VERSION_STRING "0.0.5"
+#define VIZERO_VERSION_STRING "0.0.6"
 #define VIZERO_VERSION_NUMERIC ((VIZERO_VERSION_MAJOR << 16) | (VIZERO_VERSION_MINOR << 8) | VIZERO_VERSION_PATCH)
 
 /* Build information */

@@ -44,7 +44,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring **Claude LLM integration
 - **Interactive LISP REPL**: Full SBCL integration with direct buffer typing, automatic expression evaluation, vi-style command integration, and seamless buffer switching with state preservation.
 - **SQL REPL Integration**: Multi-database SQL REPL with PostgreSQL and MySQL support, featuring real-time query execution, formatted result display, transaction management, and graceful degradation when database libraries are unavailable.
 
-### Phase 4: Advanced Features & Polish (Version 0.0.5)
+### Phase 4: Advanced Features & Polish (Version 0.0.6)
 
 - **Multiple Cursors**: Full multi-cursor support with synchronized text operations across all cursor positions
 - **Block/Rectangular Selection**: Column-wise text selection and manipulation for efficient data editing
@@ -52,7 +52,7 @@ A modern vi clone built with SDL2 and OpenGL, featuring **Claude LLM integration
 - **Code Folding System**: Intelligent brace-matching code folding with visual indicators, fold-aware cursor navigation, and complete command set (`:za`, `:zo`, `:zc`, `:zR`, `:zM`, `:zf`, `:zd`)
 - **Smart Indentation**: Multi-language intelligent indentation with configurable styles, bracket matching, and automatic formatting
 - **Command Palette**: Comprehensive command system with fuzzy search, categorization, and extensible command registration
-- **Centralized Version Management**: Unified version system (0.0.5) across all components with single source of truth for consistency
+- **Centralized Version Management**: Unified version system (0.0.6) across all components with single source of truth for consistency
 - **Enhanced Plugin Architecture**: Improved plugin system with version consistency and robust API interfaces
 
 ## Executables
